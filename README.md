@@ -2,7 +2,7 @@
 
 **Sistema completo para gerenciamento de processos licitatórios**
 
-🌐 **Site:** https://Frutuoozo.github.io/licitacao-kanban
+🌐 **Site:** https://Frutuoozo.github.io/Licitacao-Kanban
 
 ---
 
