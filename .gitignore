@@ -1,2 +1,4 @@
-
-node_modules/.cache/gh-pages/https\!github.com\!Frutuoozo\!Licitacao-Kanban.git/
+node_modules/
+.env
+build/
+.DS_Store
