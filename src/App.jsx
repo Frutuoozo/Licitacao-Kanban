@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
 const TYPE_COLORS = {
   "Aquisições":           "#a34200",
@@ -7,12 +7,13 @@ const TYPE_COLORS = {
   "Pregão Eletrônico":    "#f85149",
   "Inexigibilidade":      "#e3b341",
   "Publicação":           "#e3b341",
-  "Renovação":            "#3fb950",
+  "Renovação Antiga":     "#3fb950",
+  "Renovação Nova":       "#3fb950",
 };
 
-const COLUMN_ORDER = ["Aquisições", "Dispensa sem Disputa", "Dispensa com Disputa", "Inexigibilidade", "Renovação", "Publicação", "Pregão Eletrônico"];
+const COLUMN_ORDER = ["Aquisições", "Dispensa sem Disputa", "Dispensa com Disputa", "Inexigibilidade", "Renovação Antiga", "Renovação Nova", "Publicação", "Pregão Eletrônico"];
 
-const DEFAULT_TEMPLATES = {
+const DEFAULT_TEMPLATE_ITEMS = {
   "Aquisições": [
     { type: "doc", name: "DFD - Documento de Formalização de Demanda" },
     { type: "doc", name: "TR - Termo de Referência" },
@@ -73,7 +74,16 @@ const DEFAULT_TEMPLATES = {
     { type: "doc", name: "Publicação de Extrato" },
     { type: "doc", name: "Nota de Empenho" },
   ],
-  Renovação: [
+  "Renovação Antiga": [
+    { type: "doc", name: "Memorando de Solicitação de Renovação" },
+    { type: "doc", name: "Relatório de Execução Contratual" },
+    { type: "doc", name: "Justificativa de Renovação" },
+    { type: "doc", name: "Pesquisa de Preços Atualizada" },
+    { type: "doc", name: "Termo Aditivo" },
+    { type: "doc", name: "Publicação de Extrato" },
+    { type: "doc", name: "Nota de Empenho" },
+  ],
+  "Renovação Nova": [
     { type: "doc", name: "Memorando de Solicitação de Renovação" },
     { type: "doc", name: "Relatório de Execução Contratual" },
     { type: "doc", name: "Justificativa de Renovação" },
@@ -83,6 +93,79 @@ const DEFAULT_TEMPLATES = {
     { type: "doc", name: "Nota de Empenho" },
   ],
 };
+
+function normalizeTemplateLine(item) {
+  if (typeof item === "string") return { type: "doc", name: item, bgColor: null };
+  return { type: item.type || "doc", name: item.name, bgColor: item.bgColor || null };
+}
+
+function tmplItems(entry) {
+  if (entry == null) return [];
+  return Array.isArray(entry) ? entry : (entry.items || []);
+}
+
+function tmplOrder(entry) {
+  if (entry == null) return 999;
+  return Array.isArray(entry) ? 999 : (entry.order ?? 999);
+}
+
+function tmplColor(name, entry) {
+  if (entry == null) return TYPE_COLORS[name] || "#30363d";
+  if (Array.isArray(entry)) return TYPE_COLORS[name] || "#30363d";
+  return entry.color || TYPE_COLORS[name] || "#30363d";
+}
+
+function orderedTemplateTypeNames(templates) {
+  return Object.entries(templates || {})
+    .sort((a, b) => tmplOrder(a[1]) - tmplOrder(b[1]) || a[0].localeCompare(b[0]))
+    .map(([k]) => k);
+}
+
+function normalizeTemplatesFromApi(raw) {
+  if (!raw || typeof raw !== "object") return {};
+  const result = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (Array.isArray(v)) {
+      result[k] = {
+        items: v.map(normalizeTemplateLine),
+        color: TYPE_COLORS[k] || "#30363d",
+        order: COLUMN_ORDER.indexOf(k) === -1 ? 999 : COLUMN_ORDER.indexOf(k),
+      };
+    } else if (v && typeof v === "object") {
+      result[k] = {
+        items: (v.items || []).map(normalizeTemplateLine),
+        color: v.color || TYPE_COLORS[k] || "#30363d",
+        order: typeof v.order === "number" ? v.order : 999,
+      };
+    }
+  }
+  orderedTemplateTypeNames(result).forEach((key, i) => {
+    if (result[key]) result[key].order = i;
+  });
+  return result;
+}
+
+const DEFAULT_TEMPLATES = (() => {
+  const out = {};
+  let ord = 0;
+  for (const name of COLUMN_ORDER) {
+    if (!DEFAULT_TEMPLATE_ITEMS[name]) continue;
+    out[name] = {
+      items: DEFAULT_TEMPLATE_ITEMS[name].map(normalizeTemplateLine),
+      color: TYPE_COLORS[name] || "#30363d",
+      order: ord++,
+    };
+  }
+  for (const name of Object.keys(DEFAULT_TEMPLATE_ITEMS)) {
+    if (out[name]) continue;
+    out[name] = {
+      items: DEFAULT_TEMPLATE_ITEMS[name].map(normalizeTemplateLine),
+      color: TYPE_COLORS[name] || "#30363d",
+      order: ord++,
+    };
+  }
+  return out;
+})();
 
 function generateId() { return Math.random().toString(36).substr(2, 9); }
 
@@ -142,6 +225,8 @@ const IconClipboard = () => (<svg width="17" height="17" viewBox="0 0 24 24" fil
 const IconFileText = () => (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>);
 const IconEye = () => (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>);
 const IconEyeOff = () => (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>);
+const IconUser = () => (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 5-6 8-6s6.5 2 8 6"/></svg>);
+const IconShield = () => (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>);
 
 const CARD_COLORS = [
   { label: "Padrão", value: null },
@@ -488,7 +573,7 @@ function Dashboard({ columns, archived }) {
   // Por tipo — count + docs
   const byType = {};
   all.forEach(c => {
-    const key = Object.entries(TYPE_COLORS).find(([, v]) => v === c.typeColor)?.[0] || c.title;
+    const key = c.type || Object.entries(TYPE_COLORS).find(([, v]) => v === c.typeColor)?.[0] || c.title;
     const color = c.typeColor || "#8b949e";
     const d = getRegularDocs(c);
     if (!byType[key]) byType[key] = { count: 0, color, done: 0, total: 0 };
@@ -636,27 +721,29 @@ function Dashboard({ columns, archived }) {
 
 // ─── TemplateManager ──────────────────────────────────────────────────────────
 function TemplateManager({ templates, onSave, onClose }) {
-  const normalizeItems = (tpls) => {
-    const result = {};
-    for (const [k, v] of Object.entries(tpls)) {
-      result[k] = v.map(item => {
-        if (typeof item === "string") return { type: "doc", name: item, bgColor: null };
-        return { type: item.type || "doc", name: item.name, bgColor: item.bgColor || null };
-      });
-    }
-    return result;
-  };
-
-  const [local, setLocal] = useState(() => normalizeItems(JSON.parse(JSON.stringify(templates))));
-  const [selected, setSelected] = useState(Object.keys(local)[0] || "");
+  const [local, setLocal] = useState(() => normalizeTemplatesFromApi(JSON.parse(JSON.stringify(templates))));
+  const [selected, setSelected] = useState(() => orderedTemplateTypeNames(normalizeTemplatesFromApi(JSON.parse(JSON.stringify(templates))))[0] || "");
   const [newName, setNewName] = useState("");
   const [newItem, setNewItem] = useState("");
   const [addType, setAddType] = useState("doc");
   const [openColorIdx, setOpenColorIdx] = useState(null);
   const [dragIdx, setDragIdx] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
+  const [dragTypeKey, setDragTypeKey] = useState(null);
+  const [dragOverTypeKey, setDragOverTypeKey] = useState(null);
+  const [openTypeColorKey, setOpenTypeColorKey] = useState(null);
   const [phaseColorIdx, setPhaseColorIdx] = useState(0);
   const colorRefs = useRef({});
+  const typeColorRef = useRef({});
+
+  const orderedKeys = useMemo(() => orderedTemplateTypeNames(local), [local]);
+  const selectedEntry = selected ? local[selected] : null;
+  const selectedItems = selectedEntry ? selectedEntry.items : [];
+
+  useEffect(() => {
+    if (selected && !local[selected]) setSelected(orderedKeys[0] || "");
+    else if (!selected && orderedKeys.length) setSelected(orderedKeys[0]);
+  }, [local, selected, orderedKeys]);
 
   useEffect(() => {
     if (openColorIdx === null) return;
@@ -665,38 +752,109 @@ function TemplateManager({ templates, onSave, onClose }) {
     return () => document.removeEventListener("mousedown", h);
   }, [openColorIdx]);
 
+  useEffect(() => {
+    if (openTypeColorKey == null) return;
+    const h = (e) => {
+      const ref = typeColorRef.current[openTypeColorKey];
+      if (ref && !ref.contains(e.target)) setOpenTypeColorKey(null);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [openTypeColorKey]);
+
   const addTemplate = () => {
     if (!newName.trim() || local[newName.trim()]) return;
     const key = newName.trim();
-    setLocal(p => ({ ...p, [key]: [] })); setSelected(key); setNewName("");
+    setLocal((p) => {
+      const next = { ...p, [key]: { items: [], color: "#30363d", order: 999 } };
+      const keys = orderedTemplateTypeNames(next);
+      const out = { ...next };
+      keys.forEach((k, i) => {
+        out[k] = { ...out[k], order: i };
+      });
+      return out;
+    });
+    setSelected(key);
+    setNewName("");
   };
+
   const deleteTemplate = (key) => {
-    const next = { ...local }; delete next[key]; setLocal(next); setSelected(Object.keys(next)[0] || "");
+    setLocal((p) => {
+      const next = { ...p };
+      delete next[key];
+      const keys = orderedTemplateTypeNames(next);
+      keys.forEach((k, i) => {
+        next[k] = { ...next[k], order: i };
+      });
+      return next;
+    });
+    setSelected((s) => (s === key ? "" : s));
   };
+
   const addItem = () => {
-    if (!newItem.trim() || !selected) return;
+    if (!newItem.trim() || !selected || !local[selected]) return;
     const entry = addType === "phase"
       ? { type: "phase", name: newItem.trim(), bgColor: PHASE_COLORS[phaseColorIdx] }
       : { type: "doc", name: newItem.trim(), bgColor: null };
-    setLocal(p => ({ ...p, [selected]: [...p[selected], entry] }));
+    setLocal((p) => ({
+      ...p,
+      [selected]: { ...p[selected], items: [...p[selected].items, entry] },
+    }));
     setNewItem("");
   };
-  const removeItem = (idx) => setLocal(p => ({ ...p, [selected]: p[selected].filter((_, i) => i !== idx) }));
+  const removeItem = (idx) => setLocal((p) => ({
+    ...p,
+    [selected]: { ...p[selected], items: p[selected].items.filter((_, i) => i !== idx) },
+  }));
   const setItemColor = (idx, color) => {
-    setLocal(p => ({ ...p, [selected]: p[selected].map((item, i) => i === idx ? { ...item, bgColor: color } : item) }));
+    setLocal((p) => ({
+      ...p,
+      [selected]: {
+        ...p[selected],
+        items: p[selected].items.map((item, i) => (i === idx ? { ...item, bgColor: color } : item)),
+      },
+    }));
     setOpenColorIdx(null);
+  };
+  const setTypeRowColor = (key, color) => {
+    setLocal((p) => ({ ...p, [key]: { ...p[key], color } }));
+    setOpenTypeColorKey(null);
   };
   const handleDragStart = (i) => setDragIdx(i);
   const handleDragOver = (e, i) => { e.preventDefault(); setDragOverIdx(i); };
   const handleDrop = (i) => {
     if (dragIdx === null || dragIdx === i) { setDragIdx(null); setDragOverIdx(null); return; }
-    setLocal(p => {
-      const items = [...p[selected]]; const [moved] = items.splice(dragIdx, 1); items.splice(i, 0, moved);
-      return { ...p, [selected]: items };
+    setLocal((p) => {
+      const items = [...p[selected].items];
+      const [moved] = items.splice(dragIdx, 1);
+      items.splice(i, 0, moved);
+      return { ...p, [selected]: { ...p[selected], items } };
     });
     setDragIdx(null); setDragOverIdx(null);
   };
   const handleDragEnd = () => { setDragIdx(null); setDragOverIdx(null); };
+
+  const handleTypeDragStart = (e, k) => { e.stopPropagation(); setDragTypeKey(k); };
+  const handleTypeDragOver = (e, k) => { e.preventDefault(); setDragOverTypeKey(k); };
+  const handleTypeDrop = (targetKey) => {
+    if (!dragTypeKey || dragTypeKey === targetKey) { setDragTypeKey(null); setDragOverTypeKey(null); return; }
+    setLocal((p) => {
+      const keys = orderedTemplateTypeNames(p);
+      const from = keys.indexOf(dragTypeKey);
+      const to = keys.indexOf(targetKey);
+      if (from < 0 || to < 0) return p;
+      const nk = [...keys];
+      const [mv] = nk.splice(from, 1);
+      nk.splice(to, 0, mv);
+      const next = { ...p };
+      nk.forEach((name, i) => {
+        next[name] = { ...next[name], order: i };
+      });
+      return next;
+    });
+    setDragTypeKey(null); setDragOverTypeKey(null);
+  };
+  const handleTypeDragEnd = () => { setDragTypeKey(null); setDragOverTypeKey(null); };
 
   // Fully inline-styled fixed layout - no CSS cascade issues
   const S = {
@@ -704,7 +862,7 @@ function TemplateManager({ templates, onSave, onClose }) {
     box: { background:"#161b22", border:"1px solid #30363d", borderRadius:16, width:"100%", maxWidth:740, height:"80vh", display:"flex", flexDirection:"column", overflow:"hidden" },
     header: { display:"flex", alignItems:"center", justifyContent:"space-between", padding:"16px 20px", borderBottom:"1px solid #30363d", flexShrink:0 },
     body: { display:"flex", flex:1, overflow:"hidden", minHeight:0 },
-    sidebar: { width:200, minWidth:200, borderRight:"1px solid #30363d", padding:14, display:"flex", flexDirection:"column", gap:4, overflowY:"auto", overflowX:"hidden", flexShrink:0 },
+    sidebar: { width:236, minWidth:236, borderRight:"1px solid #30363d", padding:14, display:"flex", flexDirection:"column", gap:4, overflowY:"auto", overflowX:"hidden", flexShrink:0 },
     content: { flex:1, display:"flex", flexDirection:"column", overflow:"hidden", minWidth:0 },
     label: { fontSize:"0.7rem", color:"#8b949e", textTransform:"uppercase", letterSpacing:".6px", marginBottom:6, flexShrink:0 },
     list: { flex:1, overflowY:"auto", overflowX:"hidden", padding:"12px 12px 0", display:"flex", flexDirection:"column", gap:3 },
@@ -728,16 +886,45 @@ function TemplateManager({ templates, onSave, onClose }) {
           {/* Sidebar */}
           <div style={S.sidebar}>
             <p style={S.label}>Tipos de Processo</p>
-            {Object.keys(local).map(k => (
-              <div key={k} onClick={() => setSelected(k)} style={{
-                display:"flex", alignItems:"center", justifyContent:"space-between", gap:6,
-                padding:"7px 10px", borderRadius:8, cursor:"pointer", fontSize:"0.82rem",
-                background: selected === k ? "#1c2330" : "transparent",
-                color: selected === k ? "#f0883e" : "#e6edf3",
-                fontWeight: selected === k ? 500 : 400,
-              }}>
-                <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", flex:1 }}>{k}</span>
-                <button className="icon-btn danger sm" onClick={e => { e.stopPropagation(); deleteTemplate(k); }}><IconTrash /></button>
+            <p style={{ fontSize:"0.65rem", color:"#6e7681", marginBottom:6, lineHeight:1.35 }}>Arraste ⠿ para ordem na aba Processos. A cor vale para novos processos deste tipo.</p>
+            {orderedKeys.map(k => (
+              <div key={k}
+                onClick={() => setSelected(k)}
+                onDragOver={(e) => handleTypeDragOver(e, k)}
+                onDrop={() => handleTypeDrop(k)}
+                onDragEnd={handleTypeDragEnd}
+                style={{
+                  display:"flex", alignItems:"center", gap:4,
+                  padding:"6px 8px", borderRadius:8, cursor:"pointer", fontSize:"0.82rem",
+                  background: selected === k ? "#1c2330" : "transparent",
+                  color: selected === k ? "#f0883e" : "#e6edf3",
+                  fontWeight: selected === k ? 500 : 400,
+                  border: dragOverTypeKey === k && dragTypeKey !== k ? "1px dashed #58a6ff" : "1px solid transparent",
+                  opacity: dragTypeKey === k ? 0.45 : 1,
+                }}>
+                <span
+                  draggable
+                  onDragStart={(e) => handleTypeDragStart(e, k)}
+                  style={{ color:"#3a4556", fontSize:"1rem", userSelect:"none", flexShrink:0, cursor:"grab", padding:"2px 0" }}
+                  title="Arrastar para reordenar tipos"
+                >⠿</span>
+                <span style={{ width:10, height:10, borderRadius:"50%", background: local[k].color || "#30363d", flexShrink:0 }} />
+                <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", flex:1, minWidth:0 }}>{k}</span>
+                <div style={{ display:"flex", gap:2, flexShrink:0 }} onClick={e => e.stopPropagation()}>
+                  <div style={{ position:"relative" }} ref={(el) => { typeColorRef.current[k] = el; }}>
+                    <button type="button" className="icon-btn" title="Cor do tipo" onClick={() => setOpenTypeColorKey(openTypeColorKey === k ? null : k)}><IconPalette /></button>
+                    {openTypeColorKey === k && (
+                      <div className="color-picker" style={{ right: 0, left: "auto" }}>
+                        {CARD_COLORS.map(c => (
+                          <button key={c.label} type="button" className={`color-swatch ${local[k].color === c.value ? "active" : ""}`}
+                            style={{ background: c.value || "#1c2330", outline: local[k].color === c.value ? "2px solid #58a6ff" : "none" }}
+                            title={c.label} onClick={() => setTypeRowColor(k, c.value)} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button type="button" className="icon-btn danger sm" onClick={() => deleteTemplate(k)}><IconTrash /></button>
+                </div>
               </div>
             ))}
             <div style={{ display:"flex", gap:6, marginTop:8 }}>
@@ -757,7 +944,7 @@ function TemplateManager({ templates, onSave, onClose }) {
 
               {/* Scrollable list */}
               <div style={S.list} className="tpl-scroll-list">
-                {local[selected].map((item, i) => (
+                {selectedItems.map((item, i) => (
                   <div key={i}
                     style={{
                       display:"flex", alignItems:"center", gap:8, padding:"8px 10px",
@@ -833,27 +1020,34 @@ function TemplateManager({ templates, onSave, onClose }) {
 
 // ─── NewProcessModal ──────────────────────────────────────────────────────────
 function NewProcessModal({ templates, onAdd, onClose }) {
-  const [selectedType, setSelectedType] = useState(Object.keys(templates)[0] || "");
+  const orderedTypes = useMemo(() => orderedTemplateTypeNames(templates), [templates]);
+  const [selectedType, setSelectedType] = useState("");
   const [customTitle, setCustomTitle] = useState("");
   const [processNumber, setProcessNumber] = useState("");
   const [setor, setSetor] = useState("");
+
+  useEffect(() => {
+    const first = orderedTypes[0] || "";
+    if (!orderedTypes.includes(selectedType)) setSelectedType(first);
+  }, [orderedTypes, selectedType]);
 
   const title = customTitle.trim() || selectedType;
 
   const handleAdd = () => {
     if (!title) return;
-    const rawItems = templates[selectedType] || [];
+    const tpl = selectedType ? templates[selectedType] : null;
+    const rawItems = tpl ? tmplItems(tpl) : [];
     const docs = rawItems.map(item => {
       if (typeof item === "string") return { id: generateId(), type: "doc", name: item, done: false, bgColor: null };
       if (item.type === "phase") return { id: generateId(), type: "phase", name: item.name, bgColor: item.bgColor || PHASE_COLORS[0] };
       return { id: generateId(), type: "doc", name: item.name, done: false, bgColor: item.bgColor || null };
     });
-    const typeColor = TYPE_COLORS[selectedType] || "#30363d";
-    onAdd({ id: generateId(), title, processNumber: processNumber.trim(), setor: setor.trim(), typeColor, docs });
+    const typeColor = selectedType ? tmplColor(selectedType, templates[selectedType]) : "#30363d";
+    onAdd({ id: generateId(), title, processNumber: processNumber.trim(), setor: setor.trim(), type: selectedType || null, typeColor, docs });
     onClose();
   };
 
-  const previewColor = TYPE_COLORS[selectedType] || "#30363d";
+  const previewColor = selectedType ? tmplColor(selectedType, templates[selectedType]) : "#30363d";
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -867,7 +1061,7 @@ function NewProcessModal({ templates, onAdd, onClose }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ width: 12, height: 12, borderRadius: "50%", background: previewColor, flexShrink: 0 }} />
             <select className="select-field" value={selectedType} onChange={e => setSelectedType(e.target.value)}>
-              {Object.keys(templates).map(k => <option key={k} value={k}>{k}</option>)}
+              {orderedTypes.map(k => <option key={k} value={k}>{k}</option>)}
               <option value="">— Sem modelo —</option>
             </select>
           </div>
@@ -1713,6 +1907,404 @@ function ContratosAtivos() {
   );
 }
 
+const LICIT_SESS_USER = "licit_sess_user";
+const LICIT_SESS_PASS = "licit_sess_pass";
+
+function clearLicitSessionCredentials() {
+  try {
+    sessionStorage.removeItem(LICIT_SESS_USER);
+    sessionStorage.removeItem(LICIT_SESS_PASS);
+  } catch { /* ignore */ }
+}
+
+function ProfileMenu({ token, onLogout }) {
+  const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
+  const [open, setOpen] = useState(false);
+  const [me, setMe] = useState(null);
+  const [meLoading, setMeLoading] = useState(false);
+  const [showPass, setShowPass] = useState(false);
+  const wrapRef = useRef(null);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [newPw2, setNewPw2] = useState("");
+  const [resetErr, setResetErr] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePw, setDeletePw] = useState("");
+  const [deleteErr, setDeleteErr] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setMeLoading(true);
+    fetch(`${API_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => {
+        if (r.status === 401 || r.status === 403) {
+          onLogout();
+          throw new Error("Unauthorized");
+        }
+        return r.json();
+      })
+      .then((data) => setMe(data))
+      .catch(() => setMe(null))
+      .finally(() => setMeLoading(false));
+  }, [open, token, API_URL, onLogout]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  let sessionPass = null;
+  let sessionUser = null;
+  try {
+    sessionPass = sessionStorage.getItem(LICIT_SESS_PASS);
+    sessionUser = sessionStorage.getItem(LICIT_SESS_USER);
+  } catch { /* ignore */ }
+
+  const displayUser = me?.username ?? sessionUser ?? "—";
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setResetErr("");
+    if (newPw.length < 4) {
+      setResetErr("Nova senha muito curta");
+      return;
+    }
+    if (newPw !== newPw2) {
+      setResetErr("Confirmação não confere");
+      return;
+    }
+    setResetLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/auth/password`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setResetErr(data.error || "Não foi possível alterar");
+        return;
+      }
+      try {
+        sessionStorage.setItem(LICIT_SESS_PASS, newPw);
+      } catch { /* ignore */ }
+      setShowResetModal(false);
+      setCurrentPw("");
+      setNewPw("");
+      setNewPw2("");
+      setOpen(false);
+    } catch {
+      setResetErr("Erro de conexão");
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleDeleteAccount = async (e) => {
+    e.preventDefault();
+    setDeleteErr("");
+    setDeleteLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/auth/account`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ password: deletePw }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setDeleteErr(data.error || "Falha ao apagar");
+        return;
+      }
+      clearLicitSessionCredentials();
+      onLogout();
+    } catch {
+      setDeleteErr("Erro de conexão");
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="profile-wrap" ref={wrapRef}>
+        <button type="button" className="profile-trigger" aria-expanded={open} aria-haspopup="true" aria-label="Menu de perfil" onClick={() => setOpen((o) => !o)}>
+          <IconUser />
+        </button>
+        {open && (
+          <div className="profile-dropdown" role="menu">
+            <div className="profile-dropdown-title">Perfil</div>
+            {meLoading ? <div className="profile-muted">Carregando...</div> : null}
+            <div className="profile-field">
+              <span className="profile-label">Usuário</span>
+              <span className="profile-value">{displayUser}</span>
+            </div>
+            <div className="profile-field">
+              <span className="profile-label">Senha</span>
+              <div className="profile-pass-row">
+                <span className="profile-value profile-mono">
+                  {sessionPass ? (showPass ? sessionPass : "••••••••") : "—"}
+                </span>
+                {sessionPass ? (
+                  <button type="button" className="icon-btn" aria-label={showPass ? "Ocultar senha" : "Mostrar senha"} onClick={() => setShowPass((p) => !p)}>
+                    {showPass ? <IconEyeOff /> : <IconEye />}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            {!sessionPass ? (
+              <p className="profile-hint">A senha digitada no login fica visível aqui só nesta sessão do navegador (por segurança, o servidor não guarda a senha em texto).</p>
+            ) : null}
+            <div className="profile-actions-col">
+              <button
+                type="button"
+                className="btn-outline profile-action-full"
+                onClick={() => {
+                  setOpen(false);
+                  setShowResetModal(true);
+                  setResetErr("");
+                  setCurrentPw("");
+                  setNewPw("");
+                  setNewPw2("");
+                }}
+              >
+                Redefinir senha
+              </button>
+              <button
+                type="button"
+                className="btn-outline profile-action-full profile-danger-btn"
+                onClick={() => {
+                  setOpen(false);
+                  setShowDeleteModal(true);
+                  setDeleteErr("");
+                  setDeletePw("");
+                }}
+              >
+                Apagar conta
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {showResetModal && (
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowResetModal(false)}>
+          <div className="modal sm-modal">
+            <div className="modal-header">
+              <h2>Redefinir senha</h2>
+              <button type="button" className="icon-btn" onClick={() => setShowResetModal(false)} aria-label="Fechar">
+                <IconClose />
+              </button>
+            </div>
+            <form className="modal-body col" onSubmit={handleResetPassword}>
+              <label className="profile-form-label">Senha atual</label>
+              <input className="doc-input" type="password" value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} required autoComplete="current-password" />
+              <label className="profile-form-label">Nova senha</label>
+              <input className="doc-input" type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} required autoComplete="new-password" />
+              <label className="profile-form-label">Confirmar nova senha</label>
+              <input className="doc-input" type="password" value={newPw2} onChange={(e) => setNewPw2(e.target.value)} required autoComplete="new-password" />
+              {resetErr ? <div className="profile-err">{resetErr}</div> : null}
+              <div className="modal-footer profile-modal-footer">
+                <button type="button" className="btn-cancel" onClick={() => setShowResetModal(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn-confirm" disabled={resetLoading}>
+                  {resetLoading ? "Salvando..." : "Salvar"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showDeleteModal && (
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowDeleteModal(false)}>
+          <div className="modal sm-modal">
+            <div className="modal-header">
+              <h2>Apagar conta</h2>
+              <button type="button" className="icon-btn" onClick={() => setShowDeleteModal(false)} aria-label="Fechar">
+                <IconClose />
+              </button>
+            </div>
+            <form className="modal-body col" onSubmit={handleDeleteAccount}>
+              <p className="profile-muted profile-delete-lead">Esta ação não pode ser desfeita. Digite sua senha para confirmar.</p>
+              <label className="profile-form-label">Senha</label>
+              <input className="doc-input" type="password" value={deletePw} onChange={(e) => setDeletePw(e.target.value)} required autoComplete="current-password" />
+              {deleteErr ? <div className="profile-err">{deleteErr}</div> : null}
+              <div className="modal-footer profile-modal-footer">
+                <button type="button" className="btn-cancel" onClick={() => setShowDeleteModal(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn-confirm profile-delete-submit" disabled={deleteLoading}>
+                  {deleteLoading ? "Removendo..." : "Apagar definitivamente"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function AdminPanel({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
+  const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+
+  const load = useCallback(() => {
+    setErr("");
+    setLoading(true);
+    fetch(`${API_URL}/api/admin/users`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => {
+        if (r.status === 401) throw new Error("401");
+        if (r.status === 403) {
+          setErr("Sem permissão para acessar o painel.");
+          setUsers([]);
+          return null;
+        }
+        if (!r.ok) throw new Error("fail");
+        return r.json();
+      })
+      .then((data) => {
+        if (data) setUsers(data);
+      })
+      .catch((e) => {
+        if (e.message === "401") onUnauthorized();
+        else if (e.message !== "fail") setErr("Não foi possível carregar a lista.");
+      })
+      .finally(() => setLoading(false));
+  }, [API_URL, token, onUnauthorized]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const patchRole = (id, role) => {
+    fetch(`${API_URL}/api/admin/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ role }),
+    })
+      .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) {
+          setErr(data.error || "Falha ao atualizar");
+          load();
+          return;
+        }
+        if (id === currentUserId && role === "user") {
+          onSelfDemoted();
+          return;
+        }
+        load();
+      })
+      .catch(() => {
+        setErr("Erro de conexão");
+        load();
+      });
+  };
+
+  const deleteUser = (id) => {
+    if (!window.confirm("Remover este usuário permanentemente?")) return;
+    fetch(`${API_URL}/api/admin/users/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json().then((data) => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) {
+          setErr(data.error || "Falha ao remover");
+          return;
+        }
+        load();
+      })
+      .catch(() => setErr("Erro de conexão"));
+  };
+
+  const fmtDate = (d) => {
+    if (!d) return "—";
+    try {
+      return new Date(d).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+    } catch {
+      return "—";
+    }
+  };
+
+  const adminCount = users.filter((u) => u.role === "admin").length;
+
+  return (
+    <div className="admin-panel">
+      <div className="admin-panel-inner">
+        <h1 className="admin-title">Painel de administração</h1>
+        <p className="admin-lead">Gerencie contas: papel (usuário ou administrador) e exclusão de cadastros.</p>
+        {err ? (
+          <div className="profile-err admin-alert">
+            {err}
+          </div>
+        ) : null}
+        {loading ? (
+          <div className="admin-muted">Carregando...</div>
+        ) : (
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Usuário</th>
+                  <th>Papel</th>
+                  <th>Cadastro</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => {
+                  const onlyAdmin = u.role === "admin" && adminCount <= 1;
+                  return (
+                    <tr key={u.id}>
+                      <td className="admin-td-user">
+                        {u.username}
+                        {u.id === currentUserId ? <span className="admin-you"> (você)</span> : null}
+                      </td>
+                      <td>
+                        <select
+                          className="admin-select doc-input"
+                          value={u.role}
+                          onChange={(e) => patchRole(u.id, e.target.value)}
+                          disabled={onlyAdmin}
+                          title={onlyAdmin ? "É necessário haver outro administrador antes de rebaixar este perfil" : ""}
+                        >
+                          <option value="user">Usuário</option>
+                          <option value="admin">Administrador</option>
+                        </select>
+                      </td>
+                      <td className="admin-muted">{fmtDate(u.created_at)}</td>
+                      <td className="admin-td-actions">
+                        <button
+                          type="button"
+                          className="icon-btn danger"
+                          title="Remover usuário"
+                          disabled={u.id === currentUserId}
+                          onClick={() => deleteUser(u.id)}
+                        >
+                          <IconTrash />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Login ────────────────────────────────────────────────────────────────────
 function Login({ onLogin }) {
   const [isRegistering, setIsRegistering] = useState(false);
@@ -1722,6 +2314,30 @@ function Login({ onLogin }) {
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [loading, setLoading] = useState(false);
+  const loginShellRef = useRef(null);
+
+  const onLoginMouseMove = useCallback((e) => {
+    const el = loginShellRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const px = e.clientX - r.left;
+    const py = e.clientY - r.top;
+    const x = (px / Math.max(r.width, 1)) * 100;
+    const y = (py / Math.max(r.height, 1)) * 100;
+    el.style.setProperty("--login-mx", `${x}%`);
+    el.style.setProperty("--login-my", `${y}%`);
+    el.style.setProperty("--login-px", `${px}px`);
+    el.style.setProperty("--login-py", `${py}px`);
+    el.classList.add("login-pointer-active");
+  }, []);
+
+  const onLoginMouseLeave = useCallback(() => {
+    const el = loginShellRef.current;
+    if (!el) return;
+    el.style.setProperty("--login-mx", "50%");
+    el.style.setProperty("--login-my", "42%");
+    el.classList.remove("login-pointer-active");
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1744,6 +2360,10 @@ function Login({ onLogin }) {
           setIsRegistering(false);
           setPassword("");
         } else {
+          try {
+            sessionStorage.setItem(LICIT_SESS_USER, username);
+            sessionStorage.setItem(LICIT_SESS_PASS, password);
+          } catch { /* ignore */ }
           onLogin(data.accessToken);
         }
       } else {
@@ -1757,8 +2377,17 @@ function Login({ onLogin }) {
   };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg)' }}>
-      <div style={{ background: 'var(--surface)', padding: '40px', borderRadius: '16px', border: '1px solid var(--border)', width: '100%', maxWidth: '380px' }}>
+    <div
+      ref={loginShellRef}
+      className="login-page-shell"
+      onMouseMove={onLoginMouseMove}
+      onMouseLeave={onLoginMouseLeave}
+    >
+      <div className="login-bg-aurora" aria-hidden />
+      <div className="login-bg-grid" aria-hidden />
+      <div className="login-bg-cursor-glow" aria-hidden />
+      <div className="login-cursor-ring" aria-hidden />
+      <div className="login-card">
         <h2 style={{ textAlign: 'center', marginBottom: '24px', fontFamily: "'Syne', sans-serif", color: 'var(--text)' }}>
           {isRegistering ? "Criar Conta" : "Licitação Kanban"}
         </h2>
@@ -1803,8 +2432,8 @@ function Login({ onLogin }) {
           
           {error && <div style={{ color: 'var(--red)', fontSize: '0.85rem', textAlign: 'center' }}>{error}</div>}
           
-          <button type="submit" className="add-doc-btn" style={{ padding: '12px', marginTop: '8px', justifyContent: 'center', width: '100%' }} disabled={loading}>
-            {loading ? "Aguarde..." : (isRegistering ? "Cadastrar" : "Entrar")}
+          <button type="submit" className="login-glow-btn" disabled={loading}>
+            <span className="login-glow-btn-inner">{loading ? "Aguarde..." : (isRegistering ? "Cadastrar" : "Entrar")}</span>
           </button>
         </form>
         
@@ -1832,6 +2461,47 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("board");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("processos");
+  const [sessionUser, setSessionUser] = useState(null);
+
+  const handleLogout = useCallback(() => {
+    clearLicitSessionCredentials();
+    setToken(null);
+  }, [setToken]);
+
+  const loadSessionUser = useCallback(() => {
+    if (!token) {
+      setSessionUser(null);
+      return;
+    }
+    const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
+    fetch(`${API_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => {
+        if (r.status === 401 || r.status === 403) {
+          handleLogout();
+          throw new Error("auth");
+        }
+        return r.json();
+      })
+      .then(setSessionUser)
+      .catch((e) => {
+        if (e.message !== "auth") setSessionUser(null);
+      });
+  }, [token, handleLogout]);
+
+  useEffect(() => {
+    loadSessionUser();
+  }, [loadSessionUser]);
+
+  useEffect(() => {
+    if (sessionUser && activeSection === "admin" && sessionUser.role !== "admin") {
+      setActiveSection("processos");
+    }
+  }, [sessionUser, activeSection]);
+
+  const handleSelfDemotedFromAdmin = useCallback(() => {
+    loadSessionUser();
+    setActiveSection("processos");
+  }, [loadSessionUser]);
 
   useEffect(() => {
     if (!token) return;
@@ -1851,7 +2521,7 @@ export default function App() {
       })
       .catch(err => {
         console.error(err);
-        if (err.message === 'Unauthorized') setToken(null);
+        if (err.message === 'Unauthorized') handleLogout();
       });
 
     fetch(`${API_URL}/api/templates`, {
@@ -1859,15 +2529,21 @@ export default function App() {
     })
       .then(res => res.json())
       .then(data => {
-        if (Object.keys(data).length > 0) setTemplates(data);
+        if (Object.keys(data).length > 0) setTemplates(normalizeTemplatesFromApi(data));
       })
       .catch(console.error);
-  }, [token, setToken]);
+  }, [token, handleLogout]);
 
-  const SECTIONS = [
-    { id: "processos", label: "Acompanhar Processos", icon: IconClipboard },
-    { id: "contratos", label: "Contratos Ativos", icon: IconFileText },
-  ];
+  const SECTIONS = useMemo(() => {
+    const base = [
+      { id: "processos", label: "Acompanhar Processos", icon: IconClipboard },
+      { id: "contratos", label: "Contratos Ativos", icon: IconFileText },
+    ];
+    if (sessionUser?.role === "admin") {
+      base.push({ id: "admin", label: "Administração", icon: IconShield });
+    }
+    return base;
+  }, [sessionUser?.role]);
 
   const apiFetch = (url, method, body) => {
     if (!token) return;
@@ -1937,13 +2613,18 @@ export default function App() {
   const totalDocs = columns.reduce((a, c) => a + getRegularDocs(c).length, 0);
   const totalDone = columns.reduce((a, c) => a + getRegularDocs(c).filter(d => d.done).length, 0);
 
-  const sortedColumns = [...columns].sort((a, b) => {
-    const typeA = Object.entries(TYPE_COLORS).find(([, v]) => v === a.typeColor)?.[0] || "";
-    const typeB = Object.entries(TYPE_COLORS).find(([, v]) => v === b.typeColor)?.[0] || "";
-    const idxA = COLUMN_ORDER.indexOf(typeA);
-    const idxB = COLUMN_ORDER.indexOf(typeB);
-    return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
-  });
+  const processTypeOrder = useMemo(() => orderedTemplateTypeNames(templates), [templates]);
+  const sortedColumns = useMemo(() => {
+    const rank = (idx) => (idx === -1 ? 999 : idx);
+    return [...columns].sort((a, b) => {
+      const keyA = a.type || "";
+      const keyB = b.type || "";
+      const idxA = processTypeOrder.indexOf(keyA);
+      const idxB = processTypeOrder.indexOf(keyB);
+      if (rank(idxA) !== rank(idxB)) return rank(idxA) - rank(idxB);
+      return (a.title || "").localeCompare(b.title || "", "pt-BR");
+    });
+  }, [columns, processTypeOrder]);
 
   const TABS = [
     { id: "board", label: "Processos" },
@@ -2004,6 +2685,46 @@ export default function App() {
         .hamburger:hover { background: var(--surface2); }
         .hamburger span { display: block; width: 20px; height: 2px; background: var(--text); border-radius: 2px; }
 
+        .profile-wrap { position: relative; flex-shrink: 0; }
+        .profile-trigger { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface2); color: var(--text); cursor: pointer; transition: background .15s, border-color .15s; }
+        .profile-trigger:hover { background: var(--surface); border-color: var(--muted); }
+        .profile-dropdown { position: absolute; top: calc(100% + 8px); left: 0; z-index: 60; min-width: 288px; max-width: min(320px, calc(100vw - 40px)); padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.45); animation: scaleIn .2s cubic-bezier(.34,1.56,.64,1); }
+        .profile-dropdown-title { font-family: 'Syne', sans-serif; font-size: 0.95rem; font-weight: 700; margin-bottom: 12px; color: var(--text); }
+        .profile-field { margin-bottom: 12px; }
+        .profile-label { display: block; font-size: 0.68rem; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .05em; }
+        .profile-value { font-size: 0.88rem; color: var(--text); word-break: break-word; }
+        .profile-mono { font-family: ui-monospace, 'DM Sans', monospace; font-size: 0.84rem; }
+        .profile-pass-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+        .profile-pass-row .profile-value { flex: 1; min-width: 0; }
+        .profile-muted { font-size: 0.8rem; color: var(--muted); }
+        .profile-hint { font-size: 0.72rem; color: var(--muted); margin: 0 0 4px; line-height: 1.45; }
+        .profile-actions-col { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border); }
+        .profile-action-full { width: 100%; justify-content: center; }
+        .profile-danger-btn { color: var(--red) !important; border-color: rgba(248,81,73,.35) !important; }
+        .profile-danger-btn:hover { background: rgba(248,81,73,.08) !important; }
+        .profile-form-label { font-size: 0.78rem; color: var(--muted); margin-bottom: 4px; display: block; }
+        .profile-err { color: var(--red); font-size: 0.85rem; margin-top: 4px; }
+        .profile-modal-footer { border: none !important; padding: 16px 0 0 !important; margin-top: 4px; justify-content: flex-end !important; }
+        .profile-delete-lead { margin-bottom: 10px; line-height: 1.45; }
+        .profile-delete-submit { background: var(--red) !important; color: #fff !important; }
+
+        .admin-panel { flex: 1; padding: 24px 28px; overflow: auto; }
+        .admin-panel-inner { max-width: 920px; margin: 0 auto; }
+        .admin-title { font-family: 'Syne', sans-serif; font-size: 1.35rem; font-weight: 800; margin-bottom: 8px; color: var(--text); }
+        .admin-lead { font-size: 0.88rem; color: var(--muted); margin-bottom: 20px; line-height: 1.5; }
+        .admin-alert { margin-bottom: 14px; }
+        .admin-muted { font-size: 0.85rem; color: var(--muted); }
+        .admin-table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+        .admin-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+        .admin-table th { text-align: left; padding: 12px 16px; background: var(--surface2); color: var(--muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--border); }
+        .admin-table td { padding: 12px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+        .admin-table tr:last-child td { border-bottom: none; }
+        .admin-td-user { color: var(--text); font-weight: 500; }
+        .admin-you { color: var(--muted); font-weight: 400; }
+        .admin-select { max-width: 200px; padding: 8px 10px !important; font-size: 0.82rem !important; cursor: pointer; }
+        .admin-select:disabled { opacity: 0.45; cursor: not-allowed; }
+        .admin-td-actions { text-align: right; width: 56px; }
+
         .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 50; }
         .sidebar { position: fixed; top: 0; left: 0; height: 100vh; width: 260px; background: var(--surface); border-right: 1px solid var(--border); z-index: 51; display: flex; flex-direction: column; transform: translateX(-100%); transition: transform .25s cubic-bezier(.4,0,.2,1); }
         .sidebar.open { transform: translateX(0); }
@@ -2028,6 +2749,234 @@ export default function App() {
         .btn-outline { display: flex; align-items: center; gap: 6px; background: transparent; color: var(--text); border: 1px solid var(--border); padding: 8px 14px; border-radius: var(--radius); font-family: 'DM Sans', sans-serif; font-size: 0.85rem; cursor: pointer; transition: background .2s, border-color .2s, transform .15s; }
         .btn-outline:hover { background: var(--surface2); border-color: var(--muted); transform: translateY(-1px); }
         .btn-outline:active { transform: translateY(0); }
+
+        @keyframes loginGlowScan {
+          0%, 100% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+        }
+        @keyframes loginGlowPulse {
+          0%, 100% { box-shadow: 0 0 12px 2px rgba(88, 166, 255, 0.4), 0 0 24px rgba(240, 136, 62, 0.2); }
+          50% { box-shadow: 0 0 20px 4px rgba(88, 166, 255, 0.65), 0 0 36px rgba(240, 136, 62, 0.35); }
+        }
+
+        @keyframes loginGridDrift {
+          0% { transform: translate(0, 0); }
+          100% { transform: translate(56px, 56px); }
+        }
+        @keyframes loginAurora {
+          0% { opacity: 0.65; transform: scale(1) translate(0, 0); }
+          100% { opacity: 0.95; transform: scale(1.03) translate(-1%, 1%); }
+        }
+        @keyframes loginNoise {
+          0%, 100% { opacity: 0.03; }
+          50% { opacity: 0.05; }
+        }
+
+        .login-page-shell {
+          --login-mx: 50%;
+          --login-my: 42%;
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 100vh;
+          padding: 24px;
+          overflow: hidden;
+          isolation: isolate;
+          background: radial-gradient(ellipse 120% 90% at 50% -10%, #151b24 0%, #0d1117 42%, #080a0e 100%);
+        }
+        .login-bg-aurora {
+          position: absolute;
+          inset: 0;
+          z-index: 0;
+          pointer-events: none;
+          background:
+            radial-gradient(ellipse 70% 55% at 18% 28%, rgba(88, 166, 255, 0.07), transparent 52%),
+            radial-gradient(ellipse 55% 45% at 88% 72%, rgba(240, 136, 62, 0.055), transparent 48%);
+          animation: loginAurora 18s ease-in-out infinite alternate;
+        }
+        .login-bg-grid {
+          position: absolute;
+          inset: -80px;
+          z-index: 0;
+          pointer-events: none;
+          opacity: 0.22;
+          background-image:
+            linear-gradient(rgba(88, 166, 255, 0.11) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(88, 166, 255, 0.11) 1px, transparent 1px);
+          background-size: 52px 52px;
+          mask-image: radial-gradient(ellipse 75% 75% at 50% 45%, black 15%, transparent 72%);
+          animation: loginGridDrift 32s linear infinite;
+        }
+        .login-bg-cursor-glow {
+          position: absolute;
+          inset: 0;
+          z-index: 0;
+          pointer-events: none;
+          background: radial-gradient(
+            560px circle at var(--login-mx) var(--login-my),
+            rgba(88, 166, 255, 0.12) 0%,
+            rgba(240, 136, 62, 0.045) 36%,
+            transparent 58%
+          );
+          transition: background 0.35s ease-out;
+        }
+        .login-cursor-ring {
+          position: absolute;
+          left: var(--login-px, 0px);
+          top: var(--login-py, 0px);
+          width: 34px;
+          height: 34px;
+          margin-left: -17px;
+          margin-top: -17px;
+          border-radius: 50%;
+          pointer-events: none;
+          z-index: 4;
+          border: 1px solid rgba(88, 166, 255, 0.5);
+          background: radial-gradient(circle, rgba(88, 166, 255, 0.06) 0%, transparent 70%);
+          box-shadow:
+            0 0 18px rgba(88, 166, 255, 0.22),
+            inset 0 0 14px rgba(88, 166, 255, 0.05);
+          opacity: 0;
+          transform: translateZ(0);
+          transition: left 0.14s cubic-bezier(0.22, 1, 0.36, 1), top 0.14s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
+        }
+        .login-cursor-ring::after {
+          content: "";
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 5px;
+          height: 5px;
+          margin: -2.5px 0 0 -2.5px;
+          border-radius: 50%;
+          background: rgba(240, 136, 62, 0.9);
+          box-shadow: 0 0 12px rgba(240, 136, 62, 0.45);
+        }
+        .login-page-shell.login-pointer-active .login-cursor-ring {
+          opacity: 1;
+        }
+        .login-page-shell::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          z-index: 0;
+          pointer-events: none;
+          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+          opacity: 0.04;
+          animation: loginNoise 6s ease-in-out infinite;
+          mix-blend-mode: overlay;
+        }
+        .login-card {
+          position: relative;
+          z-index: 2;
+          width: 100%;
+          max-width: 380px;
+          padding: 40px;
+          border-radius: 16px;
+          background: rgba(22, 27, 34, 0.72);
+          border: 1px solid rgba(48, 54, 61, 0.85);
+          box-shadow:
+            0 0 0 1px rgba(0, 0, 0, 0.35) inset,
+            0 24px 48px rgba(0, 0, 0, 0.45),
+            0 0 80px rgba(88, 166, 255, 0.04);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .login-bg-grid, .login-bg-aurora, .login-page-shell::after { animation: none !important; }
+          .login-bg-cursor-glow { transition: none; }
+          .login-cursor-ring { display: none; }
+        }
+
+        .login-glow-btn {
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+          margin-top: 10px;
+          padding: 15px 22px;
+          border: 1px solid rgba(88, 166, 255, 0.32);
+          border-radius: 12px;
+          background: linear-gradient(168deg, rgba(24, 30, 40, 0.98) 0%, rgba(13, 17, 23, 1) 42%, rgba(16, 22, 30, 1) 100%);
+          color: #f0f6fc;
+          font-family: 'Syne', sans-serif;
+          font-weight: 800;
+          font-size: 0.8rem;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          cursor: pointer;
+          overflow: hidden;
+          isolation: isolate;
+          transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.25s, box-shadow 0.3s;
+          box-shadow:
+            0 0 0 1px rgba(0, 0, 0, 0.45) inset,
+            0 6px 28px rgba(0, 0, 0, 0.42),
+            0 0 36px rgba(88, 166, 255, 0.1);
+        }
+        .login-glow-btn .login-glow-btn-inner {
+          position: relative;
+          z-index: 2;
+          text-shadow: 0 0 20px rgba(88, 166, 255, 0.35);
+        }
+        .login-glow-btn::before {
+          content: "";
+          position: absolute;
+          z-index: 0;
+          left: 6%;
+          right: 6%;
+          bottom: 0;
+          height: 3px;
+          border-radius: 0 0 10px 10px;
+          background: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(88, 166, 255, 0.15) 12%,
+            #58a6ff 28%,
+            #f0883e 50%,
+            #58a6ff 72%,
+            rgba(88, 166, 255, 0.15) 88%,
+            transparent 100%
+          );
+          background-size: 220% 100%;
+          animation: loginGlowScan 2.8s ease-in-out infinite, loginGlowPulse 2.2s ease-in-out infinite;
+        }
+        .login-glow-btn::after {
+          content: "";
+          position: absolute;
+          z-index: 1;
+          inset: 0;
+          border-radius: 11px;
+          pointer-events: none;
+          background: radial-gradient(ellipse 130% 90% at 50% 115%, rgba(88, 166, 255, 0.14) 0%, transparent 52%);
+          opacity: 0.95;
+        }
+        .login-glow-btn:hover:not(:disabled) {
+          transform: translateY(-2px);
+          border-color: rgba(240, 136, 62, 0.48);
+          box-shadow:
+            0 0 0 1px rgba(0, 0, 0, 0.35) inset,
+            0 12px 40px rgba(0, 0, 0, 0.45),
+            0 0 48px rgba(88, 166, 255, 0.22),
+            0 0 72px rgba(240, 136, 62, 0.12);
+        }
+        .login-glow-btn:hover:not(:disabled)::before {
+          animation-duration: 1.6s, 1.4s;
+        }
+        .login-glow-btn:active:not(:disabled) {
+          transform: translateY(0);
+        }
+        .login-glow-btn:disabled {
+          opacity: 0.52;
+          cursor: not-allowed;
+        }
+        .login-glow-btn:disabled::before {
+          animation: none;
+          opacity: 0.4;
+          box-shadow: 0 0 8px rgba(88, 166, 255, 0.25);
+        }
 
         .board { flex: 1; overflow-x: auto; padding: 24px 28px; display: flex; gap: 18px; align-items: flex-start; }
         .board::-webkit-scrollbar { height: 4px; }
@@ -2407,7 +3356,7 @@ export default function App() {
           })}
         </nav>
         <div style={{ marginTop: 'auto', padding: '14px', borderTop: '1px solid var(--border)' }}>
-          <button className="sidebar-item" style={{ color: 'var(--red)', justifyContent: 'center' }} onClick={() => setToken(null)}>Sair</button>
+          <button className="sidebar-item" style={{ color: 'var(--red)', justifyContent: 'center' }} onClick={handleLogout}>Sair</button>
         </div>
         <div className="sidebar-footer">LicitTrack v1.0</div>
       </div>
@@ -2417,6 +3366,7 @@ export default function App() {
           <button className="hamburger" onClick={() => setSidebarOpen(true)}>
             <span /><span /><span />
           </button>
+          <ProfileMenu token={token} onLogout={handleLogout} />
           <div className="logo">Licit<span>Track</span></div>
           <span className="header-section-name">{SECTIONS.find(s => s.id === activeSection)?.label}</span>
           {activeSection === "processos" && totalDocs > 0 && <span className="header-stats">{totalDone}/{totalDocs} docs</span>}
@@ -2430,6 +3380,13 @@ export default function App() {
 
         {activeSection === "contratos" ? (
           <ContratosAtivos />
+        ) : activeSection === "admin" ? (
+          <AdminPanel
+            token={token}
+            currentUserId={sessionUser?.id}
+            onUnauthorized={handleLogout}
+            onSelfDemoted={handleSelfDemotedFromAdmin}
+          />
         ) : (
           <>
             <nav className="tabs">

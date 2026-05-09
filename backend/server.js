@@ -4,7 +4,9 @@ import dotenv from 'dotenv';
 import authRouter from './routes/auth.js';
 import processesRouter from './routes/processes.js';
 import templatesRouter from './routes/templates.js';
+import adminRouter from './routes/admin.js';
 import { verifyToken } from './middleware/auth.js';
+import { requireAdmin } from './middleware/admin.js';
 
 dotenv.config();
 
@@ -21,6 +23,7 @@ app.get('/api/health', (req, res) => {
 
 // Mount routers
 app.use('/api/auth', authRouter);
+app.use('/api/admin', verifyToken, requireAdmin, adminRouter);
 app.use('/api/processes', verifyToken, processesRouter);
 app.use('/api/templates', verifyToken, templatesRouter);
 

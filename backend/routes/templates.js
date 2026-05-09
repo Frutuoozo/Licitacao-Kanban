@@ -3,16 +3,36 @@ import db from '../db.js';
 
 const router = express.Router();
 
-// GET all templates
+function parseItems(row) {
+  const raw = row.items;
+  return typeof raw === 'string' ? JSON.parse(raw) : raw;
+}
+
+// GET all templates — objeto nome -> { items, color, order } (ordem preservada)
 router.get('/', async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM templates');
-    
-    // Convert array of templates into the object format used by frontend
+    const [rows] = await db.query(
+      'SELECT name, items, sort_order, type_color FROM templates ORDER BY sort_order ASC, name ASC'
+    );
+
     const templates = {};
-    rows.forEach(row => {
-      // items are stored as JSON in DB, parse if needed (mysql2 usually parses JSON automatically if column is JSON)
-      templates[row.name] = typeof row.items === 'string' ? JSON.parse(row.items) : row.items;
+    rows.forEach((row, idx) => {
+      const items = parseItems(row);
+      if (Array.isArray(items)) {
+        templates[row.name] = {
+          items,
+          color: row.type_color || null,
+          order: row.sort_order ?? idx,
+        };
+      } else if (items && typeof items === 'object' && Array.isArray(items.items)) {
+        templates[row.name] = {
+          items: items.items,
+          color: row.type_color || items.color || null,
+          order: row.sort_order ?? items.order ?? idx,
+        };
+      } else {
+        templates[row.name] = { items: [], color: row.type_color || null, order: row.sort_order ?? idx };
+      }
     });
 
     res.json(templates);
@@ -22,28 +42,43 @@ router.get('/', async (req, res) => {
   }
 });
 
-// PUT to replace all templates
+// PUT — body: { "Tipo": { items: [...], color: "#hex", order: n }, ... } ou legado { "Tipo": [...] }
 router.put('/', async (req, res) => {
-  const templates = req.body; // object { "Aquisições": [...], ... }
-  
+  const templates = req.body;
+
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
-    
-    // For simplicity, delete all and re-insert
+
     await connection.query('DELETE FROM templates');
-    
-    const entries = Object.entries(templates);
+
+    const entries = Object.entries(templates || {});
     if (entries.length > 0) {
-      const values = entries.map(([name, items]) => [
-        name, JSON.stringify(items)
-      ]);
+      const normalized = entries.map(([name, val], i) => {
+        let items;
+        let color = null;
+        let sortOrder = i;
+        if (Array.isArray(val)) {
+          items = val;
+        } else if (val && typeof val === 'object') {
+          items = val.items || [];
+          color = val.color || null;
+          if (typeof val.order === 'number') sortOrder = val.order;
+        } else {
+          items = [];
+        }
+        return [name, JSON.stringify(items), sortOrder, color];
+      });
+
+      normalized.sort((a, b) => a[2] - b[2]);
+
+      const values = normalized.map((row) => [row[0], row[1], row[2], row[3]]);
       await connection.query(
-        'INSERT INTO templates (name, items) VALUES ?',
+        'INSERT INTO templates (name, items, sort_order, type_color) VALUES ?',
         [values]
       );
     }
-    
+
     await connection.commit();
     res.json({ success: true });
   } catch (error) {

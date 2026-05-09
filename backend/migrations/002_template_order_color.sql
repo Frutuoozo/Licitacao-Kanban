@@ -1,0 +1,3 @@
+ALTER TABLE templates
+  ADD COLUMN sort_order INT NOT NULL DEFAULT 0,
+  ADD COLUMN type_color VARCHAR(32) NULL;
