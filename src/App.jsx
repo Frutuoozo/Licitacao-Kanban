@@ -1711,35 +1711,198 @@ function ContratosAtivos() {
   );
 }
 
+// ─── Login ────────────────────────────────────────────────────────────────────
+function Login({ onLogin }) {
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    setSuccessMsg("");
+    try {
+      const endpoint = isRegistering ? "/api/auth/register" : "/api/auth/login";
+      const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
+      const res = await fetch(`${API_URL}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      
+      if (res.ok) {
+        if (isRegistering) {
+          setSuccessMsg("Cadastro realizado com sucesso! Faça o login.");
+          setIsRegistering(false);
+          setPassword("");
+        } else {
+          onLogin(data.accessToken);
+        }
+      } else {
+        setError(data.error || (isRegistering ? "Erro ao cadastrar" : "Login falhou"));
+      }
+    } catch (err) {
+      setError("Erro ao conectar no servidor");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg)' }}>
+      <div style={{ background: 'var(--surface)', padding: '40px', borderRadius: '16px', border: '1px solid var(--border)', width: '100%', maxWidth: '380px' }}>
+        <h2 style={{ textAlign: 'center', marginBottom: '24px', fontFamily: "'Syne', sans-serif", color: 'var(--text)' }}>
+          {isRegistering ? "Criar Conta" : "Licitação Kanban"}
+        </h2>
+        
+        {successMsg && <div style={{ background: 'rgba(63,185,80,0.1)', border: '1px solid var(--green)', color: 'var(--green)', padding: '10px', borderRadius: '8px', marginBottom: '16px', fontSize: '0.85rem', textAlign: 'center' }}>{successMsg}</div>}
+        
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: 'var(--muted)' }}>Usuário</label>
+            <input className="doc-input" style={{ width: '100%' }} type="text" value={username} onChange={e => setUsername(e.target.value)} required />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: 'var(--muted)' }}>Senha</label>
+            <input className="doc-input" style={{ width: '100%' }} type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+          </div>
+          
+          {error && <div style={{ color: 'var(--red)', fontSize: '0.85rem', textAlign: 'center' }}>{error}</div>}
+          
+          <button type="submit" className="add-doc-btn" style={{ padding: '12px', marginTop: '8px', justifyContent: 'center', width: '100%' }} disabled={loading}>
+            {loading ? "Aguarde..." : (isRegistering ? "Cadastrar" : "Entrar")}
+          </button>
+        </form>
+        
+        <div style={{ marginTop: '24px', textAlign: 'center', fontSize: '0.85rem', color: 'var(--muted)' }}>
+          {isRegistering ? "Já tem uma conta?" : "Ainda não tem acesso?"}{" "}
+          <span 
+            onClick={() => { setIsRegistering(!isRegistering); setError(""); setSuccessMsg(""); }}
+            style={{ color: 'var(--accent2)', cursor: 'pointer', fontWeight: 600 }}>
+            {isRegistering ? "Faça Login" : "Cadastre-se"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [columns, setColumns] = useStorage("licit_columns", []);
-  const [archived, setArchived] = useStorage("licit_archived", []);
-  const [templates, setTemplates] = useStorage("licit_templates", DEFAULT_TEMPLATES);
+  const [token, setToken] = useStorage("licit_auth_token", null);
+  const [columns, setColumns] = useState([]);
+  const [archived, setArchived] = useState([]);
+  const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showNewProcess, setShowNewProcess] = useState(false);
   const [activeTab, setActiveTab] = useState("board");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("processos");
 
+  useEffect(() => {
+    if (!token) return;
+    
+    const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
+
+    fetch(`${API_URL}/api/processes`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => {
+        if (res.status === 401 || res.status === 403) throw new Error('Unauthorized');
+        return res.json();
+      })
+      .then(data => {
+        setColumns(data.filter(p => p.status === 'active'));
+        setArchived(data.filter(p => p.status === 'archived'));
+      })
+      .catch(err => {
+        console.error(err);
+        if (err.message === 'Unauthorized') setToken(null);
+      });
+
+    fetch(`${API_URL}/api/templates`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (Object.keys(data).length > 0) setTemplates(data);
+      })
+      .catch(console.error);
+  }, [token, setToken]);
+
   const SECTIONS = [
     { id: "processos", label: "Acompanhar Processos", icon: IconClipboard },
     { id: "contratos", label: "Contratos Ativos", icon: IconFileText },
   ];
 
-  const addColumn = (col) => setColumns(p => [...p, col]);
-  const deleteColumn = (id) => setColumns(p => p.filter(c => c.id !== id));
-  const renameColumn = (id, title) => setColumns(p => p.map(c => c.id === id ? { ...c, title } : c));
-  const updateDocs = (colId, docs) => setColumns(p => p.map(c => c.id === colId ? { ...c, docs } : c));
+  const apiFetch = (url, method, body) => {
+    if (!token) return;
+    const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
+    fetch(`${API_URL}${url}`, {
+      method,
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: body ? JSON.stringify(body) : undefined
+    }).then(res => {
+      if (res.status === 401 || res.status === 403) setToken(null);
+    }).catch(console.error);
+  };
+
+  const addColumn = (col) => {
+    setColumns(p => [...p, col]);
+    apiFetch('/api/processes', 'POST', col);
+  };
+  const deleteColumn = (id) => {
+    setColumns(p => p.filter(c => c.id !== id));
+    apiFetch(`/api/processes/${id}`, 'DELETE');
+  };
+  const renameColumn = (id, title) => {
+    setColumns(p => {
+      const next = p.map(c => c.id === id ? { ...c, title } : c);
+      const col = next.find(c => c.id === id);
+      if (col) apiFetch(`/api/processes/${id}`, 'PUT', { title: col.title, processNumber: col.processNumber, setor: col.setor });
+      return next;
+    });
+  };
+  const updateDocs = (colId, docs) => {
+    setColumns(p => {
+      const next = p.map(c => c.id === colId ? { ...c, docs } : c);
+      apiFetch(`/api/processes/${colId}/items`, 'PUT', { docs });
+      return next;
+    });
+  };
   const archiveColumn = (id) => {
     const col = columns.find(c => c.id === id);
-    if (col) { setArchived(p => [...p, { ...col, archivedAt: new Date().toISOString() }]); setColumns(p => p.filter(c => c.id !== id)); }
+    if (col) {
+      setArchived(p => [...p, { ...col, archivedAt: new Date().toISOString() }]);
+      setColumns(p => p.filter(c => c.id !== id));
+      apiFetch(`/api/processes/${id}/status`, 'PUT', { status: 'archived' });
+    }
   };
   const unarchiveColumn = (id) => {
     const col = archived.find(c => c.id === id);
-    if (col) { setColumns(p => [...p, col]); setArchived(p => p.filter(c => c.id !== id)); }
+    if (col) {
+      setColumns(p => [...p, col]);
+      setArchived(p => p.filter(c => c.id !== id));
+      apiFetch(`/api/processes/${id}/status`, 'PUT', { status: 'active' });
+    }
   };
-  const deleteArchived = (id) => setArchived(p => p.filter(c => c.id !== id));
+  const deleteArchived = (id) => {
+    setArchived(p => p.filter(c => c.id !== id));
+    apiFetch(`/api/processes/${id}`, 'DELETE');
+  };
+
+  const saveTemplates = (newTemplates) => {
+    setTemplates(newTemplates);
+    apiFetch('/api/templates', 'PUT', newTemplates);
+  };
 
   const getRegularDocs = (c) => normalizeDocs(c.docs || []).filter(d => d.type === "doc");
   const totalDocs = columns.reduce((a, c) => a + getRegularDocs(c).length, 0);
@@ -2191,9 +2354,13 @@ export default function App() {
           .tpl-sidebar > p { display: none; }
         }
       `}</style>
-
-      {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
-      <div className={`sidebar ${sidebarOpen ? "open" : ""}`}>
+      
+      {!token ? (
+        <Login onLogin={setToken} />
+      ) : (
+        <>
+          {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+          <div className={`sidebar ${sidebarOpen ? "open" : ""}`}>
         <div className="sidebar-header">
           <div className="sidebar-logo">Licit<span>Track</span></div>
           <button className="icon-btn" onClick={() => setSidebarOpen(false)}><IconClose /></button>
@@ -2210,6 +2377,9 @@ export default function App() {
             );
           })}
         </nav>
+        <div style={{ marginTop: 'auto', padding: '14px', borderTop: '1px solid var(--border)' }}>
+          <button className="sidebar-item" style={{ color: 'var(--red)', justifyContent: 'center' }} onClick={() => setToken(null)}>Sair</button>
+        </div>
         <div className="sidebar-footer">LicitTrack v1.0</div>
       </div>
 
@@ -2277,8 +2447,10 @@ export default function App() {
         )}
       </div>
 
-      {showTemplates && <TemplateManager templates={templates} onSave={setTemplates} onClose={() => setShowTemplates(false)} />}
+      {showTemplates && <TemplateManager templates={templates} onSave={saveTemplates} onClose={() => setShowTemplates(false)} />}
       {showNewProcess && <NewProcessModal templates={templates} onAdd={addColumn} onClose={() => setShowNewProcess(false)} />}
+        </>
+      )}
     </>
   );
 }
