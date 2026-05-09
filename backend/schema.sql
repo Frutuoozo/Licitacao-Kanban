@@ -1,0 +1,38 @@
+CREATE DATABASE IF NOT EXISTS licitacao_kanban;
+USE licitacao_kanban;
+
+CREATE TABLE IF NOT EXISTS processes (
+  id VARCHAR(36) PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  processNumber VARCHAR(100),
+  setor VARCHAR(255),
+  type VARCHAR(100),
+  typeColor VARCHAR(50),
+  status ENUM('active', 'archived') DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS process_items (
+  id VARCHAR(36) PRIMARY KEY,
+  process_id VARCHAR(36) NOT NULL,
+  type ENUM('doc', 'phase') NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  is_done BOOLEAN DEFAULT FALSE,
+  bg_color VARCHAR(50),
+  order_index INT NOT NULL,
+  FOREIGN KEY (process_id) REFERENCES processes(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS templates (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) UNIQUE NOT NULL,
+  items JSON NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  id VARCHAR(36) PRIMARY KEY,
+  username VARCHAR(100) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
