@@ -7,6 +7,7 @@ import templatesRouter from './routes/templates.js';
 import adminRouter from './routes/admin.js';
 import { verifyToken } from './middleware/auth.js';
 import { requireAdmin } from './middleware/admin.js';
+import db from './db.js';
 
 dotenv.config();
 
@@ -27,6 +28,30 @@ app.use('/api/admin', verifyToken, requireAdmin, adminRouter);
 app.use('/api/processes', verifyToken, processesRouter);
 app.use('/api/templates', verifyToken, templatesRouter);
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+async function runMigrations() {
+  try {
+    const [cols] = await db.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'role'`
+    );
+    if (cols.length === 0) {
+      await db.query(
+        `ALTER TABLE users ADD COLUMN role ENUM('user','admin') NOT NULL DEFAULT 'user'`
+      );
+      // Promove o primeiro usuário cadastrado a admin
+      const [users] = await db.query('SELECT id FROM users ORDER BY created_at ASC LIMIT 1');
+      if (users.length > 0) {
+        await db.query('UPDATE users SET role = ? WHERE id = ?', ['admin', users[0].id]);
+      }
+      console.log('Migration 001: coluna role adicionada e primeiro usuário promovido a admin.');
+    }
+  } catch (err) {
+    console.error('Erro ao executar migrations:', err);
+  }
+}
+
+runMigrations().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
 });
