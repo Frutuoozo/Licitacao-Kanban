@@ -2888,7 +2888,7 @@ export default function App() {
         .process-setor { font-size: 0.72rem; color: var(--accent2); margin-top: 2px; }
         .column-header { padding: 0 14px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
         .column-title-row { display: flex; align-items: center; gap: 8px; margin: 6px 0 8px; }
-        .column-title { font-family: 'Syne', sans-serif; font-size: 0.9rem; font-weight: 700; flex: 1; cursor: text; line-height: 1.3; }
+        .column-title { font-family: 'DM Sans', sans-serif; font-size: 1.05rem; font-weight: 600; flex: 1; cursor: text; line-height: 1.3; letter-spacing: -0.2px; }
         .title-input { flex: 1; background: var(--surface2); border: 1px solid var(--accent2); border-radius: 6px; padding: 4px 8px; color: var(--text); font-family: 'Syne', sans-serif; font-size: 0.88rem; font-weight: 700; outline: none; }
         .progress-row { display: flex; align-items: center; gap: 8px; }
         .progress-bar { flex: 1; height: 5px; background: var(--border); border-radius: 99px; overflow: hidden; }
