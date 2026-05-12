@@ -3250,7 +3250,6 @@ export default function App() {
           <button className="hamburger" onClick={() => setSidebarOpen(true)}>
             <span /><span /><span />
           </button>
-          <ProfileMenu token={token} onLogout={handleLogout} />
           <div className="logo">Licit<span>Track</span></div>
           <span className="header-section-name">{SECTIONS.find(s => s.id === activeSection)?.label}</span>
           {activeSection === "processos" && totalDocs > 0 && <span className="header-stats">{totalDone}/{totalDocs} docs</span>}
@@ -3259,6 +3258,7 @@ export default function App() {
               <button className="btn-outline" onClick={() => setShowTemplates(true)}><IconTemplate /><span className="btn-label"> Modelos</span></button>
               <button className="btn-primary" onClick={() => setShowNewProcess(true)}><IconPlus /><span className="btn-label"> Novo Processo</span></button>
             </>}
+            <ProfileMenu token={token} onLogout={handleLogout} />
           </div>
         </header>
 
