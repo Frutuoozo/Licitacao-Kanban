@@ -2285,9 +2285,6 @@ function AdminPanel({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
 }
 
 // ─── Login ────────────────────────────────────────────────────────────────────
-const LS_GRID_H = Array.from({ length: 27 }, (_, i) => i * 36);
-const LS_GRID_V = Array.from({ length: 22 }, (_, i) => i * 36);
-
 function Login({ onLogin }) {
   const [isRegistering, setIsRegistering] = useState(false);
   const [username, setUsername] = useState("");
@@ -2342,70 +2339,56 @@ function Login({ onLogin }) {
 
   return (
     <div className="ls-shell">
-      {/* Lado esquerdo — grade ondulada */}
-      <div className="ls-left" aria-hidden="true">
-        <svg className="ls-wave-svg" viewBox="0 0 750 950" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <filter id="ls-warp" x="-10%" y="-10%" width="120%" height="120%">
-              <feTurbulence type="turbulence" baseFrequency="0.013 0.016" numOctaves="3" seed="7" result="noise"/>
-              <feDisplacementMap in="SourceGraphic" in2="noise" scale="32" xChannelSelector="R" yChannelSelector="G"/>
-            </filter>
-          </defs>
-          <rect width="750" height="950" fill="white"/>
-          <g filter="url(#ls-warp)" stroke="#000" strokeWidth="0.75" opacity="0.18">
-            {LS_GRID_H.map(y => <line key={`h${y}`} x1="0" y1={y} x2="750" y2={y}/>)}
-            {LS_GRID_V.map(x => <line key={`v${x}`} x1={x} y1="0" x2={x} y2="950"/>)}
-          </g>
-        </svg>
-        <div className="ls-left-brand">
-          <div className="ls-left-logo">Licit<span>Track</span></div>
-          <p className="ls-left-tagline">Gestão inteligente de licitações</p>
+      <div className="ls-orb ls-orb-1" aria-hidden="true" />
+      <div className="ls-orb ls-orb-2" aria-hidden="true" />
+      <div className="ls-orb ls-orb-3" aria-hidden="true" />
+      <div className="ls-orb ls-orb-4" aria-hidden="true" />
+
+      <div className="ls-card">
+        <div className="ls-brand">
+          <div className="ls-logo">Licit<span>Track</span></div>
+          <p className="ls-tagline">Gestão inteligente de licitações</p>
         </div>
-      </div>
 
-      {/* Lado direito — formulário */}
-      <div className="ls-right">
-        <div className="ls-form-box">
-          <h1 className="ls-title">{isRegistering ? "Criar conta" : "Bem-vindo"}</h1>
-          <p className="ls-subtitle">{isRegistering ? "Preencha os dados para se registrar" : "Entre com suas credenciais"}</p>
+        <h2 className="ls-title">{isRegistering ? "Criar conta" : "Bem-vindo de volta"}</h2>
+        <p className="ls-subtitle">{isRegistering ? "Preencha os dados para se registrar" : "Entre com suas credenciais"}</p>
 
-          <div className="ls-tabs">
-            <button type="button" className={`ls-tab${!isRegistering ? " ls-tab-active" : ""}`} onClick={() => switchMode(false)}>Entrar</button>
-            <button type="button" className={`ls-tab${isRegistering ? " ls-tab-active" : ""}`} onClick={() => switchMode(true)}>Cadastrar</button>
+        <div className="ls-tabs">
+          <button type="button" className={`ls-tab${!isRegistering ? " ls-tab-active" : ""}`} onClick={() => switchMode(false)}>Entrar</button>
+          <button type="button" className={`ls-tab${isRegistering ? " ls-tab-active" : ""}`} onClick={() => switchMode(true)}>Cadastrar</button>
+        </div>
+
+        {successMsg && (
+          <div className="ls-success">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            {successMsg}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="ls-form">
+          <div className="ls-field-wrap">
+            <span className="ls-field-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+            </span>
+            <input className="ls-input" type="text" placeholder="Usuário" value={username} onChange={e => setUsername(e.target.value)} required autoComplete="username"/>
+          </div>
+          <div className="ls-field-wrap">
+            <span className="ls-field-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </span>
+            <input className="ls-input" style={{ paddingRight: 42 }} type={showPassword ? "text" : "password"} placeholder="Senha" value={password} onChange={e => setPassword(e.target.value)} autoComplete={isRegistering ? "new-password" : "current-password"} required/>
+            <button type="button" className="ls-eye-btn" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}>
+              {showPassword ? <IconEyeOff /> : <IconEye />}
+            </button>
           </div>
 
-          {successMsg && (
-            <div className="ls-success">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              {successMsg}
-            </div>
-          )}
+          {error && <p className="ls-error">{error}</p>}
 
-          <form onSubmit={handleSubmit} className="ls-form">
-            <div className="ls-field-wrap">
-              <span className="ls-field-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-              </span>
-              <input className="ls-input" type="text" placeholder="Usuário" value={username} onChange={e => setUsername(e.target.value)} required autoComplete="username"/>
-            </div>
-            <div className="ls-field-wrap">
-              <span className="ls-field-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              </span>
-              <input className="ls-input" style={{ paddingRight: 42 }} type={showPassword ? "text" : "password"} placeholder="Senha" value={password} onChange={e => setPassword(e.target.value)} autoComplete={isRegistering ? "new-password" : "current-password"} required/>
-              <button type="button" className="ls-eye-btn" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}>
-                {showPassword ? <IconEyeOff /> : <IconEye />}
-              </button>
-            </div>
-
-            {error && <p className="ls-error">{error}</p>}
-
-            <button type="submit" className="ls-submit" disabled={loading}>
-              {loading ? "Aguarde..." : (isRegistering ? "Criar conta" : "Entrar")}
-              {!loading && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>}
-            </button>
-          </form>
-        </div>
+          <button type="submit" className="ls-submit" disabled={loading}>
+            {loading ? "Aguarde..." : (isRegistering ? "Criar conta" : "Entrar")}
+            {!loading && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>}
+          </button>
+        </form>
       </div>
     </div>
   );
@@ -2724,83 +2707,81 @@ export default function App() {
         .btn-outline:hover { background: var(--surface2); border-color: var(--muted); transform: translateY(-1px); }
         .btn-outline:active { transform: translateY(0); }
 
-        /* === Split-screen login === */
+        /* === Glassmorphism login === */
         .ls-shell {
-          display: flex;
           min-height: 100vh;
-          background: #fff;
-        }
-        .ls-left {
-          display: none;
-          flex: 1;
-          position: relative;
-          overflow: hidden;
-          background: #fff;
-        }
-        @media (min-width: 768px) {
-          .ls-left { display: flex; align-items: center; justify-content: center; }
-        }
-        .ls-wave-svg {
-          position: absolute;
-          inset: 0;
-          width: 100%;
-          height: 100%;
-        }
-        .ls-left-brand {
-          position: relative;
-          z-index: 1;
-          text-align: center;
-          pointer-events: none;
-          padding: 24px;
-        }
-        .ls-left-logo {
-          font-family: 'Syne', sans-serif;
-          font-size: 3rem;
-          font-weight: 800;
-          color: #111;
-          letter-spacing: -1.5px;
-          line-height: 1;
-        }
-        .ls-left-logo span { color: #f0883e; }
-        .ls-left-tagline {
-          margin-top: 14px;
-          font-size: 1rem;
-          color: #555;
-          font-family: 'DM Sans', sans-serif;
-          letter-spacing: 0.01em;
-        }
-        .ls-right {
-          width: 100%;
           display: flex;
           align-items: center;
           justify-content: center;
-          background: #f9fafb;
-          padding: 48px 24px;
+          background: linear-gradient(135deg, #0f0c29 0%, #302b63 35%, #6d28d9 65%, #be185d 100%);
+          position: relative;
+          overflow: hidden;
+          padding: 24px;
         }
-        @media (min-width: 768px) {
-          .ls-right { width: 460px; flex-shrink: 0; border-left: 1px solid #e5e7eb; }
+        .ls-orb {
+          position: absolute;
+          border-radius: 50%;
+          pointer-events: none;
+          filter: blur(72px);
         }
-        .ls-form-box {
+        .ls-orb-1 { width: 540px; height: 540px; top: -15%; left: -12%; background: radial-gradient(circle, rgba(139,92,246,0.75) 0%, transparent 70%); }
+        .ls-orb-2 { width: 440px; height: 440px; bottom: -12%; right: -8%; background: radial-gradient(circle, rgba(236,72,153,0.7) 0%, transparent 70%); }
+        .ls-orb-3 { width: 360px; height: 360px; top: 38%; left: 48%; background: radial-gradient(circle, rgba(59,130,246,0.55) 0%, transparent 70%); }
+        .ls-orb-4 { width: 280px; height: 280px; top: 8%; right: 22%; background: radial-gradient(circle, rgba(16,185,129,0.45) 0%, transparent 70%); }
+
+        .ls-card {
+          position: relative;
+          z-index: 1;
+          background: rgba(255,255,255,0.10);
+          backdrop-filter: blur(28px);
+          -webkit-backdrop-filter: blur(28px);
+          border: 1px solid rgba(255,255,255,0.22);
+          border-radius: 24px;
+          padding: 48px 40px;
           width: 100%;
-          max-width: 360px;
+          max-width: 420px;
+          box-shadow: 0 30px 70px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.28);
         }
-        .ls-title {
+        @media (max-width: 480px) {
+          .ls-card { padding: 36px 24px; }
+        }
+
+        .ls-brand { text-align: center; margin-bottom: 32px; }
+        .ls-logo {
           font-family: 'Syne', sans-serif;
-          font-size: 1.8rem;
+          font-size: 2.4rem;
           font-weight: 800;
-          color: #111;
-          letter-spacing: -0.5px;
-          margin-bottom: 6px;
+          color: #fff;
+          letter-spacing: -1.2px;
+          line-height: 1;
         }
-        .ls-subtitle {
-          font-size: 0.88rem;
-          color: #6b7280;
-          margin-bottom: 28px;
+        .ls-logo span { color: #fb923c; }
+        .ls-tagline {
+          margin-top: 8px;
+          font-size: 0.85rem;
+          color: rgba(255,255,255,0.58);
           font-family: 'DM Sans', sans-serif;
         }
+
+        .ls-title {
+          font-family: 'Syne', sans-serif;
+          font-size: 1.45rem;
+          font-weight: 700;
+          color: #fff;
+          letter-spacing: -0.3px;
+          margin-bottom: 4px;
+        }
+        .ls-subtitle {
+          font-size: 0.84rem;
+          color: rgba(255,255,255,0.55);
+          margin-bottom: 24px;
+          font-family: 'DM Sans', sans-serif;
+        }
+
         .ls-tabs {
           display: flex;
-          background: #f3f4f6;
+          background: rgba(255,255,255,0.08);
+          border: 1px solid rgba(255,255,255,0.14);
           border-radius: 12px;
           padding: 4px;
           gap: 4px;
@@ -2815,22 +2796,23 @@ export default function App() {
           font-family: 'DM Sans', sans-serif;
           font-size: 0.875rem;
           font-weight: 500;
-          color: #6b7280;
+          color: rgba(255,255,255,0.55);
           cursor: pointer;
           transition: all .2s;
         }
         .ls-tab-active {
-          background: #fff;
-          color: #111;
+          background: rgba(255,255,255,0.18);
+          color: #fff;
           font-weight: 600;
-          box-shadow: 0 1px 4px rgba(0,0,0,.1);
+          box-shadow: 0 1px 6px rgba(0,0,0,0.25);
         }
+
         .ls-form { display: flex; flex-direction: column; gap: 14px; }
         .ls-field-wrap { position: relative; display: flex; align-items: center; }
         .ls-field-icon {
           position: absolute;
           left: 13px;
-          color: #9ca3af;
+          color: rgba(255,255,255,0.45);
           display: flex;
           align-items: center;
           pointer-events: none;
@@ -2838,39 +2820,40 @@ export default function App() {
         .ls-input {
           width: 100%;
           padding: 12px 14px 12px 42px;
-          border: 1.5px solid #e5e7eb;
+          border: 1.5px solid rgba(255,255,255,0.18);
           border-radius: 10px;
           font-family: 'DM Sans', sans-serif;
           font-size: 0.9rem;
-          color: #111;
-          background: #fff;
+          color: #fff;
+          background: rgba(255,255,255,0.09);
           outline: none;
-          transition: border-color .2s, box-shadow .2s;
+          transition: border-color .2s, box-shadow .2s, background .2s;
           box-sizing: border-box;
         }
-        .ls-input:focus { border-color: #111; box-shadow: 0 0 0 3px rgba(0,0,0,.06); }
-        .ls-input::placeholder { color: #9ca3af; }
+        .ls-input:focus { border-color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.14); box-shadow: 0 0 0 3px rgba(255,255,255,0.08); }
+        .ls-input::placeholder { color: rgba(255,255,255,0.35); }
         .ls-eye-btn {
           position: absolute;
           right: 10px;
           background: none;
           border: none;
           cursor: pointer;
-          color: #9ca3af;
+          color: rgba(255,255,255,0.45);
           display: flex;
           align-items: center;
           padding: 4px;
           border-radius: 6px;
           transition: color .15s;
         }
-        .ls-eye-btn:hover { color: #374151; }
+        .ls-eye-btn:hover { color: rgba(255,255,255,0.9); }
+
         .ls-success {
           display: flex;
           align-items: center;
           gap: 8px;
-          background: #f0fdf4;
-          border: 1px solid #86efac;
-          color: #16a34a;
+          background: rgba(16,185,129,0.18);
+          border: 1px solid rgba(16,185,129,0.38);
+          color: #6ee7b7;
           padding: 10px 13px;
           border-radius: 9px;
           font-size: 0.84rem;
@@ -2878,7 +2861,7 @@ export default function App() {
           margin-bottom: 4px;
         }
         .ls-error {
-          color: #dc2626;
+          color: #fca5a5;
           font-size: 0.83rem;
           font-family: 'DM Sans', sans-serif;
           margin: -4px 0 0;
@@ -2890,7 +2873,7 @@ export default function App() {
           gap: 8px;
           width: 100%;
           padding: 13px;
-          background: #111;
+          background: linear-gradient(135deg, #7c3aed 0%, #db2777 100%);
           color: #fff;
           border: none;
           border-radius: 10px;
@@ -2898,12 +2881,13 @@ export default function App() {
           font-size: 0.9rem;
           font-weight: 600;
           cursor: pointer;
-          transition: background .2s, transform .15s;
+          transition: opacity .2s, transform .15s, box-shadow .2s;
           margin-top: 6px;
+          box-shadow: 0 4px 22px rgba(124,58,237,0.45);
         }
-        .ls-submit:hover:not(:disabled) { background: #222; transform: translateY(-1px); }
+        .ls-submit:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); box-shadow: 0 8px 28px rgba(124,58,237,0.55); }
         .ls-submit:active:not(:disabled) { transform: translateY(0); }
-        .ls-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+        .ls-submit:disabled { opacity: 0.45; cursor: not-allowed; }
 
         .board { flex: 1; overflow-x: auto; padding: 24px 28px; display: flex; gap: 18px; align-items: flex-start; }
         .board::-webkit-scrollbar { height: 4px; }
