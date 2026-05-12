@@ -2926,7 +2926,7 @@ export default function App() {
         .doc-card.done .card-name { text-decoration: line-through; text-decoration-thickness: 1.5px; }
         .card-input { flex: 1; background: transparent; border: none; border-bottom: 1px solid var(--accent2); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 0.79rem; outline: none; padding: 2px 0; }
         .card-actions { display: flex; gap: 2px; opacity: 0; transition: opacity .2s ease; }
-        .color-picker { position: absolute; right: 0; top: 22px; z-index: 20; background: #1c2330; border: 1px solid #30363d; border-radius: 10px; padding: 8px; display: flex; gap: 6px; box-shadow: 0 4px 16px rgba(0,0,0,.5); animation: scaleIn .18s ease-out; transform-origin: top right; }
+        .color-picker { position: absolute; right: 0; top: 22px; z-index: 20; background: #1c2330; border: 1px solid #30363d; border-radius: 10px; padding: 8px; display: flex; flex-wrap: wrap; width: 112px; gap: 6px; box-shadow: 0 4px 16px rgba(0,0,0,.5); animation: scaleIn .18s ease-out; transform-origin: top right; }
         .color-swatch { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #30363d; cursor: pointer; transition: transform .2s cubic-bezier(.34,1.56,.64,1); }
         .color-swatch:hover { transform: scale(1.25); }
         .color-swatch.active { border-color: #58a6ff; }
