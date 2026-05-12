@@ -2713,7 +2713,7 @@ export default function App() {
           display: flex;
           align-items: center;
           justify-content: center;
-          background: linear-gradient(135deg, #0f0c29 0%, #302b63 35%, #6d28d9 65%, #be185d 100%);
+          background: linear-gradient(135deg, #0a0e1a 0%, #0d2137 35%, #1565c0 65%, #e65100 100%);
           position: relative;
           overflow: hidden;
           padding: 24px;
@@ -2724,10 +2724,10 @@ export default function App() {
           pointer-events: none;
           filter: blur(72px);
         }
-        .ls-orb-1 { width: 540px; height: 540px; top: -15%; left: -12%; background: radial-gradient(circle, rgba(139,92,246,0.75) 0%, transparent 70%); }
-        .ls-orb-2 { width: 440px; height: 440px; bottom: -12%; right: -8%; background: radial-gradient(circle, rgba(236,72,153,0.7) 0%, transparent 70%); }
-        .ls-orb-3 { width: 360px; height: 360px; top: 38%; left: 48%; background: radial-gradient(circle, rgba(59,130,246,0.55) 0%, transparent 70%); }
-        .ls-orb-4 { width: 280px; height: 280px; top: 8%; right: 22%; background: radial-gradient(circle, rgba(16,185,129,0.45) 0%, transparent 70%); }
+        .ls-orb-1 { width: 540px; height: 540px; top: -15%; left: -12%; background: radial-gradient(circle, rgba(21,101,192,0.8) 0%, transparent 70%); }
+        .ls-orb-2 { width: 440px; height: 440px; bottom: -12%; right: -8%; background: radial-gradient(circle, rgba(230,81,0,0.78) 0%, transparent 70%); }
+        .ls-orb-3 { width: 360px; height: 360px; top: 38%; left: 48%; background: radial-gradient(circle, rgba(3,169,244,0.55) 0%, transparent 70%); }
+        .ls-orb-4 { width: 280px; height: 280px; top: 8%; right: 22%; background: radial-gradient(circle, rgba(255,160,0,0.5) 0%, transparent 70%); }
 
         .ls-card {
           position: relative;
@@ -2873,7 +2873,7 @@ export default function App() {
           gap: 8px;
           width: 100%;
           padding: 13px;
-          background: linear-gradient(135deg, #7c3aed 0%, #db2777 100%);
+          background: linear-gradient(135deg, #1565c0 0%, #e65100 100%);
           color: #fff;
           border: none;
           border-radius: 10px;
@@ -2883,9 +2883,9 @@ export default function App() {
           cursor: pointer;
           transition: opacity .2s, transform .15s, box-shadow .2s;
           margin-top: 6px;
-          box-shadow: 0 4px 22px rgba(124,58,237,0.45);
+          box-shadow: 0 4px 22px rgba(21,101,192,0.45);
         }
-        .ls-submit:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); box-shadow: 0 8px 28px rgba(124,58,237,0.55); }
+        .ls-submit:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); box-shadow: 0 8px 28px rgba(21,101,192,0.55); }
         .ls-submit:active:not(:disabled) { transform: translateY(0); }
         .ls-submit:disabled { opacity: 0.45; cursor: not-allowed; }
 
