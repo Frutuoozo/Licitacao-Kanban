@@ -14,16 +14,7 @@ const TYPE_COLORS = {
 
 const COLUMN_ORDER = ["Aquisições", "Dispensa sem Disputa", "Dispensa com Disputa", "Inexigibilidade", "Renovação Antiga", "Renovação Nova", "Publicação", "Pregão Eletrônico"];
 
-const DEFAULT_TEMPLATE_ITEMS = {
-  "Aquisições": [],
-  "Publicação": [],
-  "Dispensa sem Disputa": [],
-  "Dispensa com Disputa": [],
-  "Pregão Eletrônico": [],
-  "Inexigibilidade": [],
-  "Renovação Antiga": [],
-  "Renovação Nova": [],
-};
+const DEFAULT_TEMPLATE_ITEMS = {};
 
 function normalizeTemplateLine(item) {
   if (typeof item === "string") return { type: "doc", name: item, bgColor: null };
@@ -2487,18 +2478,14 @@ export default function App() {
       .then(data => {
         if (Object.keys(data).length > 0) {
           const normalized = normalizeTemplatesFromApi(data);
-          if (!localStorage.getItem('licit_tmpl_reset_v1')) {
-            const cleared = {};
-            for (const [k, v] of Object.entries(normalized)) {
-              cleared[k] = { ...v, items: [] };
-            }
-            setTemplates(cleared);
+          if (!localStorage.getItem('licit_tmpl_reset_v2')) {
+            setTemplates({});
             fetch(`${API_URL}/api/templates`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify(cleared)
+              body: JSON.stringify({})
             }).catch(console.error);
-            localStorage.setItem('licit_tmpl_reset_v1', '1');
+            localStorage.setItem('licit_tmpl_reset_v2', '1');
           } else {
             setTemplates(normalized);
           }
