@@ -2285,6 +2285,9 @@ function AdminPanel({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
 }
 
 // ─── Login ────────────────────────────────────────────────────────────────────
+const LS_GRID_H = Array.from({ length: 27 }, (_, i) => i * 36);
+const LS_GRID_V = Array.from({ length: 22 }, (_, i) => i * 36);
+
 function Login({ onLogin }) {
   const [isRegistering, setIsRegistering] = useState(false);
   const [username, setUsername] = useState("");
@@ -2293,6 +2296,13 @@ function Login({ onLogin }) {
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const switchMode = (reg) => {
+    setIsRegistering(reg);
+    setError("");
+    setSuccessMsg("");
+    setShowPassword(false);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -2308,10 +2318,9 @@ function Login({ onLogin }) {
         body: JSON.stringify({ username, password })
       });
       const data = await res.json();
-      
       if (res.ok) {
         if (isRegistering) {
-          setSuccessMsg("Cadastro realizado com sucesso! Faça o login.");
+          setSuccessMsg("Cadastro realizado! Faça o login.");
           setIsRegistering(false);
           setPassword("");
         } else {
@@ -2324,7 +2333,7 @@ function Login({ onLogin }) {
       } else {
         setError(data.error || (isRegistering ? "Erro ao cadastrar" : "Login falhou"));
       }
-    } catch (err) {
+    } catch {
       setError("Erro ao conectar no servidor");
     } finally {
       setLoading(false);
@@ -2332,66 +2341,70 @@ function Login({ onLogin }) {
   };
 
   return (
-    <div className="login-page-shell">
-      <div className="login-bg-aurora" aria-hidden />
-      <div className="login-bg-grid" aria-hidden />
-      <div className="login-card">
-        <h2 style={{ textAlign: 'center', marginBottom: '24px', fontFamily: "'Syne', sans-serif", color: 'var(--text)' }}>
-          {isRegistering ? "Criar Conta" : "Licitação Kanban"}
-        </h2>
-        
-        {successMsg && <div style={{ background: 'rgba(63,185,80,0.1)', border: '1px solid var(--green)', color: 'var(--green)', padding: '10px', borderRadius: '8px', marginBottom: '16px', fontSize: '0.85rem', textAlign: 'center' }}>{successMsg}</div>}
-        
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div>
-            <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: 'var(--muted)' }}>Usuário</label>
-            <input className="doc-input" style={{ width: '100%' }} type="text" value={username} onChange={e => setUsername(e.target.value)} required />
+    <div className="ls-shell">
+      {/* Lado esquerdo — grade ondulada */}
+      <div className="ls-left" aria-hidden="true">
+        <svg className="ls-wave-svg" viewBox="0 0 750 950" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="ls-warp" x="-10%" y="-10%" width="120%" height="120%">
+              <feTurbulence type="turbulence" baseFrequency="0.013 0.016" numOctaves="3" seed="7" result="noise"/>
+              <feDisplacementMap in="SourceGraphic" in2="noise" scale="32" xChannelSelector="R" yChannelSelector="G"/>
+            </filter>
+          </defs>
+          <rect width="750" height="950" fill="white"/>
+          <g filter="url(#ls-warp)" stroke="#000" strokeWidth="0.75" opacity="0.18">
+            {LS_GRID_H.map(y => <line key={`h${y}`} x1="0" y1={y} x2="750" y2={y}/>)}
+            {LS_GRID_V.map(x => <line key={`v${x}`} x1={x} y1="0" x2={x} y2="950"/>)}
+          </g>
+        </svg>
+        <div className="ls-left-brand">
+          <div className="ls-left-logo">Licit<span>Track</span></div>
+          <p className="ls-left-tagline">Gestão inteligente de licitações</p>
+        </div>
+      </div>
+
+      {/* Lado direito — formulário */}
+      <div className="ls-right">
+        <div className="ls-form-box">
+          <h1 className="ls-title">{isRegistering ? "Criar conta" : "Bem-vindo"}</h1>
+          <p className="ls-subtitle">{isRegistering ? "Preencha os dados para se registrar" : "Entre com suas credenciais"}</p>
+
+          <div className="ls-tabs">
+            <button type="button" className={`ls-tab${!isRegistering ? " ls-tab-active" : ""}`} onClick={() => switchMode(false)}>Entrar</button>
+            <button type="button" className={`ls-tab${isRegistering ? " ls-tab-active" : ""}`} onClick={() => switchMode(true)}>Cadastrar</button>
           </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: 'var(--muted)' }}>Senha</label>
-            <div style={{ position: 'relative', width: '100%' }}>
-              <input
-                className="doc-input"
-                style={{ width: '100%', boxSizing: 'border-box', paddingRight: 42 }}
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                autoComplete={isRegistering ? 'new-password' : 'current-password'}
-                required
-              />
-              <button
-                type="button"
-                className="icon-btn"
-                aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
-                onClick={() => setShowPassword((v) => !v)}
-                style={{
-                  position: 'absolute',
-                  right: 4,
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  color: 'var(--muted)',
-                  padding: 6,
-                }}
-              >
+
+          {successMsg && (
+            <div className="ls-success">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              {successMsg}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="ls-form">
+            <div className="ls-field-wrap">
+              <span className="ls-field-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+              </span>
+              <input className="ls-input" type="text" placeholder="Usuário" value={username} onChange={e => setUsername(e.target.value)} required autoComplete="username"/>
+            </div>
+            <div className="ls-field-wrap">
+              <span className="ls-field-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </span>
+              <input className="ls-input" style={{ paddingRight: 42 }} type={showPassword ? "text" : "password"} placeholder="Senha" value={password} onChange={e => setPassword(e.target.value)} autoComplete={isRegistering ? "new-password" : "current-password"} required/>
+              <button type="button" className="ls-eye-btn" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}>
                 {showPassword ? <IconEyeOff /> : <IconEye />}
               </button>
             </div>
-          </div>
-          
-          {error && <div style={{ color: 'var(--red)', fontSize: '0.85rem', textAlign: 'center' }}>{error}</div>}
-          
-          <button type="submit" className="login-glow-btn" disabled={loading}>
-            <span className="login-glow-btn-inner">{loading ? "Aguarde..." : (isRegistering ? "Cadastrar" : "Entrar")}</span>
-          </button>
-        </form>
-        
-        <div style={{ marginTop: '24px', textAlign: 'center', fontSize: '0.85rem', color: 'var(--muted)' }}>
-          {isRegistering ? "Já tem uma conta?" : "Ainda não tem acesso?"}{" "}
-          <span 
-            onClick={() => { setIsRegistering(!isRegistering); setError(""); setSuccessMsg(""); setShowPassword(false); }}
-            style={{ color: 'var(--accent2)', cursor: 'pointer', fontWeight: 600 }}>
-            {isRegistering ? "Faça Login" : "Cadastre-se"}
-          </span>
+
+            {error && <p className="ls-error">{error}</p>}
+
+            <button type="submit" className="ls-submit" disabled={loading}>
+              {loading ? "Aguarde..." : (isRegistering ? "Criar conta" : "Entrar")}
+              {!loading && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>}
+            </button>
+          </form>
         </div>
       </div>
     </div>
@@ -2711,156 +2724,186 @@ export default function App() {
         .btn-outline:hover { background: var(--surface2); border-color: var(--muted); transform: translateY(-1px); }
         .btn-outline:active { transform: translateY(0); }
 
-        @keyframes loginNoise {
-          0%, 100% { opacity: 0.03; }
-          50% { opacity: 0.05; }
-        }
-
-        .login-page-shell {
-          position: relative;
+        /* === Split-screen login === */
+        .ls-shell {
           display: flex;
-          align-items: center;
-          justify-content: center;
           min-height: 100vh;
-          padding: 24px;
+          background: #fff;
+        }
+        .ls-left {
+          display: none;
+          flex: 1;
+          position: relative;
           overflow: hidden;
-          isolation: isolate;
-          background: radial-gradient(ellipse 120% 90% at 50% -10%, #151b24 0%, #0d1117 42%, #080a0e 100%);
+          background: #fff;
         }
-        .login-bg-aurora {
+        @media (min-width: 768px) {
+          .ls-left { display: flex; align-items: center; justify-content: center; }
+        }
+        .ls-wave-svg {
           position: absolute;
           inset: 0;
-          z-index: 0;
-          pointer-events: none;
-          background:
-            radial-gradient(ellipse 70% 55% at 18% 28%, rgba(88, 166, 255, 0.05), transparent 52%),
-            radial-gradient(ellipse 55% 45% at 88% 72%, rgba(240, 136, 62, 0.035), transparent 48%);
-        }
-        .login-bg-grid {
-          position: absolute;
-          inset: -80px;
-          z-index: 0;
-          pointer-events: none;
-          opacity: 0.14;
-          background-image:
-            linear-gradient(rgba(88, 166, 255, 0.11) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(88, 166, 255, 0.11) 1px, transparent 1px);
-          background-size: 52px 52px;
-          mask-image: radial-gradient(ellipse 75% 75% at 50% 45%, black 15%, transparent 72%);
-        }
-        .login-page-shell::after {
-          content: "";
-          position: absolute;
-          inset: 0;
-          z-index: 0;
-          pointer-events: none;
-          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-          opacity: 0.04;
-          animation: loginNoise 6s ease-in-out infinite;
-          mix-blend-mode: overlay;
-        }
-        .login-card {
-          position: relative;
-          z-index: 2;
           width: 100%;
-          max-width: 380px;
-          padding: 40px;
-          border-radius: 16px;
-          background: rgba(22, 27, 34, 0.72);
-          border: 1px solid rgba(48, 54, 61, 0.85);
-          box-shadow:
-            0 0 0 1px rgba(0, 0, 0, 0.35) inset,
-            0 24px 48px rgba(0, 0, 0, 0.45),
-            0 0 80px rgba(88, 166, 255, 0.04);
-          backdrop-filter: blur(12px);
-          -webkit-backdrop-filter: blur(12px);
+          height: 100%;
         }
-
-        @media (prefers-reduced-motion: reduce) {
-          .login-page-shell::after { animation: none !important; }
-        }
-
-        .login-glow-btn {
+        .ls-left-brand {
           position: relative;
+          z-index: 1;
+          text-align: center;
+          pointer-events: none;
+          padding: 24px;
+        }
+        .ls-left-logo {
+          font-family: 'Syne', sans-serif;
+          font-size: 3rem;
+          font-weight: 800;
+          color: #111;
+          letter-spacing: -1.5px;
+          line-height: 1;
+        }
+        .ls-left-logo span { color: #f0883e; }
+        .ls-left-tagline {
+          margin-top: 14px;
+          font-size: 1rem;
+          color: #555;
+          font-family: 'DM Sans', sans-serif;
+          letter-spacing: 0.01em;
+        }
+        .ls-right {
+          width: 100%;
           display: flex;
           align-items: center;
           justify-content: center;
+          background: #f9fafb;
+          padding: 48px 24px;
+        }
+        @media (min-width: 768px) {
+          .ls-right { width: 460px; flex-shrink: 0; border-left: 1px solid #e5e7eb; }
+        }
+        .ls-form-box {
           width: 100%;
-          margin-top: 10px;
-          padding: 15px 22px;
-          border: 1px solid rgba(88, 166, 255, 0.32);
-          border-radius: 12px;
-          background: linear-gradient(168deg, rgba(24, 30, 40, 0.98) 0%, rgba(13, 17, 23, 1) 42%, rgba(16, 22, 30, 1) 100%);
-          color: #f0f6fc;
+          max-width: 360px;
+        }
+        .ls-title {
           font-family: 'Syne', sans-serif;
+          font-size: 1.8rem;
           font-weight: 800;
-          font-size: 0.8rem;
-          letter-spacing: 0.16em;
-          text-transform: uppercase;
+          color: #111;
+          letter-spacing: -0.5px;
+          margin-bottom: 6px;
+        }
+        .ls-subtitle {
+          font-size: 0.88rem;
+          color: #6b7280;
+          margin-bottom: 28px;
+          font-family: 'DM Sans', sans-serif;
+        }
+        .ls-tabs {
+          display: flex;
+          background: #f3f4f6;
+          border-radius: 12px;
+          padding: 4px;
+          gap: 4px;
+          margin-bottom: 26px;
+        }
+        .ls-tab {
+          flex: 1;
+          padding: 9px;
+          border: none;
+          background: transparent;
+          border-radius: 9px;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: #6b7280;
           cursor: pointer;
-          overflow: hidden;
-          isolation: isolate;
-          transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.25s, box-shadow 0.3s;
-          box-shadow:
-            0 0 0 1px rgba(0, 0, 0, 0.45) inset,
-            0 6px 28px rgba(0, 0, 0, 0.42),
-            0 0 36px rgba(88, 166, 255, 0.1);
+          transition: all .2s;
         }
-        .login-glow-btn .login-glow-btn-inner {
-          position: relative;
-          z-index: 2;
-          text-shadow: 0 0 20px rgba(88, 166, 255, 0.35);
+        .ls-tab-active {
+          background: #fff;
+          color: #111;
+          font-weight: 600;
+          box-shadow: 0 1px 4px rgba(0,0,0,.1);
         }
-        .login-glow-btn::before {
-          content: "";
+        .ls-form { display: flex; flex-direction: column; gap: 14px; }
+        .ls-field-wrap { position: relative; display: flex; align-items: center; }
+        .ls-field-icon {
           position: absolute;
-          z-index: 0;
-          left: 6%;
-          right: 6%;
-          bottom: 0;
-          height: 2px;
-          border-radius: 0 0 10px 10px;
-          background: linear-gradient(
-            90deg,
-            transparent 0%,
-            rgba(88, 166, 255, 0.2) 30%,
-            rgba(240, 136, 62, 0.3) 50%,
-            rgba(88, 166, 255, 0.2) 70%,
-            transparent 100%
-          );
-          opacity: 0.7;
-        }
-        .login-glow-btn::after {
-          content: "";
-          position: absolute;
-          z-index: 1;
-          inset: 0;
-          border-radius: 11px;
+          left: 13px;
+          color: #9ca3af;
+          display: flex;
+          align-items: center;
           pointer-events: none;
-          background: radial-gradient(ellipse 130% 90% at 50% 115%, rgba(88, 166, 255, 0.14) 0%, transparent 52%);
-          opacity: 0.95;
         }
-        .login-glow-btn:hover:not(:disabled) {
-          transform: translateY(-2px);
-          border-color: rgba(240, 136, 62, 0.48);
-          box-shadow:
-            0 0 0 1px rgba(0, 0, 0, 0.35) inset,
-            0 12px 40px rgba(0, 0, 0, 0.45),
-            0 0 48px rgba(88, 166, 255, 0.22),
-            0 0 72px rgba(240, 136, 62, 0.12);
+        .ls-input {
+          width: 100%;
+          padding: 12px 14px 12px 42px;
+          border: 1.5px solid #e5e7eb;
+          border-radius: 10px;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 0.9rem;
+          color: #111;
+          background: #fff;
+          outline: none;
+          transition: border-color .2s, box-shadow .2s;
+          box-sizing: border-box;
         }
-        .login-glow-btn:active:not(:disabled) {
-          transform: translateY(0);
+        .ls-input:focus { border-color: #111; box-shadow: 0 0 0 3px rgba(0,0,0,.06); }
+        .ls-input::placeholder { color: #9ca3af; }
+        .ls-eye-btn {
+          position: absolute;
+          right: 10px;
+          background: none;
+          border: none;
+          cursor: pointer;
+          color: #9ca3af;
+          display: flex;
+          align-items: center;
+          padding: 4px;
+          border-radius: 6px;
+          transition: color .15s;
         }
-        .login-glow-btn:disabled {
-          opacity: 0.52;
-          cursor: not-allowed;
+        .ls-eye-btn:hover { color: #374151; }
+        .ls-success {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          background: #f0fdf4;
+          border: 1px solid #86efac;
+          color: #16a34a;
+          padding: 10px 13px;
+          border-radius: 9px;
+          font-size: 0.84rem;
+          font-family: 'DM Sans', sans-serif;
+          margin-bottom: 4px;
         }
-        .login-glow-btn:disabled::before {
-          animation: none;
-          opacity: 0.4;
-          box-shadow: 0 0 8px rgba(88, 166, 255, 0.25);
+        .ls-error {
+          color: #dc2626;
+          font-size: 0.83rem;
+          font-family: 'DM Sans', sans-serif;
+          margin: -4px 0 0;
         }
+        .ls-submit {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          width: 100%;
+          padding: 13px;
+          background: #111;
+          color: #fff;
+          border: none;
+          border-radius: 10px;
+          font-family: 'DM Sans', sans-serif;
+          font-size: 0.9rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background .2s, transform .15s;
+          margin-top: 6px;
+        }
+        .ls-submit:hover:not(:disabled) { background: #222; transform: translateY(-1px); }
+        .ls-submit:active:not(:disabled) { transform: translateY(0); }
+        .ls-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 
         .board { flex: 1; overflow-x: auto; padding: 24px 28px; display: flex; gap: 18px; align-items: flex-start; }
         .board::-webkit-scrollbar { height: 4px; }
