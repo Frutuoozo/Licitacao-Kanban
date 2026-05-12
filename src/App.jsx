@@ -152,16 +152,16 @@ const IconShield = () => (<svg width="17" height="17" viewBox="0 0 24 24" fill="
 
 const CARD_COLORS = [
   { label: "Padrão", value: null },
-  { label: "Azul", value: "#1c68b8" },
-  { label: "Verde", value: "#1e8c3a" },
-  { label: "Amarelo", value: "#9e7a00" },
-  { label: "Vermelho", value: "#bc2222" },
-  { label: "Roxo", value: "#6628b8" },
-  { label: "Ciano", value: "#0c8888" },
-  { label: "Laranja", value: "#bc4800" },
+  { label: "Azul", value: "#1e88e5" },
+  { label: "Verde", value: "#43a047" },
+  { label: "Amarelo", value: "#f9a825" },
+  { label: "Vermelho", value: "#e53935" },
+  { label: "Roxo", value: "#8e24aa" },
+  { label: "Ciano", value: "#00acc1" },
+  { label: "Laranja", value: "#fb8c00" },
 ];
 
-const PHASE_COLORS = ["#1c68b8","#6628b8","#1e8c3a","#9e7a00","#bc2222","#0c8888","#bc4800"];
+const PHASE_COLORS = ["#1e88e5","#8e24aa","#43a047","#f9a825","#e53935","#00acc1","#fb8c00"];
 
 // ─── DocCard ──────────────────────────────────────────────────────────────────
 function DocCard({ doc, onToggle, onDelete, onRename, onChangeColor }) {
@@ -2909,7 +2909,7 @@ export default function App() {
         .phase-count { font-size: 0.7rem; color: rgba(255,255,255,.6); white-space: nowrap; }
         .phase-done-badge { font-size: 0.7rem; background: rgba(63,185,80,.3); color: #3fb950; border-radius: 99px; padding: 1px 6px; font-weight: 700; }
         .phase-actions { display: flex; gap: 2px; }
-        .phase-docs { padding: 5px; display: flex; flex-direction: column; gap: 4px; background: rgba(0,0,0,.2); }
+        .phase-docs { padding: 5px; display: flex; flex-direction: column; gap: 4px; background: rgba(0,0,0,.08); }
         .phase-empty { font-size: 0.75rem; color: var(--muted); text-align: center; padding: 8px; }
 
         /* Doc Card */
