@@ -812,11 +812,11 @@ function TemplateManager({ templates, onSave, onClose }) {
       let key = base;
       let n = 2;
       while (local[key]) { key = `${base} (${n++})`; }
-      setLocal((p) => {
-        const order = orderedTemplateTypeNames(p).length;
-        return { ...p, [key]: { items, color: "#30363d", order } };
-      });
+      const order = orderedTemplateTypeNames(local).length;
+      const newLocal = { ...local, [key]: { items, color: "#30363d", order } };
+      setLocal(newLocal);
       setSelected(key);
+      onSave(newLocal);
     } catch {
       setDocxError("Erro ao ler o arquivo. Certifique-se que é um .docx válido.");
     }
