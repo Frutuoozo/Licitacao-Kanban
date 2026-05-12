@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import mammoth from "mammoth";
 
 const TYPE_COLORS = {
   "Aquisições":           "#a34200",
@@ -14,84 +15,14 @@ const TYPE_COLORS = {
 const COLUMN_ORDER = ["Aquisições", "Dispensa sem Disputa", "Dispensa com Disputa", "Inexigibilidade", "Renovação Antiga", "Renovação Nova", "Publicação", "Pregão Eletrônico"];
 
 const DEFAULT_TEMPLATE_ITEMS = {
-  "Aquisições": [
-    { type: "doc", name: "DFD - Documento de Formalização de Demanda" },
-    { type: "doc", name: "TR - Termo de Referência" },
-    { type: "doc", name: "Memorando de Solicitação" },
-    { type: "doc", name: "Pesquisa de Preços" },
-    { type: "doc", name: "Mapa de Preços" },
-    { type: "doc", name: "Autorização do Ordenador" },
-    { type: "doc", name: "Nota de Empenho" },
-  ],
-  "Publicação": [
-    { type: "doc", name: "Extrato de Contrato" },
-    { type: "doc", name: "Publicação no Diário Oficial" },
-    { type: "doc", name: "Publicação no PNCP" },
-    { type: "doc", name: "Comprovante de Publicação" },
-  ],
-  "Dispensa sem Disputa": [
-    { type: "doc", name: "DFD - Documento de Formalização de Demanda" },
-    { type: "doc", name: "TR - Termo de Referência" },
-    { type: "doc", name: "Memorando de Solicitação" },
-    { type: "doc", name: "Pesquisa de Preços" },
-    { type: "doc", name: "Mapa de Preços" },
-    { type: "doc", name: "Justificativa de Dispensa" },
-    { type: "doc", name: "Autorização do Ordenador" },
-    { type: "doc", name: "Nota de Empenho" },
-  ],
-  "Dispensa com Disputa": [
-    { type: "doc", name: "DFD - Documento de Formalização de Demanda" },
-    { type: "doc", name: "TR - Termo de Referência" },
-    { type: "doc", name: "Memorando de Solicitação" },
-    { type: "doc", name: "Pesquisa de Preços" },
-    { type: "doc", name: "Mapa de Preços" },
-    { type: "doc", name: "Edital de Dispensa" },
-    { type: "doc", name: "Aviso de Dispensa" },
-    { type: "doc", name: "Ata de Sessão" },
-    { type: "doc", name: "Autorização do Ordenador" },
-    { type: "doc", name: "Nota de Empenho" },
-  ],
-  "Pregão Eletrônico": [
-    { type: "doc", name: "DFD - Documento de Formalização de Demanda" },
-    { type: "doc", name: "TR - Termo de Referência" },
-    { type: "doc", name: "Memorando de Solicitação" },
-    { type: "doc", name: "Pesquisa de Preços" },
-    { type: "doc", name: "Mapa de Preços" },
-    { type: "doc", name: "Edital do Pregão" },
-    { type: "doc", name: "Minuta do Contrato" },
-    { type: "doc", name: "Publicação no PNCP" },
-    { type: "doc", name: "Ata de Sessão Pública" },
-    { type: "doc", name: "Adjudicação e Homologação" },
-    { type: "doc", name: "Nota de Empenho" },
-  ],
-  Inexigibilidade: [
-    { type: "doc", name: "DFD - Documento de Formalização de Demanda" },
-    { type: "doc", name: "TR - Termo de Referência" },
-    { type: "doc", name: "Memorando de Solicitação" },
-    { type: "doc", name: "Justificativa de Inexigibilidade" },
-    { type: "doc", name: "Documentação do Fornecedor Exclusivo" },
-    { type: "doc", name: "Autorização do Ordenador" },
-    { type: "doc", name: "Publicação de Extrato" },
-    { type: "doc", name: "Nota de Empenho" },
-  ],
-  "Renovação Antiga": [
-    { type: "doc", name: "Memorando de Solicitação de Renovação" },
-    { type: "doc", name: "Relatório de Execução Contratual" },
-    { type: "doc", name: "Justificativa de Renovação" },
-    { type: "doc", name: "Pesquisa de Preços Atualizada" },
-    { type: "doc", name: "Termo Aditivo" },
-    { type: "doc", name: "Publicação de Extrato" },
-    { type: "doc", name: "Nota de Empenho" },
-  ],
-  "Renovação Nova": [
-    { type: "doc", name: "Memorando de Solicitação de Renovação" },
-    { type: "doc", name: "Relatório de Execução Contratual" },
-    { type: "doc", name: "Justificativa de Renovação" },
-    { type: "doc", name: "Pesquisa de Preços Atualizada" },
-    { type: "doc", name: "Termo Aditivo" },
-    { type: "doc", name: "Publicação de Extrato" },
-    { type: "doc", name: "Nota de Empenho" },
-  ],
+  "Aquisições": [],
+  "Publicação": [],
+  "Dispensa sem Disputa": [],
+  "Dispensa com Disputa": [],
+  "Pregão Eletrônico": [],
+  "Inexigibilidade": [],
+  "Renovação Antiga": [],
+  "Renovação Nova": [],
 };
 
 function normalizeTemplateLine(item) {
@@ -719,6 +650,26 @@ function Dashboard({ columns, archived }) {
   );
 }
 
+// Lê um DOCX: H2 → fase, parágrafo → card
+async function parseDocxToItems(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const { value: html } = await mammoth.convertToHtml({ arrayBuffer });
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const items = [];
+  let phaseColorIdx = 0;
+  for (const el of Array.from(doc.body.children)) {
+    const text = el.textContent.trim();
+    if (!text) continue;
+    if (el.tagName === "H2") {
+      items.push({ type: "phase", name: text, bgColor: PHASE_COLORS[phaseColorIdx % PHASE_COLORS.length] });
+      phaseColorIdx++;
+    } else if (el.tagName === "P") {
+      items.push({ type: "doc", name: text, bgColor: null });
+    }
+  }
+  return items;
+}
+
 // ─── TemplateManager ──────────────────────────────────────────────────────────
 function TemplateManager({ templates, onSave, onClose }) {
   const [local, setLocal] = useState(() => normalizeTemplatesFromApi(JSON.parse(JSON.stringify(templates))));
@@ -735,6 +686,8 @@ function TemplateManager({ templates, onSave, onClose }) {
   const [phaseColorIdx, setPhaseColorIdx] = useState(0);
   const colorRefs = useRef({});
   const typeColorRef = useRef({});
+  const docxInputRef = useRef(null);
+  const [docxError, setDocxError] = useState("");
 
   const orderedKeys = useMemo(() => orderedTemplateTypeNames(local), [local]);
   const selectedEntry = selected ? local[selected] : null;
@@ -856,6 +809,28 @@ function TemplateManager({ templates, onSave, onClose }) {
   };
   const handleTypeDragEnd = () => { setDragTypeKey(null); setDragOverTypeKey(null); };
 
+  const handleDocxFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setDocxError("");
+    try {
+      const items = await parseDocxToItems(file);
+      if (items.length === 0) { setDocxError("Nenhum item encontrado. Use Título 2 para fases e parágrafos para documentos."); return; }
+      const base = file.name.replace(/\.docx?$/i, "").trim() || "Importado";
+      let key = base;
+      let n = 2;
+      while (local[key]) { key = `${base} (${n++})`; }
+      setLocal((p) => {
+        const order = orderedTemplateTypeNames(p).length;
+        return { ...p, [key]: { items, color: "#30363d", order } };
+      });
+      setSelected(key);
+    } catch {
+      setDocxError("Erro ao ler o arquivo. Certifique-se que é um .docx válido.");
+    }
+  };
+
   // Fully inline-styled fixed layout - no CSS cascade issues
   const S = {
     overlay: { position:"fixed", inset:0, background:"rgba(0,0,0,.75)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:100, padding:20 },
@@ -930,6 +905,18 @@ function TemplateManager({ templates, onSave, onClose }) {
             <div style={{ display:"flex", gap:6, marginTop:8 }}>
               <input className="tpl-input" placeholder="Novo tipo..." value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === "Enter" && addTemplate()} />
               <button className="btn-add-tpl" onClick={addTemplate}><IconPlus /></button>
+            </div>
+            <div style={{ borderTop:"1px solid #21262d", marginTop:10, paddingTop:10 }}>
+              <input ref={docxInputRef} type="file" accept=".docx,.doc" style={{ display:"none" }} onChange={handleDocxFileChange} />
+              <button
+                className="btn-outline"
+                style={{ width:"100%", justifyContent:"center", fontSize:"0.78rem", padding:"7px 10px" }}
+                onClick={() => { setDocxError(""); docxInputRef.current?.click(); }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                Importar Word (.docx)
+              </button>
+              {docxError && <p style={{ fontSize:"0.72rem", color:"#f85149", marginTop:6, lineHeight:1.4 }}>{docxError}</p>}
             </div>
           </div>
 
@@ -2314,30 +2301,6 @@ function Login({ onLogin }) {
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [loading, setLoading] = useState(false);
-  const loginShellRef = useRef(null);
-
-  const onLoginMouseMove = useCallback((e) => {
-    const el = loginShellRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const px = e.clientX - r.left;
-    const py = e.clientY - r.top;
-    const x = (px / Math.max(r.width, 1)) * 100;
-    const y = (py / Math.max(r.height, 1)) * 100;
-    el.style.setProperty("--login-mx", `${x}%`);
-    el.style.setProperty("--login-my", `${y}%`);
-    el.style.setProperty("--login-px", `${px}px`);
-    el.style.setProperty("--login-py", `${py}px`);
-    el.classList.add("login-pointer-active");
-  }, []);
-
-  const onLoginMouseLeave = useCallback(() => {
-    const el = loginShellRef.current;
-    if (!el) return;
-    el.style.setProperty("--login-mx", "50%");
-    el.style.setProperty("--login-my", "42%");
-    el.classList.remove("login-pointer-active");
-  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -2377,16 +2340,9 @@ function Login({ onLogin }) {
   };
 
   return (
-    <div
-      ref={loginShellRef}
-      className="login-page-shell"
-      onMouseMove={onLoginMouseMove}
-      onMouseLeave={onLoginMouseLeave}
-    >
+    <div className="login-page-shell">
       <div className="login-bg-aurora" aria-hidden />
       <div className="login-bg-grid" aria-hidden />
-      <div className="login-bg-cursor-glow" aria-hidden />
-      <div className="login-cursor-ring" aria-hidden />
       <div className="login-card">
         <h2 style={{ textAlign: 'center', marginBottom: '24px', fontFamily: "'Syne', sans-serif", color: 'var(--text)' }}>
           {isRegistering ? "Criar Conta" : "Licitação Kanban"}
@@ -2529,7 +2485,24 @@ export default function App() {
     })
       .then(res => res.json())
       .then(data => {
-        if (Object.keys(data).length > 0) setTemplates(normalizeTemplatesFromApi(data));
+        if (Object.keys(data).length > 0) {
+          const normalized = normalizeTemplatesFromApi(data);
+          if (!localStorage.getItem('licit_tmpl_reset_v1')) {
+            const cleared = {};
+            for (const [k, v] of Object.entries(normalized)) {
+              cleared[k] = { ...v, items: [] };
+            }
+            setTemplates(cleared);
+            fetch(`${API_URL}/api/templates`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify(cleared)
+            }).catch(console.error);
+            localStorage.setItem('licit_tmpl_reset_v1', '1');
+          } else {
+            setTemplates(normalized);
+          }
+        }
       })
       .catch(console.error);
   }, [token, handleLogout]);
@@ -2750,31 +2723,12 @@ export default function App() {
         .btn-outline:hover { background: var(--surface2); border-color: var(--muted); transform: translateY(-1px); }
         .btn-outline:active { transform: translateY(0); }
 
-        @keyframes loginGlowScan {
-          0%, 100% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-        }
-        @keyframes loginGlowPulse {
-          0%, 100% { box-shadow: 0 0 12px 2px rgba(88, 166, 255, 0.4), 0 0 24px rgba(240, 136, 62, 0.2); }
-          50% { box-shadow: 0 0 20px 4px rgba(88, 166, 255, 0.65), 0 0 36px rgba(240, 136, 62, 0.35); }
-        }
-
-        @keyframes loginGridDrift {
-          0% { transform: translate(0, 0); }
-          100% { transform: translate(56px, 56px); }
-        }
-        @keyframes loginAurora {
-          0% { opacity: 0.65; transform: scale(1) translate(0, 0); }
-          100% { opacity: 0.95; transform: scale(1.03) translate(-1%, 1%); }
-        }
         @keyframes loginNoise {
           0%, 100% { opacity: 0.03; }
           50% { opacity: 0.05; }
         }
 
         .login-page-shell {
-          --login-mx: 50%;
-          --login-my: 42%;
           position: relative;
           display: flex;
           align-items: center;
@@ -2791,70 +2745,20 @@ export default function App() {
           z-index: 0;
           pointer-events: none;
           background:
-            radial-gradient(ellipse 70% 55% at 18% 28%, rgba(88, 166, 255, 0.07), transparent 52%),
-            radial-gradient(ellipse 55% 45% at 88% 72%, rgba(240, 136, 62, 0.055), transparent 48%);
-          animation: loginAurora 18s ease-in-out infinite alternate;
+            radial-gradient(ellipse 70% 55% at 18% 28%, rgba(88, 166, 255, 0.05), transparent 52%),
+            radial-gradient(ellipse 55% 45% at 88% 72%, rgba(240, 136, 62, 0.035), transparent 48%);
         }
         .login-bg-grid {
           position: absolute;
           inset: -80px;
           z-index: 0;
           pointer-events: none;
-          opacity: 0.22;
+          opacity: 0.14;
           background-image:
             linear-gradient(rgba(88, 166, 255, 0.11) 1px, transparent 1px),
             linear-gradient(90deg, rgba(88, 166, 255, 0.11) 1px, transparent 1px);
           background-size: 52px 52px;
           mask-image: radial-gradient(ellipse 75% 75% at 50% 45%, black 15%, transparent 72%);
-          animation: loginGridDrift 32s linear infinite;
-        }
-        .login-bg-cursor-glow {
-          position: absolute;
-          inset: 0;
-          z-index: 0;
-          pointer-events: none;
-          background: radial-gradient(
-            560px circle at var(--login-mx) var(--login-my),
-            rgba(88, 166, 255, 0.12) 0%,
-            rgba(240, 136, 62, 0.045) 36%,
-            transparent 58%
-          );
-          transition: background 0.35s ease-out;
-        }
-        .login-cursor-ring {
-          position: absolute;
-          left: var(--login-px, 0px);
-          top: var(--login-py, 0px);
-          width: 34px;
-          height: 34px;
-          margin-left: -17px;
-          margin-top: -17px;
-          border-radius: 50%;
-          pointer-events: none;
-          z-index: 4;
-          border: 1px solid rgba(88, 166, 255, 0.5);
-          background: radial-gradient(circle, rgba(88, 166, 255, 0.06) 0%, transparent 70%);
-          box-shadow:
-            0 0 18px rgba(88, 166, 255, 0.22),
-            inset 0 0 14px rgba(88, 166, 255, 0.05);
-          opacity: 0;
-          transform: translateZ(0);
-          transition: left 0.14s cubic-bezier(0.22, 1, 0.36, 1), top 0.14s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
-        }
-        .login-cursor-ring::after {
-          content: "";
-          position: absolute;
-          left: 50%;
-          top: 50%;
-          width: 5px;
-          height: 5px;
-          margin: -2.5px 0 0 -2.5px;
-          border-radius: 50%;
-          background: rgba(240, 136, 62, 0.9);
-          box-shadow: 0 0 12px rgba(240, 136, 62, 0.45);
-        }
-        .login-page-shell.login-pointer-active .login-cursor-ring {
-          opacity: 1;
         }
         .login-page-shell::after {
           content: "";
@@ -2885,9 +2789,7 @@ export default function App() {
         }
 
         @media (prefers-reduced-motion: reduce) {
-          .login-bg-grid, .login-bg-aurora, .login-page-shell::after { animation: none !important; }
-          .login-bg-cursor-glow { transition: none; }
-          .login-cursor-ring { display: none; }
+          .login-page-shell::after { animation: none !important; }
         }
 
         .login-glow-btn {
@@ -2928,20 +2830,17 @@ export default function App() {
           left: 6%;
           right: 6%;
           bottom: 0;
-          height: 3px;
+          height: 2px;
           border-radius: 0 0 10px 10px;
           background: linear-gradient(
             90deg,
             transparent 0%,
-            rgba(88, 166, 255, 0.15) 12%,
-            #58a6ff 28%,
-            #f0883e 50%,
-            #58a6ff 72%,
-            rgba(88, 166, 255, 0.15) 88%,
+            rgba(88, 166, 255, 0.2) 30%,
+            rgba(240, 136, 62, 0.3) 50%,
+            rgba(88, 166, 255, 0.2) 70%,
             transparent 100%
           );
-          background-size: 220% 100%;
-          animation: loginGlowScan 2.8s ease-in-out infinite, loginGlowPulse 2.2s ease-in-out infinite;
+          opacity: 0.7;
         }
         .login-glow-btn::after {
           content: "";
@@ -2961,9 +2860,6 @@ export default function App() {
             0 12px 40px rgba(0, 0, 0, 0.45),
             0 0 48px rgba(88, 166, 255, 0.22),
             0 0 72px rgba(240, 136, 62, 0.12);
-        }
-        .login-glow-btn:hover:not(:disabled)::before {
-          animation-duration: 1.6s, 1.4s;
         }
         .login-glow-btn:active:not(:disabled) {
           transform: translateY(0);
