@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import mammoth from "mammoth";
 
 const TYPE_COLORS = {
-  "Aquisições":           "#a34200",
-  "Dispensa sem Disputa": "#c2560a",
+  "Aquisições":           "#e05500",
+  "Dispensa sem Disputa": "#f07020",
   "Dispensa com Disputa": "#f0883e",
   "Pregão Eletrônico":    "#f85149",
   "Inexigibilidade":      "#e3b341",
@@ -152,15 +152,16 @@ const IconShield = () => (<svg width="17" height="17" viewBox="0 0 24 24" fill="
 
 const CARD_COLORS = [
   { label: "Padrão", value: null },
-  { label: "Azul", value: "#0d2d4a" },
-  { label: "Verde", value: "#0d3320" },
-  { label: "Amarelo", value: "#3d2e00" },
-  { label: "Vermelho", value: "#3d0f0f" },
-  { label: "Roxo", value: "#2a1245" },
-  { label: "Ciano", value: "#003333" },
+  { label: "Azul", value: "#1c68b8" },
+  { label: "Verde", value: "#1e8c3a" },
+  { label: "Amarelo", value: "#9e7a00" },
+  { label: "Vermelho", value: "#bc2222" },
+  { label: "Roxo", value: "#6628b8" },
+  { label: "Ciano", value: "#0c8888" },
+  { label: "Laranja", value: "#bc4800" },
 ];
 
-const PHASE_COLORS = ["#0d3d6e","#3d1a6e","#0d4a20","#4a3500","#4a1010","#004444"];
+const PHASE_COLORS = ["#1c68b8","#6628b8","#1e8c3a","#9e7a00","#bc2222","#0c8888","#bc4800"];
 
 // ─── DocCard ──────────────────────────────────────────────────────────────────
 function DocCard({ doc, onToggle, onDelete, onRename, onChangeColor }) {
