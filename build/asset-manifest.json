@@ -1,10 +1,10 @@
 {
   "files": {
-    "main.js": "/Licitacao-Kanban/static/js/main.9a67f540.js",
+    "main.js": "/Licitacao-Kanban/static/js/main.3cd6a10e.js",
     "index.html": "/Licitacao-Kanban/index.html",
-    "main.9a67f540.js.map": "/Licitacao-Kanban/static/js/main.9a67f540.js.map"
+    "main.3cd6a10e.js.map": "/Licitacao-Kanban/static/js/main.3cd6a10e.js.map"
   },
   "entrypoints": [
-    "static/js/main.9a67f540.js"
+    "static/js/main.3cd6a10e.js"
   ]
 }
