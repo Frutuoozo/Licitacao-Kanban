@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import mammoth from "mammoth";
+import { io } from "socket.io-client";
 
 const TYPE_COLORS = {
   "Aquisições":           "#e05500",
@@ -154,14 +155,19 @@ const CARD_COLORS = [
   { label: "Padrão", value: null },
   { label: "Azul", value: "#1e88e5" },
   { label: "Verde", value: "#43a047" },
+  { label: "Verde Claro", value: "#66bb6a" },
+  { label: "Verde Escuro", value: "#2e7d32" },
   { label: "Amarelo", value: "#f9a825" },
   { label: "Vermelho", value: "#e53935" },
   { label: "Roxo", value: "#8e24aa" },
   { label: "Ciano", value: "#00acc1" },
   { label: "Laranja", value: "#fb8c00" },
+  { label: "Laranja Claro", value: "#ffb74d" },
+  { label: "Laranja Escuro", value: "#e65100" },
+  { label: "Âmbar", value: "#ffc107" },
 ];
 
-const PHASE_COLORS = ["#1e88e5","#8e24aa","#43a047","#f9a825","#e53935","#00acc1","#fb8c00"];
+const PHASE_COLORS = ["#1e88e5","#8e24aa","#43a047","#66bb6a","#2e7d32","#f9a825","#e53935","#00acc1","#fb8c00","#ffb74d","#e65100","#ffc107"];
 
 // ─── DocCard ──────────────────────────────────────────────────────────────────
 function DocCard({ doc, onToggle, onDelete, onRename, onChangeColor }) {
@@ -435,49 +441,197 @@ function AnimatedBar({ pct, color }) {
 }
 
 function SetorBarChart({ setores }) {
-  const max = Math.max(...setores.map(s => s.total), 1);
+  const max = Math.max(...setores.map(s => s.count), 1);
+  const rankColors = ["#f0883e", "#58a6ff", "#3fb950", "#bc8cff", "#ff7b72"];
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ width: "100%", overflowX: "auto" }}>
+      {/* Cabeçalho */}
+      <div style={{
+        display: "grid", gridTemplateColumns: "28px 1fr 90px 130px 52px",
+        gap: "0 12px", padding: "0 10px 8px",
+        borderBottom: "1px solid #30363d", marginBottom: 4,
+      }}>
+        {["#", "Setor / Órgão", "Processos", "Progresso docs", "%"].map((h, i) => (
+          <span key={i} style={{ fontSize: "0.68rem", fontWeight: 600, color: "#6e7681", textTransform: "uppercase", letterSpacing: ".5px", textAlign: i >= 2 ? "center" : "left" }}>{h}</span>
+        ))}
+      </div>
+
+      {/* Linhas */}
       {setores.map((s, i) => {
-        const pctDone = s.total ? Math.round((s.done / s.total) * 100) : 0;
-        const barWidthTotal = Math.round((s.total / max) * 100);
-        const barWidthDone = s.total ? Math.round((s.done / s.total) * barWidthTotal) : 0;
+        const pct = s.total ? Math.round((s.done / s.total) * 100) : 0;
+        const barPct = Math.round((s.count / max) * 100);
+        const color = pct === 100 ? "#3fb950" : pct >= 60 ? "#58a6ff" : "#f0883e";
+        const rankColor = rankColors[i] || "#8b949e";
+
         return (
-          <div key={i}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 6 }}>
-              <div>
-                <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#e6edf3" }}>{s.setor}</span>
-                <span style={{ fontSize: "0.72rem", color: "#8b949e", marginLeft: 8 }}>
-                  {s.count} processo{s.count > 1 ? "s" : ""}
-                  {s.arquivados > 0 && <span style={{ marginLeft: 6, color: "#8b949e" }}>· {s.arquivados} arquivado{s.arquivados > 1 ? "s" : ""}</span>}
-                </span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: "0.72rem", color: "#8b949e" }}>{s.done}/{s.total} docs</span>
-                <span style={{ fontSize: "0.82rem", fontWeight: 700, color: pctDone === 100 ? "#3fb950" : "#f0883e", minWidth: 38, textAlign: "right" }}>{pctDone}%</span>
+          <div key={i} style={{
+            display: "grid", gridTemplateColumns: "28px 1fr 90px 130px 52px",
+            gap: "0 12px", padding: "10px 10px",
+            borderRadius: 8, transition: "background .15s",
+            borderBottom: i < setores.length - 1 ? "1px solid #21293a" : "none",
+          }}
+            onMouseEnter={e => e.currentTarget.style.background = "#161b22"}
+            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+          >
+            {/* Rank */}
+            <div style={{ display: "flex", alignItems: "center" }}>
+              <span style={{
+                width: 22, height: 22, borderRadius: 6,
+                background: rankColor + "22", color: rankColor,
+                fontSize: "0.7rem", fontWeight: 700,
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>{i + 1}</span>
+            </div>
+
+            {/* Nome + processos badge */}
+            <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 3, minWidth: 0 }}>
+              <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#e6edf3", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.setor}</span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                {s.processes.slice(0, 4).map((p, pi) => (
+                  <span key={pi} style={{
+                    fontSize: "0.65rem", padding: "1px 6px", borderRadius: 99,
+                    background: p.color + "1a", color: p.color, border: `1px solid ${p.color}44`,
+                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 110,
+                  }}>
+                    {p.processNumber ? `Nº ${p.processNumber}` : p.title}
+                  </span>
+                ))}
+                {s.processes.length > 4 && (
+                  <span style={{ fontSize: "0.65rem", color: "#6e7681", padding: "1px 6px" }}>+{s.processes.length - 4}</span>
+                )}
               </div>
             </div>
-            {/* Stacked bar: done (green) + pending (orange) */}
-            <div style={{ height: 10, background: "#21293a", borderRadius: 99, overflow: "hidden", position: "relative" }}>
-              <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${barWidthTotal}%`, background: "#f0883e44", borderRadius: 99, transition: "width 0.8s cubic-bezier(.4,0,.2,1)" }} />
-              <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${barWidthDone}%`, background: pctDone === 100 ? "#3fb950" : "#f0883e", borderRadius: 99, transition: "width 0.8s cubic-bezier(.4,0,.2,1)" }} />
-            </div>
-            {/* Mini process badges */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 7 }}>
-              {s.processes.map((p, pi) => (
-                <span key={pi} style={{
-                  fontSize: "0.68rem", padding: "2px 8px", borderRadius: 99,
-                  background: p.color + "22", color: p.color,
-                  border: `1px solid ${p.color}55`,
-                  maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                }}>
-                  {p.processNumber ? `Nº ${p.processNumber}` : p.title}
+
+            {/* Processos */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ fontSize: "1rem", fontWeight: 700, color: "#e6edf3" }}>{s.count}</span>
+              </div>
+              <div style={{ display: "flex", gap: 4 }}>
+                <span style={{ fontSize: "0.62rem", padding: "1px 5px", borderRadius: 4, background: "#238636aa", color: "#3fb950" }}>
+                  {s.count - s.arquivados} ativo{s.count - s.arquivados !== 1 ? "s" : ""}
                 </span>
-              ))}
+                {s.arquivados > 0 && (
+                  <span style={{ fontSize: "0.62rem", padding: "1px 5px", borderRadius: 4, background: "#30363d", color: "#8b949e" }}>
+                    {s.arquivados} arq.
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Barra de progresso */}
+            <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 5 }}>
+              <div style={{ height: 6, background: "#21293a", borderRadius: 99, overflow: "hidden", position: "relative" }}>
+                <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${barPct}%`, background: rankColor + "33", borderRadius: 99 }} />
+                <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${pct}%`, background: color, borderRadius: 99, transition: "width .8s cubic-bezier(.4,0,.2,1)" }} />
+              </div>
+              <span style={{ fontSize: "0.62rem", color: "#6e7681", textAlign: "right" }}>{s.done}/{s.total} docs</span>
+            </div>
+
+            {/* Percentual */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <span style={{
+                fontSize: "0.82rem", fontWeight: 700, color: color,
+                background: color + "18", padding: "3px 8px", borderRadius: 6,
+                border: `1px solid ${color}33`,
+              }}>{pct}%</span>
             </div>
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function DonutChartProcesses({ processes }) {
+  const [hovered, setHovered] = useState(null);
+  const cx = 90, cy = 90, R = 72, r = 50, gap = 2;
+  const n = processes.length;
+
+  function polarToXY(angle, radius) {
+    const rad = (angle - 90) * Math.PI / 180;
+    return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) };
+  }
+
+  function slicePath(startAngle, endAngle) {
+    const s1 = polarToXY(startAngle + gap / 2, R);
+    const e1 = polarToXY(endAngle - gap / 2, R);
+    const s2 = polarToXY(endAngle - gap / 2, r);
+    const e2 = polarToXY(startAngle + gap / 2, r);
+    const large = endAngle - startAngle > 180 ? 1 : 0;
+    return `M${s1.x},${s1.y} A${R},${R} 0 ${large} 1 ${e1.x},${e1.y} L${s2.x},${s2.y} A${r},${r} 0 ${large} 0 ${e2.x},${e2.y} Z`;
+  }
+
+  const sliceAngle = n > 0 ? 360 / n : 0;
+  const overallDone = processes.reduce((a, p) => a + p.done, 0);
+  const overallTotal = processes.reduce((a, p) => a + p.total, 0);
+  const overallPct = overallTotal ? Math.round((overallDone / overallTotal) * 100) : 0;
+
+  return (
+    <div style={{ display: "flex", gap: 24, alignItems: "flex-start", flexWrap: "wrap" }}>
+      {/* SVG Donut */}
+      <div style={{ flexShrink: 0 }}>
+        <svg width={180} height={180} viewBox="0 0 180 180">
+          {n === 0 ? (
+            <path d={slicePath(0, 359.9)} fill="#21293a" />
+          ) : processes.map((p, i) => {
+            const start = i * sliceAngle;
+            const end = start + sliceAngle;
+            const isHov = hovered === i;
+            const scale = isHov ? 1.04 : 1;
+            return (
+              <path
+                key={p.id}
+                d={slicePath(start, end)}
+                fill={isHov ? p.color : p.color + "cc"}
+                stroke={isHov ? p.color : "transparent"}
+                strokeWidth={isHov ? 1.5 : 0}
+                style={{ transform: `scale(${scale})`, transformOrigin: `${cx}px ${cy}px`, transition: "all .2s", cursor: "pointer" }}
+                onMouseEnter={() => setHovered(i)}
+                onMouseLeave={() => setHovered(null)}
+              />
+            );
+          })}
+          {/* Centro */}
+          <text x={cx} y={cy - 10} textAnchor="middle" fill="#e6edf3" fontSize="22" fontWeight="700" fontFamily="'Syne',sans-serif">{n}</text>
+          <text x={cx} y={cy + 8} textAnchor="middle" fill="#8b949e" fontSize="11" fontFamily="'DM Sans',sans-serif">ativos</text>
+          <text x={cx} y={cy + 24} textAnchor="middle" fill={overallPct === 100 ? "#3fb950" : "#f0883e"} fontSize="13" fontWeight="600" fontFamily="'DM Sans',sans-serif">{overallPct}%</text>
+        </svg>
+      </div>
+
+      {/* Legenda */}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6, maxHeight: 180, overflowY: "auto" }}>
+        {processes.map((p, i) => {
+          const pct = p.total ? Math.round((p.done / p.total) * 100) : 0;
+          const isHov = hovered === i;
+          return (
+            <div key={p.id}
+              onMouseEnter={() => setHovered(i)}
+              onMouseLeave={() => setHovered(null)}
+              style={{
+                display: "flex", alignItems: "center", gap: 8, padding: "5px 8px",
+                borderRadius: 7, cursor: "default", transition: "background .15s",
+                background: isHov ? "#21293a" : "transparent",
+              }}>
+              <div style={{ width: 10, height: 10, borderRadius: 3, background: p.color, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "#e6edf3", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {p.processNumber ? `Nº ${p.processNumber}` : p.title}
+                </div>
+                {p.setor && <div style={{ fontSize: "0.65rem", color: "#6e7681" }}>{p.setor}</div>}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                <div style={{ width: 50, height: 4, background: "#21293a", borderRadius: 99, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${pct}%`, background: pct === 100 ? "#3fb950" : p.color, borderRadius: 99, transition: "width .6s" }} />
+                </div>
+                <span style={{ fontSize: "0.72rem", fontWeight: 700, color: pct === 100 ? "#3fb950" : p.color, minWidth: 30, textAlign: "right" }}>{pct}%</span>
+              </div>
+            </div>
+          );
+        })}
+        {n === 0 && <span style={{ fontSize: "0.8rem", color: "#6e7681" }}>Nenhum processo ativo.</span>}
+      </div>
     </div>
   );
 }
@@ -557,16 +711,9 @@ function Dashboard({ columns, archived }) {
         <div className="dash-section">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
             <h3 className="dash-title" style={{ marginBottom: 0 }}>Carga por Setor / Órgão</h3>
-            <div style={{ display: "flex", gap: 14 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                <div style={{ width: 10, height: 10, borderRadius: 3, background: "#f0883e" }} />
-                <span style={{ fontSize: "0.7rem", color: "#8b949e" }}>Concluído</span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                <div style={{ width: 10, height: 10, borderRadius: 3, background: "#f0883e44", border: "1px solid #f0883e55" }} />
-                <span style={{ fontSize: "0.7rem", color: "#8b949e" }}>Pendente</span>
-              </div>
-            </div>
+            <span style={{ fontSize: "0.72rem", color: "#6e7681", background: "#21293a", padding: "3px 10px", borderRadius: 6 }}>
+              {setoresArr.length} setor{setoresArr.length !== 1 ? "es" : ""}
+            </span>
           </div>
           <SetorBarChart setores={setoresArr} />
           {/* Summary footer */}
@@ -582,61 +729,22 @@ function Dashboard({ columns, archived }) {
         </div>
       )}
 
-      {/* Progresso por tipo */}
-      {Object.keys(byType).length > 0 && (
-        <div className="dash-section">
-          <h3 className="dash-title">Progresso por Tipo de Processo</h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {Object.entries(byType).map(([type, info]) => {
-              const pct = info.total ? Math.round((info.done / info.total) * 100) : 0;
-              return (
-                <div key={type}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <div style={{ width: 10, height: 10, borderRadius: "50%", background: info.color, flexShrink: 0 }} />
-                      <span style={{ fontSize: "0.83rem" }}>{type}</span>
-                      <span style={{ fontSize: "0.72rem", color: "#8b949e" }}>{info.count} processo{info.count > 1 ? "s" : ""}</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: "0.75rem", color: "#8b949e" }}>{info.done}/{info.total} docs</span>
-                      <span style={{ fontSize: "0.82rem", fontWeight: 700, color: info.color, minWidth: 38, textAlign: "right" }}>{pct}%</span>
-                    </div>
-                  </div>
-                  <AnimatedBar pct={pct} color={info.color} />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Processos ativos */}
-      {columns.length > 0 && (
-        <div className="dash-section">
-          <h3 className="dash-title">Processos Ativos</h3>
-          <div className="dash-process-list">
-            {columns.map(c => {
-              const d = getRegularDocs(c);
-              const dn = d.filter(x => x.done).length;
-              const pct = d.length ? Math.round((dn / d.length) * 100) : 0;
-              const color = c.typeColor || "#30363d";
-              return (
-                <div key={c.id} className="dash-process-item">
-                  <div className="dash-process-dot" style={{ background: color }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-                      <span className="dash-process-name">{c.processNumber ? `Nº ${c.processNumber} — ` : ""}{c.title}</span>
-                      <span style={{ fontSize: "0.78rem", fontWeight: 700, color, marginLeft: 8, flexShrink: 0 }}>{pct}%</span>
-                    </div>
-                    <AnimatedBar pct={pct} color={color} />
-                    {c.setor && <div style={{ fontSize: "0.7rem", color: "#8b949e", marginTop: 4 }}>{c.setor}</div>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* Processos ativos — rosca */}
+      <div className="dash-section">
+        <h3 className="dash-title">Processos Ativos</h3>
+        <DonutChartProcesses processes={columns.map(c => {
+          const d = getRegularDocs(c);
+          return {
+            id: c.id,
+            title: c.title,
+            processNumber: c.processNumber,
+            setor: c.setor,
+            color: c.typeColor || "#58a6ff",
+            done: d.filter(x => x.done).length,
+            total: d.length,
+          };
+        })} />
+      </div>
 
     </div>
   );
@@ -2474,22 +2582,62 @@ export default function App() {
       .then(res => res.json())
       .then(data => {
         if (Object.keys(data).length > 0) {
-          const normalized = normalizeTemplatesFromApi(data);
-          if (!localStorage.getItem('licit_tmpl_reset_v2')) {
-            setTemplates({});
-            fetch(`${API_URL}/api/templates`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({})
-            }).catch(console.error);
-            localStorage.setItem('licit_tmpl_reset_v2', '1');
-          } else {
-            setTemplates(normalized);
-          }
+          setTemplates(normalizeTemplatesFromApi(data));
         }
       })
       .catch(console.error);
   }, [token, handleLogout]);
+
+  useEffect(() => {
+    if (!token) return;
+    const SOCKET_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
+    const socket = io(SOCKET_URL, { auth: { token } });
+
+    socket.on('process:added', (process) => {
+      if (process.status === 'active') {
+        setColumns(p => p.find(c => c.id === process.id) ? p : [...p, process]);
+      } else {
+        setArchived(p => p.find(c => c.id === process.id) ? p : [...p, process]);
+      }
+    });
+
+    socket.on('process:updated', ({ id, title, processNumber, setor }) => {
+      setColumns(p => p.map(c => c.id === id ? { ...c, title, processNumber, setor } : c));
+      setArchived(p => p.map(c => c.id === id ? { ...c, title, processNumber, setor } : c));
+    });
+
+    socket.on('process:deleted', ({ id }) => {
+      setColumns(p => p.filter(c => c.id !== id));
+      setArchived(p => p.filter(c => c.id !== id));
+    });
+
+    socket.on('process:items_updated', ({ id, docs }) => {
+      setColumns(p => p.map(c => c.id === id ? { ...c, docs } : c));
+      setArchived(p => p.map(c => c.id === id ? { ...c, docs } : c));
+    });
+
+    socket.on('process:status_changed', ({ id, status }) => {
+      if (status === 'archived') {
+        setColumns(p => {
+          const col = p.find(c => c.id === id);
+          if (col) setArchived(a => a.find(c => c.id === id) ? a : [...a, { ...col, archivedAt: new Date().toISOString() }]);
+          return p.filter(c => c.id !== id);
+        });
+      } else {
+        setArchived(p => {
+          const col = p.find(c => c.id === id);
+          if (col) setColumns(a => a.find(c => c.id === id) ? a : [...a, col]);
+          return p.filter(c => c.id !== id);
+        });
+      }
+    });
+
+    socket.on('templates:updated', (data) => {
+      setTemplates(normalizeTemplatesFromApi(data));
+    });
+
+    return () => socket.disconnect();
+  }, [token]);
 
   const SECTIONS = useMemo(() => {
     const base = [
@@ -2562,8 +2710,43 @@ export default function App() {
   };
 
   const saveTemplates = (newTemplates) => {
+    // Descobrir quais tipos tiveram os itens alterados
+    const changedTypes = Object.keys(newTemplates).filter(type => {
+      const oldItems = JSON.stringify(tmplItems(templates[type]));
+      const newItems = JSON.stringify(tmplItems(newTemplates[type]));
+      return oldItems !== newItems;
+    });
+
     setTemplates(newTemplates);
     apiFetch('/api/templates', 'PUT', newTemplates);
+
+    if (changedTypes.length === 0) return;
+
+    // Atualizar os processos ativos que usam os tipos alterados
+    setColumns(prevCols => {
+      return prevCols.map(col => {
+        if (!changedTypes.includes(col.type)) return col;
+
+        const newItems = tmplItems(newTemplates[col.type]);
+
+        // Preservar status "done" dos itens com mesmo nome
+        const doneByName = {};
+        normalizeDocs(col.docs || []).forEach(d => {
+          if (d.done) doneByName[d.name] = true;
+        });
+
+        const updatedDocs = newItems.map(item => ({
+          id: generateId(),
+          type: item.type || 'doc',
+          name: item.name,
+          bgColor: item.bgColor || null,
+          done: doneByName[item.name] || false,
+        }));
+
+        apiFetch(`/api/processes/${col.id}/items`, 'PUT', { docs: updatedDocs });
+        return { ...col, docs: updatedDocs };
+      });
+    });
   };
 
   const getRegularDocs = (c) => normalizeDocs(c.docs || []).filter(d => d.type === "doc");
@@ -2600,7 +2783,32 @@ export default function App() {
           --text: #e6edf3; --muted: #8b949e; --radius: 10px;
         }
         body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; min-height: 100vh; }
-        .app { display: flex; flex-direction: column; min-height: 100vh; }
+        .app {
+          display: flex; flex-direction: column; min-height: 100vh;
+          position: relative; overflow: hidden;
+        }
+        .app::before {
+          content: '';
+          position: fixed;
+          inset: -60%;
+          background-image:
+            linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+          background-size: 40px 40px;
+          transform: rotate(15deg);
+          pointer-events: none;
+          z-index: 0;
+        }
+        .app-orb {
+          position: fixed;
+          border-radius: 50%;
+          pointer-events: none;
+          filter: blur(90px);
+          z-index: 0;
+        }
+        .app-orb-1 { width: 700px; height: 700px; top: -20%; left: -10%; background: radial-gradient(circle, rgba(21,101,192,0.16) 0%, transparent 70%); }
+        .app-orb-2 { width: 600px; height: 600px; bottom: -15%; right: -10%; background: radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%); }
+        .header, .tabs, .board, .dashboard, .archive-grid, .empty-board { position: relative; z-index: 1; }
 
         /* ── Keyframes ── */
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -2713,34 +2921,44 @@ export default function App() {
           display: flex;
           align-items: center;
           justify-content: center;
-          background: linear-gradient(135deg, #0a0e1a 0%, #0d2137 35%, #1565c0 65%, #e65100 100%);
+          background: #0d1117;
           position: relative;
           overflow: hidden;
           padding: 24px;
+        }
+        .ls-shell::before {
+          content: '';
+          position: absolute;
+          inset: -60%;
+          background-image:
+            linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+          background-size: 40px 40px;
+          transform: rotate(15deg);
+          pointer-events: none;
+          z-index: 0;
         }
         .ls-orb {
           position: absolute;
           border-radius: 50%;
           pointer-events: none;
-          filter: blur(72px);
+          filter: blur(90px);
         }
-        .ls-orb-1 { width: 540px; height: 540px; top: -15%; left: -12%; background: radial-gradient(circle, rgba(21,101,192,0.8) 0%, transparent 70%); }
-        .ls-orb-2 { width: 440px; height: 440px; bottom: -12%; right: -8%; background: radial-gradient(circle, rgba(230,81,0,0.78) 0%, transparent 70%); }
-        .ls-orb-3 { width: 360px; height: 360px; top: 38%; left: 48%; background: radial-gradient(circle, rgba(3,169,244,0.55) 0%, transparent 70%); }
-        .ls-orb-4 { width: 280px; height: 280px; top: 8%; right: 22%; background: radial-gradient(circle, rgba(255,160,0,0.5) 0%, transparent 70%); }
+        .ls-orb-1 { width: 600px; height: 600px; top: -20%; left: -10%; background: radial-gradient(circle, rgba(21,101,192,0.18) 0%, transparent 70%); }
+        .ls-orb-2 { width: 500px; height: 500px; bottom: -15%; right: -10%; background: radial-gradient(circle, rgba(99,102,241,0.14) 0%, transparent 70%); }
+        .ls-orb-3 { display: none; }
+        .ls-orb-4 { display: none; }
 
         .ls-card {
           position: relative;
           z-index: 1;
-          background: rgba(255,255,255,0.10);
-          backdrop-filter: blur(28px);
-          -webkit-backdrop-filter: blur(28px);
-          border: 1px solid rgba(255,255,255,0.22);
-          border-radius: 24px;
+          background: #161b27;
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 20px;
           padding: 48px 40px;
           width: 100%;
           max-width: 420px;
-          box-shadow: 0 30px 70px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.28);
+          box-shadow: 0 20px 60px rgba(0,0,0,0.5);
         }
         @media (max-width: 480px) {
           .ls-card { padding: 36px 24px; }
@@ -2798,13 +3016,19 @@ export default function App() {
           font-weight: 500;
           color: rgba(255,255,255,0.55);
           cursor: pointer;
-          transition: all .2s;
+          transition: color .2s, background .2s, transform .15s, box-shadow .2s;
+        }
+        .ls-tab:hover:not(.ls-tab-active) {
+          color: rgba(255,255,255,0.85);
+          background: rgba(255,255,255,0.06);
+          transform: translateY(-1px);
         }
         .ls-tab-active {
           background: rgba(255,255,255,0.18);
           color: #fff;
           font-weight: 600;
           box-shadow: 0 1px 6px rgba(0,0,0,0.25);
+          transform: translateY(-1px);
         }
 
         .ls-form { display: flex; flex-direction: column; gap: 14px; }
@@ -2832,6 +3056,16 @@ export default function App() {
         }
         .ls-input:focus { border-color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.14); box-shadow: 0 0 0 3px rgba(255,255,255,0.08); }
         .ls-input::placeholder { color: rgba(255,255,255,0.35); }
+        .ls-input:-webkit-autofill,
+        .ls-input:-webkit-autofill:hover,
+        .ls-input:-webkit-autofill:focus {
+          -webkit-text-fill-color: #fff;
+          -webkit-box-shadow: 0 0 0px 1000px rgba(10,25,50,0.97) inset;
+          box-shadow: 0 0 0px 1000px rgba(10,25,50,0.97) inset;
+          border-color: rgba(255,255,255,0.18);
+          caret-color: #fff;
+        }
+        .ls-field-icon { z-index: 1; }
         .ls-eye-btn {
           position: absolute;
           right: 10px;
@@ -2873,19 +3107,25 @@ export default function App() {
           gap: 8px;
           width: 100%;
           padding: 13px;
-          background: linear-gradient(135deg, #1565c0 0%, #e65100 100%);
+          background: linear-gradient(90deg, #1565c0 50%, rgba(255,255,255,0.06) 50%);
+          background-size: 200% 100%;
+          background-position: right center;
           color: #fff;
-          border: none;
+          border: 1.5px solid rgba(255,255,255,0.28);
           border-radius: 10px;
           font-family: 'DM Sans', sans-serif;
           font-size: 0.9rem;
           font-weight: 600;
           cursor: pointer;
-          transition: opacity .2s, transform .15s, box-shadow .2s;
+          transition: background-position 0.4s ease, box-shadow 0.25s, transform .15s;
           margin-top: 6px;
-          box-shadow: 0 4px 22px rgba(21,101,192,0.45);
+          box-shadow: 0 0 18px rgba(255,255,255,0.08), 0 4px 20px rgba(0,0,0,0.35);
         }
-        .ls-submit:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); box-shadow: 0 8px 28px rgba(21,101,192,0.55); }
+        .ls-submit:hover:not(:disabled) {
+          background-position: left center;
+          transform: translateY(-1px);
+          box-shadow: 0 0 28px rgba(255,255,255,0.22), 0 8px 28px rgba(21,101,192,0.4);
+        }
         .ls-submit:active:not(:disabled) { transform: translateY(0); }
         .ls-submit:disabled { opacity: 0.45; cursor: not-allowed; }
 
@@ -3273,6 +3513,8 @@ export default function App() {
       </div>
 
       <div className="app">
+        <div className="app-orb app-orb-1" aria-hidden="true" />
+        <div className="app-orb app-orb-2" aria-hidden="true" />
         <header className="header">
           <button className="hamburger" onClick={() => setSidebarOpen(true)}>
             <span /><span /><span />

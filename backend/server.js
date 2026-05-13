@@ -1,3 +1,4 @@
+import http from 'http';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -8,10 +9,14 @@ import adminRouter from './routes/admin.js';
 import { verifyToken } from './middleware/auth.js';
 import { requireAdmin } from './middleware/admin.js';
 import db from './db.js';
+import { initSocket } from './socket.js';
 
 dotenv.config();
 
 const app = express();
+const httpServer = http.createServer(app);
+initSocket(httpServer);
+
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
@@ -51,7 +56,7 @@ async function runMigrations() {
 }
 
 runMigrations().then(() => {
-  app.listen(PORT, () => {
+  httpServer.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
   });
 });

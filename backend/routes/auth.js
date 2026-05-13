@@ -1,6 +1,7 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'crypto';
 import db from '../db.js';
 import { verifyToken } from '../middleware/auth.js';
 
@@ -18,7 +19,7 @@ router.post('/login', async (req, res) => {
     }
 
     const user = users[0];
-    const passwordIsValid = bcrypt.compareSync(password, user.password_hash);
+    const passwordIsValid = await bcrypt.compare(password, user.password_hash);
 
     if (!passwordIsValid) {
       return res.status(401).json({ error: 'Invalid password' });
@@ -53,11 +54,8 @@ router.post('/setup-admin', async (req, res) => {
       return res.status(403).json({ error: 'An admin user already exists. Setup blocked.' });
     }
 
-    const salt = bcrypt.genSaltSync(10);
-    const hash = bcrypt.hashSync(password, salt);
-    
-    // Fallback uuid generation if crypto.randomUUID is not available, using crypto built-in or simple random
-    const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    const hash = await bcrypt.hash(password, 10);
+    const id = randomUUID();
 
     await db.query(
       'INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)',
@@ -85,10 +83,8 @@ router.post('/register', async (req, res) => {
       return res.status(409).json({ error: 'Username already taken' });
     }
 
-    const salt = bcrypt.genSaltSync(10);
-    const hash = bcrypt.hashSync(password, salt);
-    
-    const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    const hash = await bcrypt.hash(password, 10);
+    const id = randomUUID();
 
     await db.query(
       'INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)',
@@ -127,10 +123,10 @@ router.patch('/password', verifyToken, async (req, res) => {
     const [users] = await db.query('SELECT * FROM users WHERE id = ?', [req.userId]);
     if (users.length === 0) return res.status(404).json({ error: 'User not found' });
     const user = users[0];
-    if (!bcrypt.compareSync(currentPassword, user.password_hash)) {
+    if (!await bcrypt.compare(currentPassword, user.password_hash)) {
       return res.status(401).json({ error: 'Senha atual incorreta' });
     }
-    const hash = bcrypt.hashSync(newPassword, bcrypt.genSaltSync(10));
+    const hash = await bcrypt.hash(newPassword, 10);
     await db.query('UPDATE users SET password_hash = ? WHERE id = ?', [hash, req.userId]);
     res.json({ ok: true });
   } catch (error) {
@@ -149,7 +145,7 @@ router.delete('/account', verifyToken, async (req, res) => {
     const [users] = await db.query('SELECT * FROM users WHERE id = ?', [req.userId]);
     if (users.length === 0) return res.status(404).json({ error: 'User not found' });
     const user = users[0];
-    if (!bcrypt.compareSync(password, user.password_hash)) {
+    if (!await bcrypt.compare(password, user.password_hash)) {
       return res.status(401).json({ error: 'Senha incorreta' });
     }
     await db.query('DELETE FROM users WHERE id = ?', [req.userId]);

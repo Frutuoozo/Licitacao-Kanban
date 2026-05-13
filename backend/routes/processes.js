@@ -1,5 +1,6 @@
 import express from 'express';
 import db from '../db.js';
+import { getIO } from '../socket.js';
 
 const router = express.Router();
 
@@ -68,6 +69,7 @@ router.post('/', async (req, res) => {
     }
     
     await connection.commit();
+    getIO()?.emit('process:added', { id, title, processNumber, setor, type, typeColor, status, docs: docs || [] });
     res.status(201).json({ success: true });
   } catch (error) {
     await connection.rollback();
@@ -87,6 +89,7 @@ router.put('/:id', async (req, res) => {
       `UPDATE processes SET title = ?, processNumber = ?, setor = ? WHERE id = ?`,
       [title, processNumber, setor, id]
     );
+    getIO()?.emit('process:updated', { id, title, processNumber, setor });
     res.json({ success: true });
   } catch (error) {
     console.error(error);
@@ -99,6 +102,7 @@ router.delete('/:id', async (req, res) => {
   const { id } = req.params;
   try {
     await db.query(`DELETE FROM processes WHERE id = ?`, [id]);
+    getIO()?.emit('process:deleted', { id });
     res.json({ success: true });
   } catch (error) {
     console.error(error);
@@ -112,6 +116,7 @@ router.put('/:id/status', async (req, res) => {
   const { status } = req.body;
   try {
     await db.query(`UPDATE processes SET status = ? WHERE id = ?`, [status, id]);
+    getIO()?.emit('process:status_changed', { id, status });
     res.json({ success: true });
   } catch (error) {
     console.error(error);
@@ -142,6 +147,7 @@ router.put('/:id/items', async (req, res) => {
     }
     
     await connection.commit();
+    getIO()?.emit('process:items_updated', { id, docs: docs || [] });
     res.json({ success: true });
   } catch (error) {
     await connection.rollback();

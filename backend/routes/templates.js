@@ -1,5 +1,6 @@
 import express from 'express';
 import db from '../db.js';
+import { getIO } from '../socket.js';
 
 const router = express.Router();
 
@@ -80,6 +81,7 @@ router.put('/', async (req, res) => {
     }
 
     await connection.commit();
+    getIO()?.emit('templates:updated', templates);
     res.json({ success: true });
   } catch (error) {
     await connection.rollback();
