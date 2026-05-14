@@ -445,16 +445,14 @@ function SetorBarChart({ setores }) {
   const rankColors = ["#f0883e", "#58a6ff", "#3fb950", "#bc8cff", "#ff7b72"];
 
   return (
-    <div style={{ width: "100%", overflowX: "auto" }}>
+    <div className="setor-chart-wrap">
       {/* Cabeçalho */}
-      <div style={{
-        display: "grid", gridTemplateColumns: "28px 1fr 90px 130px 52px",
-        gap: "0 12px", padding: "0 10px 8px",
-        borderBottom: "1px solid #30363d", marginBottom: 4,
-      }}>
-        {["#", "Setor / Órgão", "Processos", "Progresso docs", "%"].map((h, i) => (
-          <span key={i} style={{ fontSize: "0.68rem", fontWeight: 600, color: "#6e7681", textTransform: "uppercase", letterSpacing: ".5px", textAlign: i >= 2 ? "center" : "left" }}>{h}</span>
-        ))}
+      <div className="setor-chart-header">
+        <span className="setor-col-rank" style={{ fontSize: "0.68rem", fontWeight: 600, color: "#6e7681", textTransform: "uppercase", letterSpacing: ".5px" }}>#</span>
+        <span className="setor-col-name" style={{ fontSize: "0.68rem", fontWeight: 600, color: "#6e7681", textTransform: "uppercase", letterSpacing: ".5px" }}>Setor / Órgão</span>
+        <span className="setor-col-count" style={{ fontSize: "0.68rem", fontWeight: 600, color: "#6e7681", textTransform: "uppercase", letterSpacing: ".5px", textAlign: "center" }}>Processos</span>
+        <span className="setor-col-bar" style={{ fontSize: "0.68rem", fontWeight: 600, color: "#6e7681", textTransform: "uppercase", letterSpacing: ".5px", textAlign: "center" }}>Progresso docs</span>
+        <span className="setor-col-pct" style={{ fontSize: "0.68rem", fontWeight: 600, color: "#6e7681", textTransform: "uppercase", letterSpacing: ".5px", textAlign: "center" }}>%</span>
       </div>
 
       {/* Linhas */}
@@ -465,17 +463,13 @@ function SetorBarChart({ setores }) {
         const rankColor = rankColors[i] || "#8b949e";
 
         return (
-          <div key={i} style={{
-            display: "grid", gridTemplateColumns: "28px 1fr 90px 130px 52px",
-            gap: "0 12px", padding: "10px 10px",
-            borderRadius: 8, transition: "background .15s",
-            borderBottom: i < setores.length - 1 ? "1px solid #21293a" : "none",
-          }}
+          <div key={i} className="setor-chart-row"
+            style={{ borderBottom: i < setores.length - 1 ? "1px solid #21293a" : "none" }}
             onMouseEnter={e => e.currentTarget.style.background = "#161b22"}
             onMouseLeave={e => e.currentTarget.style.background = "transparent"}
           >
             {/* Rank */}
-            <div style={{ display: "flex", alignItems: "center" }}>
+            <div className="setor-col-rank" style={{ display: "flex", alignItems: "center" }}>
               <span style={{
                 width: 22, height: 22, borderRadius: 6,
                 background: rankColor + "22", color: rankColor,
@@ -485,7 +479,7 @@ function SetorBarChart({ setores }) {
             </div>
 
             {/* Nome + processos badge */}
-            <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 3, minWidth: 0 }}>
+            <div className="setor-col-name" style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 3, minWidth: 0 }}>
               <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#e6edf3", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.setor}</span>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
                 {s.processes.slice(0, 4).map((p, pi) => (
@@ -504,7 +498,7 @@ function SetorBarChart({ setores }) {
             </div>
 
             {/* Processos */}
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3 }}>
+            <div className="setor-col-count" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
                 <span style={{ fontSize: "1rem", fontWeight: 700, color: "#e6edf3" }}>{s.count}</span>
               </div>
@@ -521,7 +515,7 @@ function SetorBarChart({ setores }) {
             </div>
 
             {/* Barra de progresso */}
-            <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 5 }}>
+            <div className="setor-col-bar" style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 5 }}>
               <div style={{ height: 6, background: "#21293a", borderRadius: 99, overflow: "hidden", position: "relative" }}>
                 <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${barPct}%`, background: rankColor + "33", borderRadius: 99 }} />
                 <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${pct}%`, background: color, borderRadius: 99, transition: "width .8s cubic-bezier(.4,0,.2,1)" }} />
@@ -530,7 +524,7 @@ function SetorBarChart({ setores }) {
             </div>
 
             {/* Percentual */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div className="setor-col-pct" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
               <span style={{
                 fontSize: "0.82rem", fontWeight: 700, color: color,
                 background: color + "18", padding: "3px 8px", borderRadius: 6,
@@ -569,7 +563,7 @@ function DonutChartProcesses({ processes }) {
   const overallPct = overallTotal ? Math.round((overallDone / overallTotal) * 100) : 0;
 
   return (
-    <div style={{ display: "flex", gap: 24, alignItems: "flex-start", flexWrap: "wrap" }}>
+    <div className="dash-donut-processes">
       {/* SVG Donut */}
       <div style={{ flexShrink: 0 }}>
         <svg width={180} height={180} viewBox="0 0 180 180">
@@ -601,7 +595,7 @@ function DonutChartProcesses({ processes }) {
       </div>
 
       {/* Legenda */}
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6, maxHeight: 180, overflowY: "auto" }}>
+      <div className="dash-donut-legend">
         {processes.map((p, i) => {
           const pct = p.total ? Math.round((p.done / p.total) * 100) : 0;
           const isHov = hovered === i;
@@ -686,7 +680,7 @@ function Dashboard({ columns, archived }) {
     <div className="dashboard">
 
       {/* Top row: donut + stats */}
-      <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+      <div className="dash-top-row">
 
         {/* Donut */}
         <div className="dash-section" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minWidth: 180, padding: "24px 28px" }}>
@@ -695,7 +689,7 @@ function Dashboard({ columns, archived }) {
         </div>
 
         {/* Stat cards */}
-        <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, minWidth: 240 }}>
+        <div className="dash-stat-grid">
           {stats.map(s => (
             <div key={s.label} className="dash-stat" style={{ borderLeftColor: s.color }}>
               <div className="dash-stat-value" style={{ color: s.color }}>{s.value}</div>
@@ -3298,6 +3292,8 @@ export default function App() {
         .archived-card:hover { border-color: var(--muted); box-shadow: 0 2px 8px rgba(0,0,0,.2); }
 
         .dashboard { padding: 28px; max-width: 860px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+        .dash-top-row { display: flex; gap: 20px; flex-wrap: wrap; }
+        .dash-stat-grid { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; min-width: 240px; }
         .dash-stats { display: flex; gap: 14px; flex-wrap: wrap; }
         .dash-stat { flex: 1; min-width: 130px; background: var(--surface); border: 1px solid var(--border); border-left: 4px solid; border-radius: 12px; padding: 16px 18px; }
         .dash-stat-value { font-family: 'Syne', sans-serif; font-size: 2rem; font-weight: 800; line-height: 1; margin-bottom: 4px; }
@@ -3319,6 +3315,22 @@ export default function App() {
         .dash-process-item { display: flex; align-items: flex-start; gap: 10px; }
         .dash-process-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
         .dash-process-name { font-size: 0.82rem; }
+
+        /* DonutChartProcesses */
+        .dash-donut-processes { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+        .dash-donut-legend { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto; }
+
+        /* SetorBarChart */
+        .setor-chart-wrap { width: 100%; }
+        .setor-chart-header, .setor-chart-row {
+          display: grid;
+          grid-template-columns: 28px 1fr 90px 130px 52px;
+          gap: 0 12px;
+          padding: 0 10px;
+          align-items: center;
+        }
+        .setor-chart-header { padding-bottom: 8px; border-bottom: 1px solid #30363d; margin-bottom: 4px; }
+        .setor-chart-row { padding: 10px; border-radius: 8px; transition: background .15s; }
 
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; animation: fadeIn .2s ease-out; backdrop-filter: blur(4px); }
         .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; width: 100%; max-width: 720px; display: flex; flex-direction: column; height: 80vh; max-height: 80vh; min-height: 80vh; overflow: hidden; flex-shrink: 0; animation: scaleIn .25s cubic-bezier(.34,1.56,.64,1); box-shadow: 0 20px 60px rgba(0,0,0,.5); }
@@ -3508,8 +3520,15 @@ export default function App() {
           .archive-grid { padding: 16px; gap: 12px; }
           .archived-card { width: 100%; max-width: 320px; }
           .dashboard { padding: 16px; gap: 16px; }
+          .dash-top-row { flex-direction: column; }
+          .dash-stat-grid { min-width: 0; width: 100%; }
           .dash-section { padding: 16px; }
           .dash-stat-value { font-size: 1.6rem; }
+          .dash-donut-processes { justify-content: center; }
+          .dash-donut-legend { max-height: none; }
+          .dash-type-name { min-width: 120px; }
+          .setor-chart-header, .setor-chart-row { grid-template-columns: 28px 1fr 52px; }
+          .setor-col-count, .setor-col-bar { display: none; }
           .modal { height: 90vh; max-height: 90vh; min-height: 90vh; }
           .sm-modal { max-height: 95vh !important; }
         }
@@ -3532,7 +3551,14 @@ export default function App() {
           .dash-section { padding: 14px 12px; border-radius: 12px; }
           .dash-stat { padding: 12px 14px; border-radius: 10px; min-width: 0; }
           .dash-stat-value { font-size: 1.4rem; }
+          .dash-stat-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
           .dash-title { font-size: 0.85rem; }
+          .dash-donut-processes { flex-direction: column; align-items: center; gap: 16px; }
+          .dash-donut-legend { max-height: none; width: 100%; }
+          .dash-type-name { min-width: 0; flex: 1; }
+          .setor-chart-header, .setor-chart-row { grid-template-columns: 24px 1fr 44px; gap: 0 8px; padding: 8px; }
+          .setor-chart-header { padding-bottom: 6px; }
+          .setor-col-count, .setor-col-bar { display: none; }
           .card-actions { opacity: 1; }
           .add-doc-btn, .add-phase-btn { padding: 13px 10px; font-size: 0.82rem; }
           .check-box { width: 20px; height: 20px; }
