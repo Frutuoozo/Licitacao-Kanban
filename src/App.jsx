@@ -2454,7 +2454,7 @@ function Login({ onLogin }) {
 
       <div className="ls-card">
         <div className="ls-brand">
-          <div className="ls-logo">Licit<span>Track</span></div>
+          <div className="ls-logo">Licit<span>Kanban</span></div>
           <p className="ls-tagline">Gestão inteligente de licitações</p>
         </div>
 
@@ -2514,11 +2514,53 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("processos");
   const [sessionUser, setSessionUser] = useState(null);
+  const [inactivityWarning, setInactivityWarning] = useState(false);
+  const [inactivityCountdown, setInactivityCountdown] = useState(60);
 
   const handleLogout = useCallback(() => {
     clearLicitSessionCredentials();
     setToken(null);
   }, [setToken]);
+
+  useEffect(() => {
+    if (!token) return;
+    const WARN_AT = 14 * 60 * 1000;
+    const LOGOUT_AT = 15 * 60 * 1000;
+    let warnTimer, logoutTimer, countdownInterval;
+    let warningActive = false;
+
+    const reset = () => {
+      clearTimeout(warnTimer);
+      clearTimeout(logoutTimer);
+      clearInterval(countdownInterval);
+      if (warningActive) {
+        warningActive = false;
+        setInactivityWarning(false);
+        setInactivityCountdown(60);
+      }
+      warnTimer = setTimeout(() => {
+        warningActive = true;
+        setInactivityWarning(true);
+        setInactivityCountdown(60);
+        countdownInterval = setInterval(() => {
+          setInactivityCountdown(s => s - 1);
+        }, 1000);
+      }, WARN_AT);
+      logoutTimer = setTimeout(handleLogout, LOGOUT_AT);
+    };
+
+    const events = ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'];
+    events.forEach(e => window.addEventListener(e, reset, { passive: true }));
+    reset();
+
+    return () => {
+      clearTimeout(warnTimer);
+      clearTimeout(logoutTimer);
+      clearInterval(countdownInterval);
+      events.forEach(e => window.removeEventListener(e, reset));
+      setInactivityWarning(false);
+    };
+  }, [token, handleLogout]);
 
   const loadSessionUser = useCallback(() => {
     if (!token) {
@@ -3226,6 +3268,28 @@ export default function App() {
         .empty-board p { font-size: 0.88rem; max-width: 340px; line-height: 1.6; }
 
         .archive-grid { padding: 24px 28px; display: flex; flex-wrap: wrap; gap: 16px; align-content: flex-start; }
+
+        .inactivity-toast {
+          position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+          background: #1c2330; border: 1px solid #f0883e;
+          border-radius: 14px; padding: 14px 18px;
+          display: flex; align-items: center; gap: 14px;
+          z-index: 9999; min-width: 340px; max-width: 90vw;
+          box-shadow: 0 8px 32px rgba(0,0,0,.5), 0 0 0 4px rgba(240,136,62,0.08);
+          animation: slideInUp .3s cubic-bezier(.34,1.56,.64,1);
+        }
+        .inactivity-toast-icon { flex-shrink: 0; display: flex; align-items: center; }
+        .inactivity-toast-body { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+        .inactivity-toast-title { font-family: 'Syne', sans-serif; font-size: 0.88rem; font-weight: 700; color: #f0883e; }
+        .inactivity-toast-msg { font-size: 0.82rem; color: #8b949e; line-height: 1.4; }
+        .inactivity-toast-msg strong { color: #e6edf3; }
+        .inactivity-toast-btn {
+          flex-shrink: 0; background: #f0883e; color: #0d1117;
+          border: none; border-radius: 8px; padding: 7px 16px;
+          font-size: 0.82rem; font-weight: 700; cursor: pointer;
+          transition: background .15s;
+        }
+        .inactivity-toast-btn:hover { background: #fb923c; }
         @keyframes archiveIn {
           from { transform: translateY(8px); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
@@ -3491,7 +3555,7 @@ export default function App() {
           {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
           <div className={`sidebar ${sidebarOpen ? "open" : ""}`}>
         <div className="sidebar-header">
-          <div className="sidebar-logo">Licit<span>Track</span></div>
+          <div className="sidebar-logo">Licit<span>Kanban</span></div>
           <button className="icon-btn" onClick={() => setSidebarOpen(false)}><IconClose /></button>
         </div>
         <nav className="sidebar-nav">
@@ -3509,7 +3573,7 @@ export default function App() {
         <div style={{ marginTop: 'auto', padding: '14px', borderTop: '1px solid var(--border)' }}>
           <button className="sidebar-item" style={{ color: 'var(--red)', justifyContent: 'center' }} onClick={handleLogout}>Sair</button>
         </div>
-        <div className="sidebar-footer">LicitTrack v1.0</div>
+        <div className="sidebar-footer">LicitKanban v1.5</div>
       </div>
 
       <div className="app">
@@ -3519,7 +3583,7 @@ export default function App() {
           <button className="hamburger" onClick={() => setSidebarOpen(true)}>
             <span /><span /><span />
           </button>
-          <div className="logo">Licit<span>Track</span></div>
+          <div className="logo">Licit<span>Kanban</span></div>
           <span className="header-section-name">{SECTIONS.find(s => s.id === activeSection)?.label}</span>
           {activeSection === "processos" && totalDocs > 0 && <span className="header-stats">{totalDone}/{totalDocs} docs</span>}
           <div className="header-actions">
@@ -3588,6 +3652,21 @@ export default function App() {
 
       {showTemplates && <TemplateManager templates={templates} onSave={saveTemplates} onClose={() => setShowTemplates(false)} />}
       {showNewProcess && <NewProcessModal templates={templates} onAdd={addColumn} onClose={() => setShowNewProcess(false)} />}
+
+      {inactivityWarning && (
+        <div className="inactivity-toast">
+          <div className="inactivity-toast-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f0883e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+          </div>
+          <div className="inactivity-toast-body">
+            <span className="inactivity-toast-title">Sessão expirando</span>
+            <span className="inactivity-toast-msg">Você será desconectado por inatividade em <strong>{inactivityCountdown}s</strong>.</span>
+          </div>
+          <button className="inactivity-toast-btn">Continuar</button>
+        </div>
+      )}
         </>
       )}
     </>
