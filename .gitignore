@@ -1,4 +1,15 @@
-node_modules/
-.env
-build/
+# Frontend
+frontend/node_modules/
+frontend/.env
+frontend/.env.local
+frontend/build/
+frontend/.DS_Store
+
+# Backend
+backend/node_modules/
+backend/.env
+
+# Raiz
 .DS_Store
+node_modules
+node_modules

@@ -5,13 +5,17 @@ echo "🚀 DEPLOY - Sistema Kanban de Licitações"
 echo "=========================================="
 echo ""
 
+# Garantir que o script rode sempre a partir da pasta frontend/
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 # Verificar se está na pasta correta
 if [ ! -f "package.json" ]; then
-    echo "❌ Execute na pasta do projeto"
+    echo "❌ package.json não encontrado em $SCRIPT_DIR"
     exit 1
 fi
 
-echo "✅ Pasta correta!"
+echo "✅ Pasta correta: $SCRIPT_DIR"
 echo ""
 
 # Configurar Git se necessário
@@ -33,7 +37,8 @@ echo "🔨 [2/5] Compilando projeto..."
 npm run build
 echo ""
 
-echo "🔧 [3/5] Configurando Git..."
+echo "🔧 [3/5] Configurando Git (raiz do repositório)..."
+cd ..
 if [ ! -d ".git" ]; then
     git init
 fi
@@ -54,13 +59,13 @@ echo ""
 echo "🚀 [5/5] Fazendo deploy da build..."
 
 # Deploy manual (evita erro E2BIG)
-cd build
+cd frontend/build
 git init
 git add -A
 git commit -m "Deploy build"
 git push -f https://github.com/Frutuoozo/licitacao-kanban.git HEAD:gh-pages
-cd ..
-rm -rf build/.git
+cd ../..
+rm -rf frontend/build/.git
 
 echo ""
 echo "=========================================="
