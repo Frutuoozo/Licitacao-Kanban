@@ -64,4 +64,82 @@ router.delete('/users/:id', async (req, res) => {
   }
 });
 
+// ── Colaboradores ─────────────────────────────────────────────────────────────
+
+// GET /api/admin/collaborators
+router.get('/collaborators', async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      'SELECT id, nome, cpf, email, created_at FROM collaborators ORDER BY nome ASC'
+    );
+    res.json(rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao listar colaboradores' });
+  }
+});
+
+// POST /api/admin/collaborators
+router.post('/collaborators', async (req, res) => {
+  const { nome, cpf, email } = req.body;
+  if (!nome?.trim() || !cpf?.trim() || !email?.trim()) {
+    return res.status(400).json({ error: 'Nome, CPF e e-mail são obrigatórios' });
+  }
+  try {
+    const [result] = await db.query(
+      'INSERT INTO collaborators (nome, cpf, email) VALUES (?, ?, ?)',
+      [nome.trim(), cpf.trim(), email.trim()]
+    );
+    const [rows] = await db.query(
+      'SELECT id, nome, cpf, email, created_at FROM collaborators WHERE id = ?',
+      [result.insertId]
+    );
+    res.status(201).json(rows[0]);
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'CPF já cadastrado' });
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao criar colaborador' });
+  }
+});
+
+// PUT /api/admin/collaborators/:id
+router.put('/collaborators/:id', async (req, res) => {
+  const { nome, cpf, email } = req.body;
+  const id = req.params.id;
+  if (!nome?.trim() || !cpf?.trim() || !email?.trim()) {
+    return res.status(400).json({ error: 'Nome, CPF e e-mail são obrigatórios' });
+  }
+  try {
+    const [rows] = await db.query('SELECT id FROM collaborators WHERE id = ?', [id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Colaborador não encontrado' });
+    await db.query(
+      'UPDATE collaborators SET nome = ?, cpf = ?, email = ? WHERE id = ?',
+      [nome.trim(), cpf.trim(), email.trim(), id]
+    );
+    const [updated] = await db.query(
+      'SELECT id, nome, cpf, email, created_at FROM collaborators WHERE id = ?',
+      [id]
+    );
+    res.json(updated[0]);
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'CPF já cadastrado' });
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao atualizar colaborador' });
+  }
+});
+
+// DELETE /api/admin/collaborators/:id
+router.delete('/collaborators/:id', async (req, res) => {
+  const id = req.params.id;
+  try {
+    const [rows] = await db.query('SELECT id FROM collaborators WHERE id = ?', [id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Colaborador não encontrado' });
+    await db.query('DELETE FROM collaborators WHERE id = ?', [id]);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao remover colaborador' });
+  }
+});
+
 export default router;
