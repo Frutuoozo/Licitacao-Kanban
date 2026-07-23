@@ -56,8 +56,8 @@ if [ ! -d ".git" ]; then
     git init
 fi
 
-if ! git remote get-url origin &> /dev/null; then
-    git remote add origin https://github.com/Frutuoozo/licitacao-kanban.git
+if [ "$(git remote get-url origin 2>/dev/null)" != "https://github.com/Frutuoozo/Licitacao-Kanban.git" ]; then
+    git remote set-url origin https://github.com/Frutuoozo/Licitacao-Kanban.git
 fi
 
 git add .
@@ -76,7 +76,7 @@ cd frontend/build
 git init
 git add -A
 git commit -m "Deploy build"
-git push -f https://github.com/Frutuoozo/licitacao-kanban.git HEAD:gh-pages
+git push -f https://github.com/Frutuoozo/Licitacao-Kanban.git HEAD:gh-pages
 cd ../..
 rm -rf frontend/build/.git
 
