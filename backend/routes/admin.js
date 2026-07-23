@@ -1,4 +1,6 @@
 import express from 'express';
+import bcrypt from 'bcryptjs';
+import { randomUUID } from 'crypto';
 import db from '../db.js';
 
 const router = express.Router();
@@ -16,18 +18,18 @@ router.get('/users', async (req, res) => {
   }
 });
 
-// PATCH /api/admin/users/:id  body: { role: 'user' | 'admin' }
+// PATCH /api/admin/users/:id  body: { role: 'admin' | 'editor' | 'viewer' }
 router.patch('/users/:id', async (req, res) => {
   const { role } = req.body;
   const id = req.params.id;
-  if (!['user', 'admin'].includes(role)) {
+  if (!['admin', 'editor', 'viewer'].includes(role)) {
     return res.status(400).json({ error: 'Papel inválido' });
   }
   try {
     const [rows] = await db.query('SELECT role FROM users WHERE id = ?', [id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Usuário não encontrado' });
     const oldRole = rows[0].role;
-    if (oldRole === 'admin' && role === 'user') {
+    if (oldRole === 'admin' && role !== 'admin') {
       const [countRows] = await db.query("SELECT COUNT(*) AS c FROM users WHERE role = 'admin'");
       if (countRows[0].c <= 1) {
         return res.status(400).json({ error: 'Deve existir pelo menos um administrador' });
@@ -38,6 +40,73 @@ router.patch('/users/:id', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Falha ao atualizar usuário' });
+  }
+});
+
+// PATCH /api/admin/users/:id/password  body: { password }
+router.patch('/users/:id/password', async (req, res) => {
+  const { password } = req.body;
+  const id = req.params.id;
+
+  if (!password) {
+    return res.status(400).json({ error: 'Informe a nova senha' });
+  }
+  if (String(password).length < 8) {
+    return res.status(400).json({ error: 'A senha deve conter no mínimo 8 caracteres' });
+  }
+  if (!/[^a-zA-Z0-9]/.test(password)) {
+    return res.status(400).json({ error: 'A senha deve conter pelo menos um caractere especial' });
+  }
+
+  try {
+    const [rows] = await db.query('SELECT id FROM users WHERE id = ?', [id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    const hash = await bcrypt.hash(password, 10);
+    await db.query(
+      'UPDATE users SET password_hash = ?, first_access = FALSE WHERE id = ?',
+      [hash, id]
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao redefinir senha' });
+  }
+});
+
+// POST /api/admin/users
+router.post('/users', async (req, res) => {
+  const { username, role } = req.body;
+
+  if (!username?.trim()) {
+    return res.status(400).json({ error: 'Nome de usuário é obrigatório' });
+  }
+
+  const userRole = ['admin', 'editor', 'viewer'].includes(role) ? role : 'viewer';
+
+  try {
+    const [existing] = await db.query('SELECT id FROM users WHERE username = ?', [username.trim()]);
+    if (existing.length > 0) {
+      return res.status(400).json({ error: 'Este nome de usuário já está em uso' });
+    }
+
+    const id = randomUUID();
+    const placeholderHash = 'first_access_pending';
+
+    await db.query(
+      'INSERT INTO users (id, username, password_hash, role, first_access) VALUES (?, ?, ?, ?, TRUE)',
+      [id, username.trim(), placeholderHash, userRole]
+    );
+
+    res.status(201).json({
+      id,
+      username: username.trim(),
+      role: userRole,
+      first_access: true
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao criar usuário' });
   }
 });
 

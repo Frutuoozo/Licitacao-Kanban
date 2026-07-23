@@ -1,6 +1,7 @@
 import express from 'express';
 import db from '../db.js';
 import { getIO } from '../socket.js';
+import { requireEditorOrAdmin } from '../middleware/editor.js';
 
 const router = express.Router();
 
@@ -33,6 +34,11 @@ router.get('/', async (req, res) => {
       type: p.type,
       typeColor: p.typeColor,
       status: p.status,
+      dueDate: p.due_date
+        ? (typeof p.due_date === 'string'
+            ? p.due_date.slice(0, 10)
+            : `${p.due_date.getFullYear()}-${String(p.due_date.getMonth()+1).padStart(2,'0')}-${String(p.due_date.getDate()).padStart(2,'0')}`)
+        : null,
       docs: itemsByProcess[p.id] || []
     }));
 
@@ -44,17 +50,21 @@ router.get('/', async (req, res) => {
 });
 
 // POST a new process
-router.post('/', async (req, res) => {
-  const { id, title, processNumber, setor, type, typeColor, docs, status = 'active' } = req.body;
+router.post('/', requireEditorOrAdmin, async (req, res) => {
+  const { id, title, processNumber, setor, type, typeColor, docs, status = 'active', dueDate } = req.body;
+
+  if (!dueDate) {
+    return res.status(400).json({ error: 'Data de vencimento é obrigatória' });
+  }
   
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
     
     await connection.query(
-      `INSERT INTO processes (id, title, processNumber, setor, type, typeColor, status) 
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [id, title, processNumber, setor, type, typeColor, status]
+      `INSERT INTO processes (id, title, processNumber, setor, type, typeColor, status, due_date) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, title, processNumber, setor, type, typeColor, status, dueDate]
     );
 
     if (docs && docs.length > 0) {
@@ -69,7 +79,7 @@ router.post('/', async (req, res) => {
     }
     
     await connection.commit();
-    getIO()?.emit('process:added', { id, title, processNumber, setor, type, typeColor, status, docs: docs || [] });
+    getIO()?.emit('process:added', { id, title, processNumber, setor, type, typeColor, status, dueDate, docs: docs || [] });
     res.status(201).json({ success: true });
   } catch (error) {
     await connection.rollback();
@@ -81,15 +91,15 @@ router.post('/', async (req, res) => {
 });
 
 // PUT to update a process (except items)
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireEditorOrAdmin, async (req, res) => {
   const { id } = req.params;
-  const { title, processNumber, setor } = req.body;
+  const { title, processNumber, setor, dueDate } = req.body;
   try {
     await db.query(
-      `UPDATE processes SET title = ?, processNumber = ?, setor = ? WHERE id = ?`,
-      [title, processNumber, setor, id]
+      `UPDATE processes SET title = ?, processNumber = ?, setor = ?, due_date = ? WHERE id = ?`,
+      [title, processNumber, setor, dueDate || null, id]
     );
-    getIO()?.emit('process:updated', { id, title, processNumber, setor });
+    getIO()?.emit('process:updated', { id, title, processNumber, setor, dueDate });
     res.json({ success: true });
   } catch (error) {
     console.error(error);
@@ -98,7 +108,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE a process
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireEditorOrAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     await db.query(`DELETE FROM processes WHERE id = ?`, [id]);
@@ -111,7 +121,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // PUT to update process status (active/archived)
-router.put('/:id/status', async (req, res) => {
+router.put('/:id/status', requireEditorOrAdmin, async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
   try {
@@ -125,7 +135,7 @@ router.put('/:id/status', async (req, res) => {
 });
 
 // PUT to update process items
-router.put('/:id/items', async (req, res) => {
+router.put('/:id/items', requireEditorOrAdmin, async (req, res) => {
   const { id } = req.params;
   const { docs } = req.body;
   

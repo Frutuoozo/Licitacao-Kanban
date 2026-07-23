@@ -283,7 +283,7 @@ function ContratoCard({ row }) {
 
 // ── Página principal ──────────────────────────────────────────────────────────
 
-export default function ContratosAtivos() {
+export default function ContratosAtivos({ isViewer }) {
   const DEFAULT_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRgWXyIcoaK2D_vska_TC7vlvmhnEkZ6TyPGoX2wyJJVBnSIv85TM4P-RS7MPo68Q/pub?gid=1218345147&single=true&output=csv";
   const [csvUrl, setCsvUrl]           = useStorage("licit_csv_url", DEFAULT_CSV);
   const [syncInterval, setSyncInterval] = useStorage("licit_sync_interval", 5);
@@ -465,7 +465,8 @@ export default function ContratosAtivos() {
     <div className="contratos-page">
 
       {/* Painel de fonte de dados */}
-      <div className="contratos-config">
+      {!isViewer && (
+        <div className="contratos-config">
         <div style={{ width: "100%" }}>
           <div className="fonte-tabs">
             <button className={`fonte-tab ${fonte === "link" ? "active" : ""}`} onClick={() => setFonte("link")}>
@@ -610,6 +611,7 @@ export default function ContratosAtivos() {
           )}
         </div>
       </div>
+      )}
 
       {contratos.length > 0 && (
         <>

@@ -15,6 +15,19 @@ if [ ! -f "package.json" ]; then
     exit 1
 fi
 
+if [ -z "${REACT_APP_API_URL:-}" ] && [ -f ".env.production" ]; then
+    set -a
+    . ./.env.production
+    set +a
+fi
+
+if [ -z "${REACT_APP_API_URL:-}" ]; then
+    echo "❌ REACT_APP_API_URL não está definida."
+    echo "   Configure a URL HTTPS pública do backend antes do deploy."
+    echo "   Exemplo: export REACT_APP_API_URL=https://api.seu-site.com"
+    exit 1
+fi
+
 echo "✅ Pasta correta: $SCRIPT_DIR"
 echo ""
 

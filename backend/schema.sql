@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS processes (
   type VARCHAR(100),
   typeColor VARCHAR(50),
   status ENUM('active', 'archived') DEFAULT 'active',
+  due_date DATE NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );

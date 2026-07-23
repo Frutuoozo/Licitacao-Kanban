@@ -12,6 +12,7 @@ import { verifyToken } from './middleware/auth.js';
 import { requireAdmin } from './middleware/admin.js';
 import db from './db.js';
 import { initSocket } from './socket.js';
+import { CORS_ORIGINS } from './config.js';
 
 dotenv.config();
 
@@ -21,7 +22,7 @@ initSocket(httpServer);
 
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+app.use(cors({ origin: CORS_ORIGINS }));
 app.use(express.json());
 
 // Basic health check
@@ -51,6 +52,16 @@ async function runMigrations() {
         await db.query('UPDATE users SET role = ? WHERE id = ?', ['admin', users[0].id]);
       }
       console.log('Migration 001: coluna role adicionada.');
+    }
+
+    // Migration 002: coluna due_date em processes
+    const [dueDateCols] = await db.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'processes' AND COLUMN_NAME = 'due_date'`
+    );
+    if (dueDateCols.length === 0) {
+      await db.query(`ALTER TABLE processes ADD COLUMN due_date DATE NULL`);
+      console.log('Migration 002: coluna due_date adicionada em processes.');
     }
 
     // Migration 003: tabela sectors
@@ -85,6 +96,28 @@ async function runMigrations() {
         )
       `);
       console.log('Migration 004: tabela collaborators criada.');
+    }
+
+    // Migration 005: coluna first_access em users
+    const [firstAccessCols] = await db.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'first_access'`
+    );
+    if (firstAccessCols.length === 0) {
+      await db.query(`ALTER TABLE users ADD COLUMN first_access BOOLEAN NOT NULL DEFAULT TRUE`);
+      await db.query(`UPDATE users SET first_access = FALSE WHERE password_hash != ''`);
+      console.log('Migration 005: coluna first_access adicionada.');
+    }
+
+    // Migration 006: atualizar ENUM role para admin, editor, viewer
+    const [roleType] = await db.query(
+      `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'role'`
+    );
+    if (roleType.length > 0 && !roleType[0].COLUMN_TYPE.includes('editor')) {
+      await db.query(`UPDATE users SET role = 'editor' WHERE role = 'user'`);
+      await db.query(`ALTER TABLE users MODIFY COLUMN role ENUM('admin', 'editor', 'viewer') NOT NULL DEFAULT 'viewer'`);
+      console.log('Migration 006: ENUM role atualizado para admin, editor, viewer.');
     }
   } catch (err) {
     console.error('Erro ao executar migrations:', err);

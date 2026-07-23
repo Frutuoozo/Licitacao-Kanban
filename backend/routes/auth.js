@@ -15,14 +15,20 @@ router.post('/login', async (req, res) => {
     const [users] = await db.query('SELECT * FROM users WHERE username = ?', [username]);
     
     if (users.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ error: 'Usuário não encontrado' });
     }
 
     const user = users[0];
+
+    // Se for o primeiro acesso, retorna flag para o frontend sem validar hash de senha
+    if (user.first_access) {
+      return res.status(200).json({ firstAccess: true, username: user.username });
+    }
+
     const passwordIsValid = await bcrypt.compare(password, user.password_hash);
 
     if (!passwordIsValid) {
-      return res.status(401).json({ error: 'Invalid password' });
+      return res.status(401).json({ error: 'Senha inválida' });
     }
 
     const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET || 'secret-licitacao-123', {
@@ -36,7 +42,7 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Login failed' });
+    res.status(500).json({ error: 'Login falhou' });
   }
 });
 
@@ -69,32 +75,53 @@ router.post('/setup-admin', async (req, res) => {
   }
 });
 
-// POST /register - Allow creating new users
-router.post('/register', async (req, res) => {
+// POST /first-access - Configurar senha no primeiro login
+router.post('/first-access', async (req, res) => {
   const { username, password } = req.body;
-  
+
   if (!username || !password) {
-    return res.status(400).json({ error: 'Provide username and password' });
+    return res.status(400).json({ error: 'Informe o usuário e a nova senha' });
+  }
+
+  // Validação de senha: mínimo 8 caracteres e no mínimo um caractere especial
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'A senha deve conter no mínimo 8 caracteres' });
+  }
+  const specialCharRegex = /[^a-zA-Z0-9]/;
+  if (!specialCharRegex.test(password)) {
+    return res.status(400).json({ error: 'A senha deve conter pelo menos um caractere especial' });
   }
 
   try {
-    const [existing] = await db.query('SELECT id FROM users WHERE username = ?', [username]);
-    if (existing.length > 0) {
-      return res.status(409).json({ error: 'Username already taken' });
+    const [users] = await db.query('SELECT * FROM users WHERE username = ?', [username]);
+    if (users.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const user = users[0];
+    if (!user.first_access) {
+      return res.status(400).json({ error: 'Primeiro acesso já realizado para este usuário' });
     }
 
     const hash = await bcrypt.hash(password, 10);
-    const id = randomUUID();
 
     await db.query(
-      'INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)',
-      [id, username, hash, 'user']
+      'UPDATE users SET password_hash = ?, first_access = FALSE WHERE id = ?',
+      [hash, user.id]
     );
 
-    res.status(201).json({ message: 'User created successfully!' });
+    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET || 'secret-licitacao-123', {
+      expiresIn: 86400 // 24 hours
+    });
+
+    res.status(200).json({
+      id: user.id,
+      username: user.username,
+      accessToken: token
+    });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Failed to register user' });
+    res.status(500).json({ error: 'Erro ao configurar primeiro acesso' });
   }
 });
 

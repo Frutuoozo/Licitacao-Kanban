@@ -15,6 +15,18 @@ function UsersSection({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr]         = useState("");
 
+  // Estados para criação de novo usuário
+  const [showModal, setShowModal]     = useState(false);
+  const [formUsername, setFormUsername] = useState("");
+  const [formRole, setFormRole]         = useState("viewer");
+  const [formErr, setFormErr]           = useState("");
+  const [formLoading, setFormLoading]   = useState(false);
+  const [resetUser, setResetUser]       = useState(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetPasswordConfirm, setResetPasswordConfirm] = useState("");
+  const [resetErr, setResetErr]         = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+
   const load = useCallback(() => {
     setErr(""); setLoading(true);
     fetch(`${API_URL}/api/admin/users`, { headers: { Authorization: `Bearer ${token}` } })
@@ -43,7 +55,7 @@ function UsersSection({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
       .then(r => r.json().then(data => ({ ok: r.ok, data })))
       .then(({ ok, data }) => {
         if (!ok) { setErr(data.error || "Falha ao atualizar"); load(); return; }
-        if (id === currentUserId && role === "user") { onSelfDemoted(); return; }
+        if (id === currentUserId && role !== "admin") { onSelfDemoted(); return; }
         load();
       })
       .catch(() => { setErr("Erro de conexão"); load(); });
@@ -57,13 +69,88 @@ function UsersSection({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
       .catch(() => setErr("Erro de conexão"));
   };
 
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    setResetErr("");
+    if (resetPassword.length < 8) {
+      setResetErr("A senha deve conter no mínimo 8 caracteres");
+      return;
+    }
+    if (!/[^a-zA-Z0-9]/.test(resetPassword)) {
+      setResetErr("A senha deve conter pelo menos um caractere especial");
+      return;
+    }
+    if (resetPassword !== resetPasswordConfirm) {
+      setResetErr("As senhas não coincidem");
+      return;
+    }
+    setResetLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/users/${resetUser.id}/password`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ password: resetPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setResetErr(data.error || "Falha ao redefinir senha");
+        return;
+      }
+      setResetUser(null);
+      setResetPassword("");
+      setResetPasswordConfirm("");
+    } catch {
+      setResetErr("Erro de conexão");
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const handleAddSubmit = async (e) => {
+    e.preventDefault();
+    setFormErr("");
+    if (!formUsername.trim()) {
+      setFormErr("O nome de usuário é obrigatório");
+      return;
+    }
+    setFormLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/users`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ username: formUsername.trim(), role: formRole })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setFormErr(data.error || "Falha ao criar usuário");
+        return;
+      }
+      setShowModal(false);
+      setFormUsername("");
+      setFormRole("viewer");
+      load();
+    } catch {
+      setFormErr("Erro de conexão");
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
   const fmtDate    = d => { try { return new Date(d).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }); } catch { return "—"; } };
   const adminCount = users.filter(u => u.role === "admin").length;
 
   return (
     <div className="admin-section">
-      <h2 className="admin-section-title">Usuários</h2>
-      <p className="admin-lead">Gerencie contas: papel (usuário ou administrador) e exclusão de cadastros.</p>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+        <h2 className="admin-section-title" style={{ marginBottom: 0 }}>Usuários</h2>
+        <button className="btn-primary" onClick={() => { setShowModal(true); setFormUsername(""); setFormRole("viewer"); setFormErr(""); }} style={{ gap: 5 }}>
+          <IconPlus /> Adicionar Usuário
+        </button>
+      </div>
+      <p className="admin-lead">Gerencie contas: papel (visualizar, editor ou administrador) e exclusão de cadastros.</p>
       {err && <div className="profile-err admin-alert">{err}</div>}
       {loading ? (
         <div className="admin-muted">Carregando...</div>
@@ -83,12 +170,17 @@ function UsersSection({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
                       <select className="admin-select doc-input" value={u.role}
                         onChange={e => patchRole(u.id, e.target.value)} disabled={onlyAdmin}
                         title={onlyAdmin ? "É necessário haver outro administrador antes de rebaixar este perfil" : ""}>
-                        <option value="user">Usuário</option>
+                        <option value="viewer">Visualizar</option>
+                        <option value="editor">Editor</option>
                         <option value="admin">Administrador</option>
                       </select>
                     </td>
                     <td className="admin-muted">{fmtDate(u.created_at)}</td>
                     <td className="admin-td-actions">
+                      <button type="button" className="icon-btn" title="Redefinir senha"
+                        onClick={() => { setResetUser(u); setResetPassword(""); setResetPasswordConfirm(""); setResetErr(""); }}>
+                        <IconEdit />
+                      </button>
                       <button type="button" className="icon-btn danger" title="Remover usuário"
                         disabled={u.id === currentUserId} onClick={() => deleteUser(u.id)}>
                         <IconTrash />
@@ -99,6 +191,62 @@ function UsersSection({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {showModal && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
+          <div className="modal sm-modal">
+            <div className="modal-header">
+              <h2>Novo Usuário</h2>
+              <button type="button" className="icon-btn" onClick={() => setShowModal(false)} aria-label="Fechar"><IconClose /></button>
+            </div>
+            <form className="modal-body col" onSubmit={handleAddSubmit}>
+              <label className="profile-form-label">Nome de Usuário (Nick) *</label>
+              <input className="doc-input" type="text" value={formUsername} onChange={e => setFormUsername(e.target.value)} required placeholder="Ex: joao_silva" autoFocus />
+              
+              <label className="profile-form-label" style={{ marginTop: 12 }}>Papel *</label>
+              <select className="doc-input" value={formRole} onChange={e => setFormRole(e.target.value)} required>
+                <option value="viewer">Visualizar</option>
+                <option value="editor">Editor</option>
+                <option value="admin">Administrador</option>
+              </select>
+              
+              {formErr && <div className="profile-err">{formErr}</div>}
+              <div className="modal-footer profile-modal-footer">
+                <button type="button" className="btn-cancel-lg" onClick={() => setShowModal(false)}>Cancelar</button>
+                <button type="submit" className="btn-confirm" disabled={formLoading} style={{ padding: "6px 18px" }}>
+                  {formLoading ? "Criando..." : "Adicionar"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {resetUser && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setResetUser(null)}>
+          <div className="modal sm-modal">
+            <div className="modal-header">
+              <h2>Redefinir senha</h2>
+              <button type="button" className="icon-btn" onClick={() => setResetUser(null)} aria-label="Fechar"><IconClose /></button>
+            </div>
+            <form className="modal-body col" onSubmit={handleResetPassword}>
+              <p className="admin-muted" style={{ lineHeight: 1.5 }}>Defina uma nova senha para <strong>{resetUser.username}</strong>.</p>
+              <label className="profile-form-label">Nova senha *</label>
+              <input className="doc-input" type="password" value={resetPassword} onChange={e => setResetPassword(e.target.value)} required autoFocus />
+              <label className="profile-form-label" style={{ marginTop: 12 }}>Confirmar nova senha *</label>
+              <input className="doc-input" type="password" value={resetPasswordConfirm} onChange={e => setResetPasswordConfirm(e.target.value)} required />
+              <p className="admin-muted" style={{ fontSize: "0.75rem", lineHeight: 1.4 }}>Use no mínimo 8 caracteres, incluindo um caractere especial.</p>
+              {resetErr && <div className="profile-err">{resetErr}</div>}
+              <div className="modal-footer profile-modal-footer">
+                <button type="button" className="btn-cancel-lg" onClick={() => setResetUser(null)}>Cancelar</button>
+                <button type="submit" className="btn-confirm" disabled={resetLoading} style={{ padding: "6px 18px" }}>
+                  {resetLoading ? "Salvando..." : "Redefinir senha"}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

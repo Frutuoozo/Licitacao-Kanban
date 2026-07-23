@@ -1,11 +1,12 @@
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
+import { CORS_ORIGINS } from './config.js';
 
 let io;
 
 export function initSocket(httpServer) {
   io = new Server(httpServer, {
-    cors: { origin: '*' }
+    cors: { origin: CORS_ORIGINS }
   });
 
   io.use((socket, next) => {

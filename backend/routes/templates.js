@@ -1,6 +1,8 @@
 import express from 'express';
 import db from '../db.js';
 import { getIO } from '../socket.js';
+import crypto from 'crypto';
+import { requireAdmin } from '../middleware/admin.js';
 
 const router = express.Router();
 
@@ -44,7 +46,7 @@ router.get('/', async (req, res) => {
 });
 
 // PUT — body: { "Tipo": { items: [...], color: "#hex", order: n }, ... } ou legado { "Tipo": [...] }
-router.put('/', async (req, res) => {
+router.put('/', requireAdmin, async (req, res) => {
   const templates = req.body;
 
   const connection = await db.getConnection();
@@ -78,6 +80,76 @@ router.put('/', async (req, res) => {
         'INSERT INTO templates (name, items, sort_order, type_color) VALUES ?',
         [values]
       );
+
+      // Sincronizar processos ativos com os novos templates
+      const [activeProcesses] = await connection.query(
+        "SELECT id, type, typeColor FROM processes WHERE status = 'active'"
+      );
+
+      for (const process of activeProcesses) {
+        if (!process.type || !templates[process.type]) continue;
+
+        const tpl = templates[process.type];
+        let tplItems = [];
+        let tplColor = null;
+
+        if (Array.isArray(tpl)) {
+          tplItems = tpl;
+        } else if (tpl && typeof tpl === 'object') {
+          tplItems = tpl.items || [];
+          tplColor = tpl.color || null;
+        }
+
+        // 1. Atualizar a cor do processo se necessário
+        if (process.typeColor !== tplColor) {
+          await connection.query(
+            "UPDATE processes SET typeColor = ? WHERE id = ?",
+            [tplColor, process.id]
+          );
+        }
+
+        // 2. Atualizar os itens do processo preservando o status 'is_done' por nome do item
+        const [currentItems] = await connection.query(
+          "SELECT name, is_done FROM process_items WHERE process_id = ?",
+          [process.id]
+        );
+
+        const doneMap = {};
+        currentItems.forEach(item => {
+          if (item.is_done) {
+            doneMap[item.name] = true;
+          }
+        });
+
+        const newProcessItems = tplItems.map((item, index) => {
+          let itemType = 'doc';
+          let itemName = '';
+          let itemBgColor = null;
+
+          if (typeof item === 'string') {
+            itemName = item;
+          } else if (item && typeof item === 'object') {
+            itemType = item.type || 'doc';
+            itemName = item.name || '';
+            itemBgColor = item.bgColor || null;
+          }
+
+          const isDone = doneMap[itemName] ? 1 : 0;
+          return [crypto.randomUUID(), process.id, itemType, itemName, isDone, itemBgColor, index];
+        });
+
+        await connection.query(
+          "DELETE FROM process_items WHERE process_id = ?",
+          [process.id]
+        );
+
+        if (newProcessItems.length > 0) {
+          await connection.query(
+            "INSERT INTO process_items (id, process_id, type, name, is_done, bg_color, order_index) VALUES ?",
+            [newProcessItems]
+          );
+        }
+      }
     }
 
     await connection.commit();

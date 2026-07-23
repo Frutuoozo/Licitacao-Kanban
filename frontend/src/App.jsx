@@ -2,11 +2,11 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { io } from "socket.io-client";
 import {
   IconClose, IconPlus, IconUser, IconShield,
-  IconEye, IconEyeOff, IconTrash, IconClipboard, IconFileText, IconUsers,
+  IconEye, IconEyeOff, IconClipboard, IconFileText, IconUsers,
 } from "./icons";
 import {
   useStorage, DEFAULT_TEMPLATES, normalizeTemplatesFromApi,
-  orderedTemplateTypeNames, tmplItems, normalizeDocs, generateId,
+  orderedTemplateTypeNames, normalizeDocs,
 } from "./utils";
 import ProcessosPage      from "./pages/ProcessosPage";
 import ContratosAtivos    from "./pages/ContratosPage";
@@ -179,7 +179,6 @@ function ProfileMenu({ token, onLogout }) {
 // ── Login ─────────────────────────────────────────────────────────────────────
 
 function Login({ onLogin }) {
-  const [isRegistering, setIsRegistering] = useState(false);
   const [username, setUsername]           = useState("");
   const [password, setPassword]           = useState("");
   const [showPassword, setShowPassword]   = useState(false);
@@ -187,24 +186,72 @@ function Login({ onLogin }) {
   const [successMsg, setSuccessMsg]       = useState("");
   const [loading, setLoading]             = useState(false);
 
-  const switchMode = (reg) => { setIsRegistering(reg); setError(""); setSuccessMsg(""); setShowPassword(false); };
+  // Estados de primeiro acesso
+  const [isFirstAccess, setIsFirstAccess] = useState(false);
+  const [newPassword, setNewPassword]     = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setLoading(true); setError(""); setSuccessMsg("");
+    const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
+
     try {
-      const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
-      const res  = await fetch(`${API_URL}${isRegistering ? "/api/auth/register" : "/api/auth/login"}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) });
-      const data = await res.json();
-      if (res.ok) {
-        if (isRegistering) { setSuccessMsg("Cadastro realizado! Faça o login."); setIsRegistering(false); setPassword(""); }
-        else {
-          try { sessionStorage.setItem(LICIT_SESS_USER, username); sessionStorage.setItem(LICIT_SESS_PASS, password); } catch { /* ignore */ }
+      if (isFirstAccess) {
+        // Validações locais da senha
+        if (newPassword.length < 8) {
+          setError("A nova senha deve ter no mínimo 8 caracteres");
+          setLoading(false);
+          return;
+        }
+        const specialCharRegex = /[^a-zA-Z0-9]/;
+        if (!specialCharRegex.test(newPassword)) {
+          setError("A nova senha deve conter pelo menos um caractere especial");
+          setLoading(false);
+          return;
+        }
+        if (newPassword !== confirmPassword) {
+          setError("As senhas não coincidem");
+          setLoading(false);
+          return;
+        }
+
+        const res = await fetch(`${API_URL}/api/auth/first-access`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password: newPassword })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          try { sessionStorage.setItem(LICIT_SESS_USER, username); sessionStorage.setItem(LICIT_SESS_PASS, newPassword); } catch { /* ignore */ }
           onLogin(data.accessToken);
+        } else {
+          setError(data.error || "Erro ao configurar primeiro acesso");
         }
       } else {
-        setError(data.error || (isRegistering ? "Erro ao cadastrar" : "Login falhou"));
+        const res = await fetch(`${API_URL}/api/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          if (data.firstAccess) {
+            setIsFirstAccess(true);
+            setPassword("");
+            setSuccessMsg("Primeiro acesso detectado! Por favor, configure sua nova senha.");
+          } else {
+            try { sessionStorage.setItem(LICIT_SESS_USER, username); sessionStorage.setItem(LICIT_SESS_PASS, password); } catch { /* ignore */ }
+            onLogin(data.accessToken);
+          }
+        } else {
+          setError(data.error || "Login falhou");
+        }
       }
-    } catch { setError("Erro ao conectar no servidor"); } finally { setLoading(false); }
+    } catch { 
+      setError("Erro ao conectar no servidor"); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   return (
@@ -218,33 +265,54 @@ function Login({ onLogin }) {
           <div className="ls-logo">Licit<span>Kanban</span></div>
           <p className="ls-tagline">Gestão inteligente de licitações</p>
         </div>
-        <h2 className="ls-title">{isRegistering ? "Criar conta" : "Bem-vindo de volta"}</h2>
-        <p className="ls-subtitle">{isRegistering ? "Preencha os dados para se registrar" : "Entre com suas credenciais"}</p>
-        <div className="ls-tabs">
-          <button type="button" className={`ls-tab${!isRegistering ? " ls-tab-active" : ""}`} onClick={() => switchMode(false)}>Entrar</button>
-          <button type="button" className={`ls-tab${ isRegistering ? " ls-tab-active" : ""}`} onClick={() => switchMode(true)}>Cadastrar</button>
-        </div>
+        <h2 className="ls-title">{isFirstAccess ? "Primeiro Acesso" : "Bem-vindo de volta"}</h2>
+        <p className="ls-subtitle">{isFirstAccess ? "Defina sua nova senha para continuar" : "Entre com suas credenciais"}</p>
+        
         {successMsg && (
           <div className="ls-success">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
             {successMsg}
           </div>
         )}
+
         <form onSubmit={handleSubmit} className="ls-form">
-          <div className="ls-field-wrap">
-            <span className="ls-field-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg></span>
-            <input className="ls-input" type="text" placeholder="Usuário" value={username} onChange={e => setUsername(e.target.value)} required autoComplete="username"/>
-          </div>
-          <div className="ls-field-wrap">
-            <span className="ls-field-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
-            <input className="ls-input" style={{ paddingRight: 42 }} type={showPassword ? "text" : "password"} placeholder="Senha" value={password} onChange={e => setPassword(e.target.value)} autoComplete={isRegistering ? "new-password" : "current-password"} required/>
-            <button type="button" className="ls-eye-btn" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}>
-              {showPassword ? <IconEyeOff /> : <IconEye />}
-            </button>
-          </div>
+          {isFirstAccess ? (
+            <>
+              <div className="ls-field-wrap">
+                <span className="ls-field-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+                <input className="ls-input" style={{ paddingRight: 42 }} type={showPassword ? "text" : "password"} placeholder="Nova Senha" value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password" required/>
+                <button type="button" className="ls-eye-btn" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}>
+                  {showPassword ? <IconEyeOff /> : <IconEye />}
+                </button>
+              </div>
+              <div className="ls-field-wrap">
+                <span className="ls-field-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+                <input className="ls-input" style={{ paddingRight: 42 }} type={showPassword ? "text" : "password"} placeholder="Confirmar Nova Senha" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} autoComplete="new-password" required/>
+              </div>
+              <p style={{ fontSize: "0.75rem", color: "var(--muted)", margin: "0 0 6px", lineHeight: "1.4" }}>
+                Requisitos da senha:<br />
+                • Mínimo de 8 caracteres<br />
+                • Pelo menos um caractere especial (ex: !, @, #, $, etc)
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="ls-field-wrap">
+                <span className="ls-field-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg></span>
+                <input className="ls-input" type="text" placeholder="Usuário" value={username} onChange={e => setUsername(e.target.value)} required autoComplete="username"/>
+              </div>
+              <div className="ls-field-wrap">
+                <span className="ls-field-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+                <input className="ls-input" style={{ paddingRight: 42 }} type={showPassword ? "text" : "password"} placeholder="Senha (opcional no primeiro acesso)" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
+                <button type="button" className="ls-eye-btn" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}>
+                  {showPassword ? <IconEyeOff /> : <IconEye />}
+                </button>
+              </div>
+            </>
+          )}
           {error && <p className="ls-error">{error}</p>}
           <button type="submit" className="ls-submit" disabled={loading}>
-            {loading ? "Aguarde..." : (isRegistering ? "Criar conta" : "Entrar")}
+            {loading ? "Aguarde..." : (isFirstAccess ? "Definir Senha e Entrar" : "Entrar")}
             {!loading && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>}
           </button>
         </form>
@@ -333,16 +401,23 @@ export default function App() {
     if (!token) return;
     const socket = io(process.env.REACT_APP_API_URL || "http://localhost:3001", { auth: { token } });
     socket.on('process:added',        (p)           => { if (p.status === 'active') setColumns(prev => prev.find(c => c.id === p.id) ? prev : [...prev, p]); else setArchived(prev => prev.find(c => c.id === p.id) ? prev : [...prev, p]); });
-    socket.on('process:updated',      ({ id, title, processNumber, setor }) => { setColumns(p => p.map(c => c.id === id ? { ...c, title, processNumber, setor } : c)); setArchived(p => p.map(c => c.id === id ? { ...c, title, processNumber, setor } : c)); });
+    socket.on('process:updated',      ({ id, title, processNumber, setor, dueDate }) => { setColumns(p => p.map(c => c.id === id ? { ...c, title, processNumber, setor, dueDate } : c)); setArchived(p => p.map(c => c.id === id ? { ...c, title, processNumber, setor, dueDate } : c)); });
     socket.on('process:deleted',      ({ id })       => { setColumns(p => p.filter(c => c.id !== id)); setArchived(p => p.filter(c => c.id !== id)); });
     socket.on('process:items_updated',({ id, docs }) => { setColumns(p => p.map(c => c.id === id ? { ...c, docs } : c)); setArchived(p => p.map(c => c.id === id ? { ...c, docs } : c)); });
     socket.on('process:status_changed',({ id, status }) => {
       if (status === 'archived') setColumns(p => { const col = p.find(c => c.id === id); if (col) setArchived(a => a.find(c => c.id === id) ? a : [...a, { ...col, archivedAt: new Date().toISOString() }]); return p.filter(c => c.id !== id); });
       else                       setArchived(p => { const col = p.find(c => c.id === id); if (col) setColumns(a => a.find(c => c.id === id) ? a : [...a, col]); return p.filter(c => c.id !== id); });
     });
-    socket.on('templates:updated', (data) => setTemplates(normalizeTemplatesFromApi(data)));
+    socket.on('templates:updated', (data) => {
+      setTemplates(normalizeTemplatesFromApi(data));
+      const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
+      fetch(`${API_URL}/api/processes`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => { if (res.status === 401 || res.status === 403) throw new Error('Unauthorized'); return res.json(); })
+        .then(data => { setColumns(data.filter(p => p.status === 'active')); setArchived(data.filter(p => p.status === 'archived')); })
+        .catch(err => { if (err.message === 'Unauthorized') handleLogout(); });
+    });
     return () => socket.disconnect();
-  }, [token]);
+  }, [token, handleLogout]);
 
   // Seções da sidebar
   const SECTIONS = useMemo(() => {
@@ -368,29 +443,32 @@ export default function App() {
   const addColumn    = (col)         => { setColumns(p => [...p, col]); apiFetch('/api/processes', 'POST', col); };
   const deleteColumn = (id)          => { setColumns(p => p.filter(c => c.id !== id)); apiFetch(`/api/processes/${id}`, 'DELETE'); };
   const renameColumn = (id, title)   => {
-    setColumns(p => { const next = p.map(c => c.id === id ? { ...c, title } : c); const col = next.find(c => c.id === id); if (col) apiFetch(`/api/processes/${id}`, 'PUT', { title: col.title, processNumber: col.processNumber, setor: col.setor }); return next; });
+    setColumns(p => { const next = p.map(c => c.id === id ? { ...c, title } : c); const col = next.find(c => c.id === id); if (col) apiFetch(`/api/processes/${id}`, 'PUT', { title: col.title, processNumber: col.processNumber, setor: col.setor, dueDate: col.dueDate }); return next; });
   };
   const updateDocs = (colId, docs) => {
     setColumns(p => { const next = p.map(c => c.id === colId ? { ...c, docs } : c); apiFetch(`/api/processes/${colId}/items`, 'PUT', { docs }); return next; });
   };
   const archiveColumn   = (id) => { const col = columns.find(c => c.id === id); if (col) { setArchived(p => [...p, { ...col, archivedAt: new Date().toISOString() }]); setColumns(p => p.filter(c => c.id !== id)); apiFetch(`/api/processes/${id}/status`, 'PUT', { status: 'archived' }); } };
-  const unarchiveColumn = (id) => { const col = archived.find(c => c.id === id); if (col) { setColumns(p => [...p, col]); setArchived(p => p.filter(c => c.id !== id)); apiFetch(`/api/processes/${id}/status`, 'PUT', { status: 'active' }); } };
+  const unarchiveColumn = (id) => {
+    const col = archived.find(c => c.id === id);
+    if (col) {
+      const docs = normalizeDocs(col.docs || []);
+      const lastDocIndex = docs.findLastIndex(doc => doc.type === 'doc');
+      const restoredDocs = lastDocIndex === -1
+        ? docs
+        : docs.map((doc, index) => index === lastDocIndex ? { ...doc, done: false } : doc);
+      const restoredColumn = { ...col, docs: restoredDocs };
+      setColumns(p => [...p, restoredColumn]);
+      setArchived(p => p.filter(c => c.id !== id));
+      apiFetch(`/api/processes/${id}/items`, 'PUT', { docs: restoredDocs });
+      apiFetch(`/api/processes/${id}/status`, 'PUT', { status: 'active' });
+    }
+  };
   const deleteArchived  = (id) => { setArchived(p => p.filter(c => c.id !== id)); apiFetch(`/api/processes/${id}`, 'DELETE'); };
 
   const saveTemplates = (newTemplates) => {
-    const changedTypes = Object.keys(newTemplates).filter(type => JSON.stringify(tmplItems(templates[type])) !== JSON.stringify(tmplItems(newTemplates[type])));
     setTemplates(newTemplates);
     apiFetch('/api/templates', 'PUT', newTemplates);
-    if (changedTypes.length === 0) return;
-    setColumns(prevCols => prevCols.map(col => {
-      if (!changedTypes.includes(col.type)) return col;
-      const newItems  = tmplItems(newTemplates[col.type]);
-      const doneByName = {};
-      normalizeDocs(col.docs || []).forEach(d => { if (d.done) doneByName[d.name] = true; });
-      const updatedDocs = newItems.map(item => ({ id: generateId(), type: item.type || 'doc', name: item.name, bgColor: item.bgColor || null, done: doneByName[item.name] || false }));
-      apiFetch(`/api/processes/${col.id}/items`, 'PUT', { docs: updatedDocs });
-      return { ...col, docs: updatedDocs };
-    }));
   };
 
   const getRegularDocs = (c) => normalizeDocs(c.docs || []).filter(d => d.type === "doc");
@@ -915,7 +993,7 @@ export default function App() {
               <span className="header-section-name">{SECTIONS.find(s => s.id === activeSection)?.label}</span>
 
               <div className="header-actions">
-                {activeSection === "processos" && (
+                {activeSection === "processos" && sessionUser?.role !== "viewer" && (
                   <button className="btn-primary" onClick={() => setShowNewProcess(true)}><IconPlus /><span className="btn-label"> Novo Processo</span></button>
                 )}
                 <ProfileMenu token={token} onLogout={handleLogout} />
@@ -923,7 +1001,7 @@ export default function App() {
             </header>
 
             {activeSection === "contratos" ? (
-              <ContratosAtivos />
+              <ContratosAtivos isViewer={sessionUser?.role === "viewer"} />
             ) : activeSection === "colaboradores" ? (
               <ColaboradoresPage token={token} isAdmin={sessionUser?.role === "admin"} onUnauthorized={handleLogout} />
             ) : activeSection === "admin" ? (
@@ -937,6 +1015,7 @@ export default function App() {
                 deleteColumn={deleteColumn} renameColumn={renameColumn} archiveColumn={archiveColumn}
                 unarchiveColumn={unarchiveColumn} deleteArchived={deleteArchived}
                 sectors={sectors}
+                isViewer={sessionUser?.role === "viewer"}
               />
             )}
           </div>
