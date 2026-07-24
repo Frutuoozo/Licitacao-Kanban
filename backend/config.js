@@ -2,15 +2,23 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const configuredOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000,http://127.0.0.1:3000')
+const rawOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000,http://127.0.0.1:3000')
   .split(',')
   .map(origin => origin.trim())
   .filter(Boolean);
 
-// Aceitar GitHub Pages (case-sensitive)
-const githubPagesOrigin = 'https://Frutuoozo.github.io';
-if (!configuredOrigins.includes(githubPagesOrigin)) {
-  configuredOrigins.push(githubPagesOrigin);
+// GitHub Pages — normalizado para lowercase (browsers enviam Origin em lowercase)
+rawOrigins.push('https://frutuoozo.github.io');
+
+// Remove duplicatas case-insensitive
+const seen = new Set();
+const configuredOrigins = [];
+for (const origin of rawOrigins) {
+  const key = origin.toLowerCase();
+  if (!seen.has(key)) {
+    seen.add(key);
+    configuredOrigins.push(origin);
+  }
 }
 
-export const CORS_ORIGINS = configuredOrigins;
+export { configuredOrigins as CORS_ORIGINS };
