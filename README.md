@@ -1,6 +1,6 @@
-** 📋 Sistema Kanban de Licitações
+# 📋 Sistema Kanban de Licitações
 
-https://github.com/FrutuoozoSistema completo para gerenciamento de processos licitatórios**, com organização visual em quadro Kanban, controle de modalidades, prazos e documentos.
+**O sistema completo para gerenciamento de processos licitatórios**, com organização visual em quadro Kanban, controle de modalidades, prazos e documentos.
 
 🌐 **Site:** [LicitKanban](https://Frutuoozo.github.io/Licitacao-Kanban)   
 🔧 **API/Backend:** Render
