@@ -472,8 +472,6 @@ export default function App() {
   };
 
   const getRegularDocs = (c) => normalizeDocs(c.docs || []).filter(d => d.type === "doc");
-  const totalDocs      = columns.reduce((a, c) => a + getRegularDocs(c).length, 0);
-  const totalDone      = columns.reduce((a, c) => a + getRegularDocs(c).filter(d => d.done).length, 0);
 
   const processTypeOrder = useMemo(() => orderedTemplateTypeNames(templates), [templates]);
   const sortedColumns    = useMemo(() => {

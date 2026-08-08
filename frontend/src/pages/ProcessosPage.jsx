@@ -4,8 +4,7 @@ import {
   IconUnarchive, IconChevron, IconFlag,
 } from "../icons";
 import {
-  TYPE_COLORS, CARD_COLORS, PHASE_COLORS,
-  normalizeTemplatesFromApi, orderedTemplateTypeNames,
+  PHASE_COLORS, orderedTemplateTypeNames,
   tmplItems, tmplColor, generateId,
   normalizeDocs, groupByPhase,
 } from "../utils";
@@ -112,7 +111,7 @@ function ProcessColumn({ column, onUpdateDocs, onDeleteColumn, onRenameColumn, o
       }, 900);
       return () => clearTimeout(t);
     }
-  }, [isComplete, archiving, column.id, isViewer]);
+  }, [isComplete, archiving, column.id, isViewer, onArchive]);
 
   const saveTitle  = () => { if (titleVal.trim()) onRenameColumn(column.id, titleVal.trim()); setEditingTitle(false); };
   const submitItem = () => {

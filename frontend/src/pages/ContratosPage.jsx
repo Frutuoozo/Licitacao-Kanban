@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { IconClose, IconLink, IconUpload } from "../icons";
 import { useStorage } from "../utils";
 
@@ -144,6 +144,14 @@ const SYNC_INTERVALS = [
   { label: "10 min", value: 10 },
   { label: "30 min", value: 30 },
   { label: "Manual", value: 0  },
+];
+
+const CORS_PROXIES = [
+  (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+  (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+  (u) => `https://cors.eu.org/${u}`,
+  (u) => u,
 ];
 
 // ── Modal de detalhe ──────────────────────────────────────────────────────────
@@ -302,24 +310,16 @@ export default function ContratosAtivos({ isViewer }) {
   const syncTimerRef  = useRef(null);
   const countdownRef  = useRef(null);
 
-  const loadSheetJS = () => new Promise((resolve, reject) => {
+  const loadSheetJS = useCallback(() => new Promise((resolve, reject) => {
     if (window.XLSX) return resolve(window.XLSX);
     const script = document.createElement("script");
     script.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
     script.onload  = () => resolve(window.XLSX);
     script.onerror = () => reject(new Error("Falha ao carregar a biblioteca de Excel."));
     document.head.appendChild(script);
-  });
+  }), []);
 
-  const CORS_PROXIES = [
-    (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-    (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-    (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-    (u) => `https://cors.eu.org/${u}`,
-    (u) => u,
-  ];
-
-  const fetchWithFallback = async (rawUrl, asArrayBuffer = false) => {
+  const fetchWithFallback = useCallback(async (rawUrl, asArrayBuffer = false) => {
     const cacheBust = rawUrl + (rawUrl.includes("?") ? "&" : "?") + "_t=" + Date.now();
     let lastError = null;
     for (const buildProxy of CORS_PROXIES) {
@@ -331,9 +331,9 @@ export default function ContratosAtivos({ isViewer }) {
       } catch (e) { lastError = e; continue; }
     }
     throw lastError || new Error("Todos os proxies falharam.");
-  };
+  }, []);
 
-  const fetchCSV = async (url, silent = false) => {
+  const fetchCSV = useCallback(async (url, silent = false) => {
     if (!silent) setLoading(true); else setSyncing(true);
     setError("");
     const detected = typeof url === "string" ? toGSheetsCsvUrl(url) : { url, type: "sheets-csv" };
@@ -365,9 +365,9 @@ export default function ContratosAtivos({ isViewer }) {
       setLoading(false);
       setSyncing(false);
     }
-  };
+  }, [fetchWithFallback]);
 
-  const scheduleSync = (url, intervalMin) => {
+  const scheduleSync = useCallback((url, intervalMin) => {
     if (syncTimerRef.current)  clearInterval(syncTimerRef.current);
     if (countdownRef.current)  clearInterval(countdownRef.current);
     if (!url || intervalMin === 0) { setNextSyncIn(null); return; }
@@ -380,7 +380,7 @@ export default function ContratosAtivos({ isViewer }) {
     }, 1000);
     syncTimerRef.current = setInterval(() => { remaining = ms; fetchCSV(url, true); }, ms);
     setNextSyncIn(Math.ceil(ms / 1000));
-  };
+  }, [fetchCSV]);
 
   useEffect(() => {
     if (csvUrl && fonte === "link") { fetchCSV(csvUrl); scheduleSync(csvUrl, syncInterval); }
@@ -388,7 +388,7 @@ export default function ContratosAtivos({ isViewer }) {
       if (syncTimerRef.current) clearInterval(syncTimerRef.current);
       if (countdownRef.current) clearInterval(countdownRef.current);
     };
-  }, []);
+  }, [csvUrl, fonte, fetchCSV, scheduleSync, syncInterval]);
 
   useEffect(() => {
     if (csvUrl && fonte === "link") scheduleSync(csvUrl, syncInterval);
@@ -397,7 +397,7 @@ export default function ContratosAtivos({ isViewer }) {
       if (countdownRef.current) clearInterval(countdownRef.current);
       setNextSyncIn(null);
     }
-  }, [syncInterval, csvUrl, fonte]);
+  }, [csvUrl, fonte, scheduleSync, syncInterval]);
 
   const formatCountdown = (secs) => {
     if (secs === null) return null;
