@@ -1,16 +1,16 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import mammoth from "mammoth";
-import { IconTrash, IconEdit, IconClose, IconPlus, IconPalette, IconFlag, IconUsers } from "../icons";
-import {
-  CARD_COLORS, PHASE_COLORS,
-  normalizeTemplatesFromApi, orderedTemplateTypeNames,
-} from "../utils";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { IconTrash, IconEdit, IconClose, IconPlus } from "../icons";
+import { authFetch } from "../authFetch";
+import { DEFAULT_SETTINGS, useAppSettings } from "../appSettings";
+import "./AdminPage.css";
+import ModelsManager from "./ModelsManager";
 
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
 
 // ── Seção Usuários ────────────────────────────────────────────────────────────
 
-function UsersSection({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
+function UsersSection({ currentUserId, onUnauthorized, onSelfDemoted }) {
+  const { settings: { confirmBeforeDelete: confirmDelete } } = useAppSettings();
   const [users, setUsers]     = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr]         = useState("");
@@ -21,6 +21,7 @@ function UsersSection({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
   const [formRole, setFormRole]         = useState("viewer");
   const [formErr, setFormErr]           = useState("");
   const [formLoading, setFormLoading]   = useState(false);
+  const [createdCredential, setCreatedCredential] = useState(null);
   const [resetUser, setResetUser]       = useState(null);
   const [resetPassword, setResetPassword] = useState("");
   const [resetPasswordConfirm, setResetPasswordConfirm] = useState("");
@@ -29,7 +30,7 @@ function UsersSection({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
 
   const load = useCallback(() => {
     setErr(""); setLoading(true);
-    fetch(`${API_URL}/api/admin/users`, { headers: { Authorization: `Bearer ${token}` } })
+    authFetch(`${API_URL}/api/admin/users`)
       .then(r => {
         if (r.status === 401) throw new Error("401");
         if (r.status === 403) { setErr("Sem permissão para acessar o painel."); setUsers([]); return null; }
@@ -42,14 +43,14 @@ function UsersSection({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
         else if (e.message !== "fail") setErr("Não foi possível carregar a lista.");
       })
       .finally(() => setLoading(false));
-  }, [token, onUnauthorized]);
+  }, [onUnauthorized]);
 
   useEffect(() => { load(); }, [load]);
 
   const patchRole = (id, role) => {
-    fetch(`${API_URL}/api/admin/users/${id}`, {
+    authFetch(`${API_URL}/api/admin/users/${id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role }),
     })
       .then(r => r.json().then(data => ({ ok: r.ok, data })))
@@ -62,8 +63,8 @@ function UsersSection({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
   };
 
   const deleteUser = (id) => {
-    if (!window.confirm("Remover este usuário permanentemente?")) return;
-    fetch(`${API_URL}/api/admin/users/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } })
+    if (confirmDelete && !window.confirm("Remover este usuário permanentemente?")) return;
+    authFetch(`${API_URL}/api/admin/users/${id}`, { method: "DELETE" })
       .then(r => r.json().then(data => ({ ok: r.ok, data })))
       .then(({ ok, data }) => { if (!ok) { setErr(data.error || "Falha ao remover"); return; } load(); })
       .catch(() => setErr("Erro de conexão"));
@@ -86,9 +87,9 @@ function UsersSection({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
     }
     setResetLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/users/${resetUser.id}/password`, {
+      const res = await authFetch(`${API_URL}/api/admin/users/${resetUser.id}/password`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password: resetPassword }),
       });
       const data = await res.json();
@@ -115,12 +116,9 @@ function UsersSection({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
     }
     setFormLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/users`, {
+      const res = await authFetch(`${API_URL}/api/admin/users`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: formUsername.trim(), role: formRole })
       });
       const data = await res.json();
@@ -128,7 +126,7 @@ function UsersSection({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
         setFormErr(data.error || "Falha ao criar usuário");
         return;
       }
-      setShowModal(false);
+      setCreatedCredential({ username: data.username, temporaryPassword: data.temporaryPassword });
       setFormUsername("");
       setFormRole("viewer");
       load();
@@ -146,14 +144,18 @@ function UsersSection({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
     <div className="admin-section">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
         <h2 className="admin-section-title" style={{ marginBottom: 0 }}>Usuários</h2>
-        <button className="btn-primary" onClick={() => { setShowModal(true); setFormUsername(""); setFormRole("viewer"); setFormErr(""); }} style={{ gap: 5 }}>
+        <button className="btn-primary" onClick={() => { setShowModal(true); setFormUsername(""); setFormRole("viewer"); setFormErr(""); setCreatedCredential(null); }} style={{ gap: 5 }}>
           <IconPlus /> Adicionar Usuário
         </button>
       </div>
       <p className="admin-lead">Gerencie contas: papel (visualizar, editor ou administrador) e exclusão de cadastros.</p>
       {err && <div className="profile-err admin-alert">{err}</div>}
       {loading ? (
-        <div className="admin-muted">Carregando...</div>
+        <div className="empty-board admin-empty" style={{ padding: "36px 20px" }}>
+          <h2>Carregando usuários</h2>
+          <p>Estamos buscando as contas e permissões para atualizar a tabela.</p>
+          <div className="admin-muted">Isso leva só um instante.</div>
+        </div>
       ) : (
         <div className="admin-table-wrap">
           <table className="admin-table">
@@ -202,6 +204,20 @@ function UsersSection({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
               <button type="button" className="icon-btn" onClick={() => setShowModal(false)} aria-label="Fechar"><IconClose /></button>
             </div>
             <form className="modal-body col" onSubmit={handleAddSubmit}>
+              {createdCredential ? (
+                <>
+                  <div className="perfil-success" style={{ display: "block", lineHeight: 1.6 }}>
+                    <strong>Usuário criado.</strong><br />
+                    Usuário: <code>{createdCredential.username}</code><br />
+                    Senha temporária: <code>{createdCredential.temporaryPassword}</code>
+                  </div>
+                  <p className="admin-muted">Copie e envie essa senha por um canal seguro. Ela não será exibida novamente e deverá ser trocada no primeiro acesso.</p>
+                  <div className="modal-footer profile-modal-footer">
+                    <button type="button" className="btn-confirm" onClick={() => setShowModal(false)}>Concluir</button>
+                  </div>
+                </>
+              ) : (
+                <>
               <label className="profile-form-label">Nome de Usuário (Nick) *</label>
               <input className="doc-input" type="text" value={formUsername} onChange={e => setFormUsername(e.target.value)} required placeholder="Ex: joao_silva" autoFocus />
               
@@ -219,6 +235,8 @@ function UsersSection({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
                   {formLoading ? "Criando..." : "Adicionar"}
                 </button>
               </div>
+                </>
+              )}
             </form>
           </div>
         </div>
@@ -228,21 +246,21 @@ function UsersSection({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setResetUser(null)}>
           <div className="modal sm-modal">
             <div className="modal-header">
-              <h2>Redefinir senha</h2>
+              <h2>Emitir senha temporária</h2>
               <button type="button" className="icon-btn" onClick={() => setResetUser(null)} aria-label="Fechar"><IconClose /></button>
             </div>
             <form className="modal-body col" onSubmit={handleResetPassword}>
-              <p className="admin-muted" style={{ lineHeight: 1.5 }}>Defina uma nova senha para <strong>{resetUser.username}</strong>.</p>
-              <label className="profile-form-label">Nova senha *</label>
+              <p className="admin-muted" style={{ lineHeight: 1.5 }}>Defina uma senha temporária para <strong>{resetUser.username}</strong>. O usuário será obrigado a trocá-la no próximo acesso.</p>
+              <label className="profile-form-label">Senha temporária *</label>
               <input className="doc-input" type="password" value={resetPassword} onChange={e => setResetPassword(e.target.value)} required autoFocus />
-              <label className="profile-form-label" style={{ marginTop: 12 }}>Confirmar nova senha *</label>
+              <label className="profile-form-label" style={{ marginTop: 12 }}>Confirmar senha temporária *</label>
               <input className="doc-input" type="password" value={resetPasswordConfirm} onChange={e => setResetPasswordConfirm(e.target.value)} required />
               <p className="admin-muted" style={{ fontSize: "0.75rem", lineHeight: 1.4 }}>Use no mínimo 8 caracteres, incluindo um caractere especial.</p>
               {resetErr && <div className="profile-err">{resetErr}</div>}
               <div className="modal-footer profile-modal-footer">
                 <button type="button" className="btn-cancel-lg" onClick={() => setResetUser(null)}>Cancelar</button>
                 <button type="submit" className="btn-confirm" disabled={resetLoading} style={{ padding: "6px 18px" }}>
-                  {resetLoading ? "Salvando..." : "Redefinir senha"}
+                  {resetLoading ? "Salvando..." : "Emitir senha temporária"}
                 </button>
               </div>
             </form>
@@ -253,9 +271,10 @@ function UsersSection({ token, currentUserId, onUnauthorized, onSelfDemoted }) {
   );
 }
 
-// ── Seção Setores ─────────────────────────────────────────────────────────────
+// ── Listas simples de nomes (Setores, Modalidades de contrato) ────────────────
 
-function SetoresSection({ token, sectors, onSectorsChange }) {
+function NamedListSection({ items, onItemsChange, endpoint, text }) {
+  const { settings: { confirmBeforeDelete: confirmDelete } } = useAppSettings();
   const [newName, setNewName]       = useState("");
   const [err, setErr]               = useState("");
   const [editingId, setEditingId]   = useState(null);
@@ -267,29 +286,27 @@ function SetoresSection({ token, sectors, onSectorsChange }) {
     if (editingId !== null) editInputRef.current?.focus();
   }, [editingId]);
 
-  const authHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
-
   const handleAdd = async () => {
     const name = newName.trim();
     if (!name) return;
     setErr(""); setLoading(true);
     try {
-      const res  = await fetch(`${API_URL}/api/sectors`, { method: "POST", headers: authHeaders, body: JSON.stringify({ name }) });
+      const res  = await authFetch(`${API_URL}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
       const data = await res.json();
       if (!res.ok) { setErr(data.error || "Falha ao criar"); return; }
-      onSectorsChange(data);
+      onItemsChange(data);
       setNewName("");
     } catch { setErr("Erro de conexão"); } finally { setLoading(false); }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Remover este setor?")) return;
+    if (confirmDelete && !window.confirm(text.confirmDelete)) return;
     setErr("");
     try {
-      const res  = await fetch(`${API_URL}/api/sectors/${id}`, { method: "DELETE", headers: authHeaders });
+      const res  = await authFetch(`${API_URL}${endpoint}/${id}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) { setErr(data.error || "Falha ao remover"); return; }
-      onSectorsChange(data);
+      onItemsChange(data);
     } catch { setErr("Erro de conexão"); }
   };
 
@@ -303,10 +320,10 @@ function SetoresSection({ token, sectors, onSectorsChange }) {
     if (!name) { setEditingId(null); return; }
     setErr("");
     try {
-      const res  = await fetch(`${API_URL}/api/sectors/${editingId}`, { method: "PUT", headers: authHeaders, body: JSON.stringify({ name }) });
+      const res  = await authFetch(`${API_URL}${endpoint}/${editingId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
       const data = await res.json();
       if (!res.ok) { setErr(data.error || "Falha ao atualizar"); return; }
-      onSectorsChange(data);
+      onItemsChange(data);
       setEditingId(null);
     } catch { setErr("Erro de conexão"); }
   };
@@ -315,24 +332,26 @@ function SetoresSection({ token, sectors, onSectorsChange }) {
 
   return (
     <div className="admin-section">
-      <h2 className="admin-section-title">Setores / Órgãos</h2>
-      <p className="admin-lead">Defina os setores disponíveis para seleção ao criar um processo.</p>
+      <h2 className="admin-section-title">{text.title}</h2>
+      <p className="admin-lead">{text.lead}</p>
       {err && <div className="profile-err admin-alert">{err}</div>}
 
-      {/* Lista de setores */}
-      {sectors.length === 0 ? (
-        <p className="admin-muted" style={{ marginBottom: 16 }}>Nenhum setor cadastrado ainda.</p>
+      {items.length === 0 ? (
+        <div className="empty-board" style={{ padding: "28px 0" }}>
+          <h2>{text.emptyTitle}</h2>
+          <p>{text.emptyHint}</p>
+        </div>
       ) : (
         <div className="admin-table-wrap" style={{ marginBottom: 16 }}>
           <table className="admin-table">
             <thead>
               <tr>
-                <th style={{ width: "100%" }}>Nome do setor</th>
+                <th style={{ width: "100%" }}>{text.column}</th>
                 <th style={{ whiteSpace: "nowrap" }} />
               </tr>
             </thead>
             <tbody>
-              {sectors.map(s => (
+              {items.map(s => (
                 <tr key={s.id}>
                   <td className="admin-td-user" style={{ width: "100%" }}>
                     {editingId === s.id ? (
@@ -370,11 +389,10 @@ function SetoresSection({ token, sectors, onSectorsChange }) {
         </div>
       )}
 
-      {/* Adicionar novo setor */}
       <div className="admin-add-row">
         <input
           className="doc-input"
-          placeholder="Nome do novo setor..."
+          placeholder={text.placeholder}
           value={newName}
           onChange={e => setNewName(e.target.value)}
           onKeyDown={e => e.key === "Enter" && handleAdd()}
@@ -389,422 +407,382 @@ function SetoresSection({ token, sectors, onSectorsChange }) {
   );
 }
 
-// ── AdminPage ─────────────────────────────────────────────────────────────────
+const SECTOR_TEXT = {
+  title: "Setores / Órgãos",
+  lead: "Defina os setores disponíveis para seleção ao criar um processo.",
+  column: "Nome do setor",
+  placeholder: "Nome do novo setor...",
+  emptyTitle: "Nenhum setor cadastrado",
+  emptyHint: "Adicione um setor para que novos processos possam ser classificados corretamente.",
+  confirmDelete: "Remover este setor?",
+};
+
+function SetoresSection({ sectors, onSectorsChange }) {
+  return <NamedListSection items={sectors} onItemsChange={onSectorsChange} endpoint="/api/sectors" text={SECTOR_TEXT} />;
+}
+
+const MODALITY_TEXT = {
+  title: "Modalidades de contrato",
+  lead: "Defina as modalidades disponíveis ao cadastrar um contrato. São independentes dos modelos de processo.",
+  column: "Modalidade",
+  placeholder: "Nome da nova modalidade...",
+  emptyTitle: "Nenhuma modalidade cadastrada",
+  emptyHint: "Adicione modalidades (ex.: Pregão Eletrônico) para classificar os contratos.",
+  confirmDelete: "Remover esta modalidade? Contratos que já a usam continuam com o nome salvo.",
+};
+
+function ModalidadesSection({ onUnauthorized }) {
+  const [items, setItems] = useState([]);
+  const [loadError, setLoadError] = useState("");
+  useEffect(() => {
+    authFetch(`${API_URL}/api/contract-modalities`)
+      .then(res => {
+        if (res.status === 401) { onUnauthorized?.(); return null; }
+        if (!res.ok) throw new Error();
+        return res.json();
+      })
+      .then(data => { if (Array.isArray(data)) setItems(data); })
+      .catch(() => setLoadError("Não foi possível carregar as modalidades."));
+  }, [onUnauthorized]);
+  return (
+    <>
+      {loadError && <div className="profile-err admin-alert">{loadError}</div>}
+      <NamedListSection items={items} onItemsChange={setItems} endpoint="/api/contract-modalities" text={MODALITY_TEXT} />
+    </>
+  );
+}
 
 // ── Modelos ───────────────────────────────────────────────────────────────────
 
-async function parseDocxToItems(file) {
-  const arrayBuffer = await file.arrayBuffer();
-  const { value: html } = await mammoth.convertToHtml({ arrayBuffer });
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const items = []; let phaseColorIdx = 0;
-  for (const el of Array.from(doc.body.children)) {
-    const text = el.textContent.trim();
-    if (!text) continue;
-    if (el.tagName === "H2") { items.push({ type: "phase", name: text, bgColor: PHASE_COLORS[phaseColorIdx % PHASE_COLORS.length] }); phaseColorIdx++; }
-    else if (el.tagName === "P") { items.push({ type: "doc", name: text, bgColor: null }); }
-  }
-  return items;
+const PERMISSIONS = [
+  { role: "admin", label: "Administrador", access: ["total", "total", "total", "total"] },
+  // Conforme o backend: o editor cria, altera e exclui processos e contratos; colaboradores e admin só o administrador.
+  { role: "editor", label: "Editor", access: ["total", "total", "read", "none"] },
+  { role: "viewer", label: "Visualizador", access: ["read", "read", "read", "none"] },
+];
+const ACCESS_LABEL = { total: "Total", edit: "Editar", read: "Leitura", none: "—" };
+const SESSION_OPTIONS = [15, 30, 60, 120];
+const LOCKOUT_ATTEMPTS = [3, 5, 10];
+const LOCKOUT_MINUTES = [5, 15, 30, 60];
+const PASSWORD_DAYS = [30, 60, 90, 180];
+const SETTING_KEYS = Object.keys(DEFAULT_SETTINGS);
+const DRAWER_EXIT_MS = 220;
+
+function Switch({ checked, onChange, label }) {
+  return (
+    <button type="button" role="switch" aria-checked={checked} aria-label={label} className={`adm-switch ${checked ? "on" : ""}`} onClick={() => onChange(!checked)}>
+      <span />
+    </button>
+  );
 }
 
-function ModelosSection({ templates, onSave }) {
-  const [local, setLocal] = useState(() => normalizeTemplatesFromApi(JSON.parse(JSON.stringify(templates))));
-  const [selected, setSelected] = useState(() => orderedTemplateTypeNames(normalizeTemplatesFromApi(JSON.parse(JSON.stringify(templates))))[0] || "");
-  const [newName, setNewName]     = useState("");
-  const [newItem, setNewItem]     = useState("");
-  const [addType, setAddType]     = useState("doc");
-  const [openColorIdx, setOpenColorIdx]     = useState(null);
-  const [dragIdx, setDragIdx]               = useState(null);
-  const [dragOverIdx, setDragOverIdx]       = useState(null);
-  const [dragTypeKey, setDragTypeKey]       = useState(null);
-  const [dragOverTypeKey, setDragOverTypeKey] = useState(null);
-  const [openTypeColorKey, setOpenTypeColorKey] = useState(null);
-  const [phaseColorIdx, setPhaseColorIdx]   = useState(0);
-  const [mobileView, setMobileView]         = useState("types");
-  const [docxError, setDocxError]           = useState("");
-  const [saved, setSaved]                   = useState(false);
-  const colorRefs    = useRef({});
-  const typeColorRef = useRef({});
-  const docxInputRef = useRef(null);
-
-  // Sincroniza quando templates mudam externamente
+// Painel lateral (mesmo do detalhe de contratos) para as gestões abertas pelos cards.
+function AdminDrawer({ title, subtitle, onClose, children }) {
+  const [closing, setClosing] = useState(false);
+  const close = useCallback(() => { setClosing(true); setTimeout(onClose, DRAWER_EXIT_MS); }, [onClose]);
   useEffect(() => {
-    setLocal(normalizeTemplatesFromApi(JSON.parse(JSON.stringify(templates))));
-  }, [templates]);
-
-  const orderedKeys   = useMemo(() => orderedTemplateTypeNames(local), [local]);
-  const selectedEntry = selected ? local[selected] : null;
-  const selectedItems = selectedEntry ? selectedEntry.items : [];
-
-  useEffect(() => {
-    if (selected && !local[selected]) setSelected(orderedKeys[0] || "");
-    else if (!selected && orderedKeys.length) setSelected(orderedKeys[0]);
-  }, [local, selected, orderedKeys]);
-
-  useEffect(() => {
-    if (openColorIdx === null) return;
-    const h = (e) => { if (colorRefs.current[openColorIdx] && !colorRefs.current[openColorIdx].contains(e.target)) setOpenColorIdx(null); };
-    document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h);
-  }, [openColorIdx]);
-
-  useEffect(() => {
-    if (openTypeColorKey == null) return;
-    const h = (e) => { const ref = typeColorRef.current[openTypeColorKey]; if (ref && !ref.contains(e.target)) setOpenTypeColorKey(null); };
-    document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h);
-  }, [openTypeColorKey]);
-
-  const addTemplate = () => {
-    if (!newName.trim() || local[newName.trim()]) return;
-    const key = newName.trim();
-    setLocal(p => { const next = { ...p, [key]: { items: [], color: "#30363d", order: 999 } }; const keys = orderedTemplateTypeNames(next); const out = { ...next }; keys.forEach((k, i) => { out[k] = { ...out[k], order: i }; }); return out; });
-    setSelected(key); setNewName("");
-  };
-  const deleteTemplate = (key) => {
-    setLocal(p => { const next = { ...p }; delete next[key]; orderedTemplateTypeNames(next).forEach((k, i) => { next[k] = { ...next[k], order: i }; }); return next; });
-    setSelected(s => s === key ? "" : s);
-  };
-  const addItem = () => {
-    if (!newItem.trim() || !selected || !local[selected]) return;
-    const entry = addType === "phase" ? { type: "phase", name: newItem.trim(), bgColor: PHASE_COLORS[phaseColorIdx] } : { type: "doc", name: newItem.trim(), bgColor: null };
-    setLocal(p => ({ ...p, [selected]: { ...p[selected], items: [...p[selected].items, entry] } }));
-    setNewItem("");
-  };
-  const removeItem    = (idx)        => setLocal(p => ({ ...p, [selected]: { ...p[selected], items: p[selected].items.filter((_, i) => i !== idx) } }));
-  const setItemColor  = (idx, color) => { setLocal(p => ({ ...p, [selected]: { ...p[selected], items: p[selected].items.map((item, i) => i === idx ? { ...item, bgColor: color } : item) } })); setOpenColorIdx(null); };
-  const setTypeColor  = (key, color) => { setLocal(p => ({ ...p, [key]: { ...p[key], color } })); setOpenTypeColorKey(null); };
-
-  const handleDragStart = (i)    => setDragIdx(i);
-  const handleDragOver  = (e, i) => { e.preventDefault(); setDragOverIdx(i); };
-  const handleDrop      = (i)    => { if (dragIdx === null || dragIdx === i) { setDragIdx(null); setDragOverIdx(null); return; } setLocal(p => { const items = [...p[selected].items]; const [mv] = items.splice(dragIdx, 1); items.splice(i, 0, mv); return { ...p, [selected]: { ...p[selected], items } }; }); setDragIdx(null); setDragOverIdx(null); };
-  const handleDragEnd   = ()     => { setDragIdx(null); setDragOverIdx(null); };
-  const handleTypeDragStart = (e, k)  => { e.stopPropagation(); setDragTypeKey(k); };
-  const handleTypeDragOver  = (e, k)  => { e.preventDefault(); setDragOverTypeKey(k); };
-  const handleTypeDrop      = (tKey)  => {
-    if (!dragTypeKey || dragTypeKey === tKey) { setDragTypeKey(null); setDragOverTypeKey(null); return; }
-    setLocal(p => { const keys = orderedTemplateTypeNames(p); const from = keys.indexOf(dragTypeKey), to = keys.indexOf(tKey); if (from < 0 || to < 0) return p; const nk = [...keys]; const [mv] = nk.splice(from, 1); nk.splice(to, 0, mv); const next = { ...p }; nk.forEach((name, i) => { next[name] = { ...next[name], order: i }; }); return next; });
-    setDragTypeKey(null); setDragOverTypeKey(null);
-  };
-  const handleTypeDragEnd = () => { setDragTypeKey(null); setDragOverTypeKey(null); };
-
-  const handleDocxFileChange = async (e) => {
-    const file = e.target.files?.[0]; e.target.value = "";
-    if (!file) return; setDocxError("");
-    try {
-      const items = await parseDocxToItems(file);
-      if (items.length === 0) { setDocxError("Nenhum item encontrado. Use Título 2 para fases e parágrafos."); return; }
-      const base = file.name.replace(/\.docx?$/i, "").trim() || "Importado";
-      let key = base, n = 2;
-      while (local[key]) { key = `${base} (${n++})`; }
-      const newLocal = { ...local, [key]: { items, color: "#30363d", order: orderedTemplateTypeNames(local).length } };
-      setLocal(newLocal); setSelected(key); onSave(newLocal);
-    } catch { setDocxError("Erro ao ler o arquivo. Certifique-se que é um .docx válido."); }
-  };
-
-  const handleSave = () => { onSave(local); setSaved(true); setTimeout(() => setSaved(false), 2000); };
-
-  const S = {
-    body:    { display:"flex", overflow:"hidden", minHeight:0, border:"1px solid #30363d", borderRadius:12, background:"#161b22" },
-    sidebar: { width:220, minWidth:220, borderRight:"1px solid #30363d", padding:14, display:"flex", flexDirection:"column", gap:4, overflowY:"auto", overflowX:"hidden", flexShrink:0 },
-    content: { flex:1, display:"flex", flexDirection:"column", overflow:"hidden", minWidth:0, minHeight:0 },
-    label:   { fontSize:"0.7rem", color:"#8b949e", textTransform:"uppercase", letterSpacing:".6px", marginBottom:6, flexShrink:0 },
-    list:    { flex:1, minHeight:0, overflowY:"auto", overflowX:"hidden", padding:"12px 12px 0", display:"flex", flexDirection:"column", gap:3 },
-    addBar:  { flexShrink:0, borderTop:"1px solid #30363d", padding:"12px 14px", display:"flex", flexDirection:"column", gap:8 },
-  };
-
+    const onKey = (event) => { if (event.key === "Escape" && !document.querySelector(".modal-overlay")) close(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [close]);
   return (
-    <div className="admin-section">
-      <h2 className="admin-section-title">Modelos de Processo</h2>
-      <p className="admin-lead">Defina os tipos de processo e os documentos/fases de cada modelo.</p>
-
-      <div style={{ ...S.body, height: 460, maxHeight: 460 }} className="tpl-manager-body" data-view={mobileView}>
-
-        {/* Sidebar */}
-        <div style={S.sidebar} className="tpl-manager-sidebar">
-          <p style={S.label}>Tipos de Processo</p>
-          <p style={{ fontSize:"0.65rem", color:"#6e7681", marginBottom:6, lineHeight:1.35 }}>Arraste ⠿ para reordenar. A cor vale para novos processos deste tipo.</p>
-          {orderedKeys.map(k => (
-            <div key={k} onClick={() => { setSelected(k); setMobileView("docs"); }}
-              onDragOver={e => handleTypeDragOver(e, k)} onDrop={() => handleTypeDrop(k)} onDragEnd={handleTypeDragEnd}
-              style={{ display:"flex", alignItems:"center", gap:4, padding:"6px 8px", borderRadius:8, cursor:"pointer", fontSize:"0.82rem",
-                background: selected === k ? "#1c2330" : "transparent", color: selected === k ? "#f0883e" : "#e6edf3",
-                fontWeight: selected === k ? 500 : 400,
-                border: dragOverTypeKey === k && dragTypeKey !== k ? "1px dashed #58a6ff" : "1px solid transparent",
-                opacity: dragTypeKey === k ? 0.45 : 1 }}>
-              <span draggable onDragStart={e => handleTypeDragStart(e, k)} style={{ color:"#3a4556", fontSize:"1rem", userSelect:"none", flexShrink:0, cursor:"grab" }} title="Arrastar">⠿</span>
-              <span style={{ width:10, height:10, borderRadius:"50%", background: local[k].color || "#30363d", flexShrink:0 }} />
-              <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", flex:1, minWidth:0 }}>{k}</span>
-              <div style={{ display:"flex", gap:2, flexShrink:0 }} onClick={e => e.stopPropagation()}>
-                <div style={{ position:"relative" }} ref={el => { typeColorRef.current[k] = el; }}>
-                  <button type="button" className="icon-btn" title="Cor" onClick={() => setOpenTypeColorKey(openTypeColorKey === k ? null : k)}><IconPalette /></button>
-                  {openTypeColorKey === k && (
-                    <div className="color-picker" style={{ right:0, left:"auto" }}>
-                      {CARD_COLORS.map(c => (
-                        <button key={c.label} type="button" className={`color-swatch ${local[k].color === c.value ? "active" : ""}`}
-                          style={{ background: c.value || "#1c2330", outline: local[k].color === c.value ? "2px solid #58a6ff" : "none" }}
-                          title={c.label} onClick={() => setTypeColor(k, c.value)} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <button type="button" className="icon-btn danger sm" onClick={() => deleteTemplate(k)}><IconTrash /></button>
-              </div>
-            </div>
-          ))}
-          <input ref={docxInputRef} type="file" accept=".docx,.doc" style={{ display:"none" }} onChange={handleDocxFileChange} />
-          <div style={{ display:"flex", gap:6, marginTop:8 }}>
-            <input className="tpl-input" placeholder="Novo tipo..." value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === "Enter" && addTemplate()} />
-            <button className="btn-add-tpl" onClick={addTemplate} title="Adicionar tipo"><IconPlus /></button>
-            <button className="btn-add-tpl" title="Importar Word (.docx)" onClick={() => { setDocxError(""); docxInputRef.current?.click(); }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-            </button>
+    <div className={`ct-detail-overlay ${closing ? "closing" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && close()}>
+      <aside className="ct-detail adm-drawer" role="dialog" aria-modal="true" aria-labelledby="adm-drawer-title">
+        <header className="ct-detail-header">
+          <div>
+            <span className="ct-detail-number">Administração</span>
+            <h2 id="adm-drawer-title">{title}</h2>
+            {subtitle && <p className="adm-drawer-subtitle">{subtitle}</p>}
           </div>
-          {docxError && <p style={{ fontSize:"0.72rem", color:"#f85149", marginTop:6, lineHeight:1.4 }}>{docxError}</p>}
-        </div>
+          <button type="button" className="ct-detail-close" onClick={close} aria-label="Fechar"><IconClose /></button>
+        </header>
+        <div className="ct-detail-body adm-drawer-body">{children}</div>
+      </aside>
+    </div>
+  );
+}
 
-        {/* Conteúdo */}
-        <div style={S.content} className="tpl-manager-content">
-          {selected ? (<>
-            <button className="tpl-mobile-back" onClick={() => setMobileView("types")}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-              {selected}
+function SelectField({ label, value, options, format, disabled, onChange }) {
+  return (
+    <label className="ct-field adm-param">
+      <span>{label}</span>
+      <select value={value} disabled={disabled} onChange={(event) => onChange(Number(event.target.value))}>
+        {options.map((option) => <option key={option} value={option}>{format(option)}</option>)}
+      </select>
+    </label>
+  );
+}
+
+// Tela "Configuração de segurança" (aberta pelo card Segurança).
+function SecurityView({ draft, setDraft, changed, saving, saveMessage, onSave, onBack }) {
+  const set = (key) => (value) => setDraft((d) => ({ ...d, [key]: value }));
+  const kpis = [
+    { tone: "blue", label: "Política de senha", value: "Forte", note: "Mínimo de 8 caracteres" },
+    { tone: "amber", label: "Tempo de sessão", value: draft.sessionTimeoutEnabled ? `${draft.sessionTimeoutMinutes} min` : "Sem limite", note: "Encerramento por inatividade" },
+    { tone: "red", label: "Tentativas de login", value: draft.lockoutEnabled ? String(draft.lockoutAttempts) : "Sem bloqueio", note: "Antes do bloqueio temporário" },
+    { tone: "green", label: "Validade da senha", value: draft.passwordExpiryEnabled ? `${draft.passwordExpiryDays} dias` : "Sem validade", note: "Troca periódica obrigatória" },
+  ];
+  const rules = [
+    { key: "lockoutEnabled", title: "Bloqueio por tentativas inválidas", text: `Bloquear o login por ${draft.lockoutMinutes} minutos após ${draft.lockoutAttempts} tentativas sem sucesso` },
+    { key: "sessionTimeoutEnabled", title: "Expiração de sessão", text: `Encerrar a sessão após ${draft.sessionTimeoutMinutes} minutos sem atividade` },
+    { key: "confirmBeforeDelete", title: "Confirmação para ações críticas", text: "Pedir confirmação antes de excluir contratos, colaboradores, documentos e cadastros" },
+    { key: "passwordExpiryEnabled", title: "Forçar troca periódica de senha", text: `Solicitar nova senha a cada ${draft.passwordExpiryDays} dias` },
+  ];
+  return (
+    <div className="lk-contracts adm-page">
+      <header className="ct-header">
+        <div className="ct-header-text">
+          <h1>Configuração de segurança</h1>
+          <p>Defina regras de acesso, autenticação e proteção da conta</p>
+        </div>
+        <button type="button" className="ct-header-export adm-back" onClick={onBack}>‹ Voltar para Administração</button>
+      </header>
+
+      <section className="adm-sec-kpis" aria-label="Resumo de segurança">
+        {kpis.map((kpi) => (
+          <article className="adm-sec-kpi" key={kpi.label}>
+            <span className={`adm-card-icon ${kpi.tone}`} aria-hidden="true"><i /></span>
+            <div>
+              <small>{kpi.label}</small>
+              <strong>{kpi.value}</strong>
+              <p>{kpi.note}</p>
+            </div>
+          </article>
+        ))}
+      </section>
+
+      <div className="adm-grid">
+        <section className="adm-panel" aria-labelledby="adm-rules-title">
+          <header className="adm-panel-head">
+            <div>
+              <h2 id="adm-rules-title">Regras de segurança</h2>
+              <p>Configure as políticas aplicadas aos usuários do sistema.</p>
+            </div>
+          </header>
+          <ul className="adm-settings-list">
+            {rules.map((rule) => (
+              <li key={rule.key}>
+                <div><strong>{rule.title}</strong><small>{rule.text}</small></div>
+                <Switch checked={draft[rule.key]} onChange={set(rule.key)} label={rule.title} />
+              </li>
+            ))}
+          </ul>
+          <p className="adm-policy">Política atual: 8+ caracteres • 1 maiúscula • 1 número • 1 caractere especial</p>
+        </section>
+
+        <section className="adm-panel" aria-labelledby="adm-params-title">
+          <header className="adm-panel-head">
+            <div>
+              <h2 id="adm-params-title">Parâmetros de acesso</h2>
+              <p>Valores usados nas regras automáticas.</p>
+            </div>
+          </header>
+          <div className="adm-params">
+            <SelectField label="Tentativas antes do bloqueio" value={draft.lockoutAttempts} options={LOCKOUT_ATTEMPTS} format={(n) => `${n} tentativas`} disabled={!draft.lockoutEnabled} onChange={set("lockoutAttempts")} />
+            <SelectField label="Duração do bloqueio" value={draft.lockoutMinutes} options={LOCKOUT_MINUTES} format={(n) => `${n} minutos`} disabled={!draft.lockoutEnabled} onChange={set("lockoutMinutes")} />
+            <SelectField label="Tempo máximo de sessão (sem atividade)" value={draft.sessionTimeoutMinutes} options={SESSION_OPTIONS} format={(n) => `${n} minutos`} disabled={!draft.sessionTimeoutEnabled} onChange={set("sessionTimeoutMinutes")} />
+            <SelectField label="Validade da senha" value={draft.passwordExpiryDays} options={PASSWORD_DAYS} format={(n) => `${n} dias`} disabled={!draft.passwordExpiryEnabled} onChange={set("passwordExpiryDays")} />
+          </div>
+          <footer className="adm-settings-foot">
+            {saveMessage && <p className={`adm-save-msg ${saveMessage.type}`} role="status">{saveMessage.text}</p>}
+            <button type="button" className="ct-new-button adm-save" onClick={onSave} disabled={!changed || saving}>
+              {saving ? "Salvando..." : changed ? "Salvar configurações" : "Configurações salvas"}
             </button>
-            <div style={{ padding:"12px 14px 0", flexShrink:0 }}>
-              <p style={S.label}>Itens em <strong style={{ color:"#e6edf3" }}>{selected}</strong> <span style={{ fontWeight:400, textTransform:"none", letterSpacing:0 }}>— arraste para reordenar</span></p>
-            </div>
-            <div style={S.list} className="tpl-scroll-list">
-              {selectedItems.map((item, i) => (
-                <div key={i}
-                  style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 10px", borderRadius:8, fontSize:"0.82rem", cursor:"grab",
-                    background: item.type === "phase" ? (item.bgColor || "#1a2a3a") : (item.bgColor || "#1c2330"),
-                    border: dragOverIdx === i && dragIdx !== i ? "1px dashed #58a6ff" : "1px solid transparent",
-                    opacity: dragIdx === i ? 0.35 : 1, marginBottom: item.type === "phase" ? 4 : 0 }}
-                  draggable onDragStart={() => handleDragStart(i)} onDragOver={e => handleDragOver(e, i)} onDrop={() => handleDrop(i)} onDragEnd={handleDragEnd}>
-                  <span style={{ color:"#3a4556", fontSize:"1rem", userSelect:"none", flexShrink:0 }}>⠿</span>
-                  {item.type === "phase" && <IconFlag />}
-                  <span style={{ flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontWeight: item.type === "phase" ? 700 : 400, fontSize: item.type === "phase" ? "0.85rem" : "0.82rem" }}>{item.name}</span>
-                  <div style={{ display:"flex", gap:4, alignItems:"center", flexShrink:0 }}>
-                    {item.type === "doc" && (
-                      <div style={{ position:"relative" }} ref={el => colorRefs.current[i] = el}>
-                        <button className="icon-btn" title="Cor" onClick={() => setOpenColorIdx(openColorIdx === i ? null : i)}><IconPalette /></button>
-                        {openColorIdx === i && (
-                          <div className="color-picker">
-                            {CARD_COLORS.map(c => (
-                              <button key={c.label} className={`color-swatch ${item.bgColor === c.value ? "active" : ""}`}
-                                style={{ background: c.value || "#1c2330", outline: item.bgColor === c.value ? "2px solid #58a6ff" : "none" }}
-                                title={c.label} onClick={() => setItemColor(i, c.value)} />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    <button className="icon-btn danger sm" style={item.type === "phase" ? { color:"#ccc" } : {}} onClick={() => removeItem(i)}><IconTrash /></button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={S.addBar}>
-              <div style={{ display:"flex", gap:6 }}>
-                <button className={`type-toggle ${addType === "doc"   ? "active" : ""}`} onClick={() => setAddType("doc")}>Documento</button>
-                <button className={`type-toggle ${addType === "phase" ? "active" : ""}`} onClick={() => setAddType("phase")}><IconFlag /> Fase</button>
-              </div>
-              {addType === "phase" && (
-                <div style={{ display:"flex", gap:6 }}>
-                  {PHASE_COLORS.map((c, i) => (
-                    <button key={i} className={`phase-color-swatch ${phaseColorIdx === i ? "active" : ""}`} style={{ background:c }} onClick={() => setPhaseColorIdx(i)} />
-                  ))}
-                </div>
-              )}
-              <div style={{ display:"flex", gap:6 }}>
-                <input className="tpl-input" placeholder={addType === "phase" ? "Nome da fase..." : "Nome do documento..."} value={newItem} onChange={e => setNewItem(e.target.value)} onKeyDown={e => e.key === "Enter" && addItem()} style={{ flex:1 }} />
-                <button className="btn-add-tpl" onClick={addItem}><IconPlus /></button>
-              </div>
-            </div>
-          </>) : (
-            <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", color:"#8b949e", fontSize:"0.85rem" }}>
-              Selecione ou crie um tipo de processo.
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div style={{ display:"flex", justifyContent:"flex-end", marginTop:14 }}>
-        <button className="btn-save" onClick={handleSave}>
-          {saved ? "✓ Salvo!" : "Salvar Modelos"}
-        </button>
+          </footer>
+        </section>
       </div>
     </div>
   );
 }
 
-// ── Seção Colaboradores ───────────────────────────────────────────────────────
+export default function AdminPage({ currentUserId, onUnauthorized, onSelfDemoted, sectors, onSectorsChange, templates, saveTemplates, onOpenMenu }) {
+  const { settings, setSettings } = useAppSettings();
+  const [drawer, setDrawer] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [draft, setDraft] = useState(settings);
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState(null);
 
-function ColaboradoresSection({ token, onUnauthorized }) {
-  const [collabs, setCollabs]         = useState([]);
-  const [loading, setLoading]         = useState(true);
-  const [err, setErr]                 = useState("");
-  const [showModal, setShowModal]     = useState(false);
-  const [editing, setEditing]         = useState(null);
-  const [formNome, setFormNome]       = useState("");
-  const [formCpf, setFormCpf]         = useState("");
-  const [formEmail, setFormEmail]     = useState("");
-  const [formErr, setFormErr]         = useState("");
-  const [formLoading, setFormLoading] = useState(false);
+  useEffect(() => { setDraft(settings); }, [settings]);
 
-  const load = useCallback(() => {
-    setErr(""); setLoading(true);
-    fetch(`${API_URL}/api/admin/collaborators`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => {
-        if (r.status === 401) throw new Error("401");
-        if (!r.ok) throw new Error("fail");
-        return r.json();
+  const loadUsers = useCallback(() => {
+    authFetch(`${API_URL}/api/admin/users`)
+      .then((res) => {
+        if (res.status === 401) { onUnauthorized(); return null; }
+        return res.ok ? res.json() : null;
       })
-      .then(data => setCollabs(data))
-      .catch(e => {
-        if (e.message === "401") onUnauthorized();
-        else setErr("Não foi possível carregar os colaboradores.");
-      })
-      .finally(() => setLoading(false));
-  }, [token, onUnauthorized]);
+      .then((data) => { if (Array.isArray(data)) setUsers(data); })
+      .catch(() => {});
+  }, [onUnauthorized]);
+  useEffect(() => { loadUsers(); }, [loadUsers]);
 
-  useEffect(() => { load(); }, [load]);
+  const roleCount = (role) => users.filter((user) => user.role === role).length;
+  const [view, setView] = useState("main");
+  const changed = SETTING_KEYS.some((key) => draft[key] !== settings[key]);
 
-  const formatCpf = (val) => {
-    const d = val.replace(/\D/g, "").slice(0, 11);
-    if (d.length <= 3) return d;
-    if (d.length <= 6) return `${d.slice(0,3)}.${d.slice(3)}`;
-    if (d.length <= 9) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`;
-    return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`;
-  };
-
-  const openAdd = () => {
-    setEditing(null); setFormNome(""); setFormCpf(""); setFormEmail(""); setFormErr(""); setShowModal(true);
-  };
-  const openEdit = (c) => {
-    setEditing(c); setFormNome(c.nome); setFormCpf(c.cpf); setFormEmail(c.email); setFormErr(""); setShowModal(true);
-  };
-  const closeModal = () => { setShowModal(false); setEditing(null); setFormErr(""); };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault(); setFormErr(""); setFormLoading(true);
-    const body = { nome: formNome.trim(), cpf: formCpf.trim(), email: formEmail.trim() };
+  const saveSettings = async () => {
+    setSaving(true); setSaveMessage(null);
     try {
-      const url    = editing ? `${API_URL}/api/admin/collaborators/${editing.id}` : `${API_URL}/api/admin/collaborators`;
-      const method = editing ? "PUT" : "POST";
-      const res    = await fetch(url, { method, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
-      const data   = await res.json();
-      if (!res.ok) { setFormErr(data.error || "Falha ao salvar"); return; }
-      closeModal(); load();
-    } catch { setFormErr("Erro de conexão"); } finally { setFormLoading(false); }
-  };
-
-  const handleDelete = async (id) => {
-    if (!window.confirm("Remover este colaborador permanentemente?")) return;
-    setErr("");
-    try {
-      const res  = await fetch(`${API_URL}/api/admin/collaborators/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      const res = await authFetch(`${API_URL}/api/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.fromEntries(SETTING_KEYS.map((key) => [key, draft[key]]))),
+      });
       const data = await res.json();
-      if (!res.ok) { setErr(data.error || "Falha ao remover"); return; }
-      load();
-    } catch { setErr("Erro de conexão"); }
+      if (!res.ok) throw new Error(data.error || "Não foi possível salvar.");
+      setSettings((current) => ({ ...current, ...data }));
+      setSaveMessage({ type: "ok", text: "Configurações salvas." });
+    } catch (saveError) {
+      setSaveMessage({ type: "error", text: saveError.message });
+    } finally {
+      setSaving(false);
+    }
   };
 
-  return (
-    <div className="admin-section">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-        <h2 className="admin-section-title" style={{ marginBottom: 0 }}>Informações dos Colaboradores</h2>
-        <button className="btn-primary" onClick={openAdd} style={{ gap: 5 }}>
-          <IconUsers /> Adicionar
-        </button>
-      </div>
-      <p className="admin-lead">Cadastro manual de colaboradores com nome, CPF e e-mail. Apenas administradores podem adicionar, editar ou remover.</p>
-      {err && <div className="profile-err admin-alert">{err}</div>}
-      {loading ? (
-        <div className="admin-muted">Carregando...</div>
-      ) : collabs.length === 0 ? (
-        <div className="admin-table-wrap" style={{ padding: "28px 20px", textAlign: "center" }}>
-          <p className="admin-muted">Nenhum colaborador cadastrado ainda.</p>
-        </div>
-      ) : (
-        <div className="admin-table-wrap">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Nome</th>
-                <th>CPF</th>
-                <th className="collab-col-email">E-mail</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {collabs.map(c => (
-                <tr key={c.id}>
-                  <td className="admin-td-user">{c.nome}</td>
-                  <td style={{ fontFamily: "ui-monospace, monospace", fontSize: "0.82rem", color: "var(--muted)" }}>{c.cpf}</td>
-                  <td className="admin-muted collab-col-email">{c.email}</td>
-                  <td className="admin-td-actions">
-                    <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
-                      <button type="button" className="icon-btn" title="Editar" onClick={() => openEdit(c)}><IconEdit /></button>
-                      <button type="button" className="icon-btn danger" title="Remover" onClick={() => handleDelete(c.id)}><IconTrash /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+  const goToSecurity = () => { setSaveMessage(null); setView("security"); window.scrollTo({ top: 0 }); };
 
-      {showModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && closeModal()}>
-          <div className="modal sm-modal">
-            <div className="modal-header">
-              <h2>{editing ? "Editar Colaborador" : "Novo Colaborador"}</h2>
-              <button type="button" className="icon-btn" onClick={closeModal} aria-label="Fechar"><IconClose /></button>
-            </div>
-            <form className="modal-body col" onSubmit={handleSubmit}>
-              <label className="profile-form-label">Nome *</label>
-              <input className="doc-input" type="text" value={formNome} onChange={e => setFormNome(e.target.value)} required placeholder="Nome completo" autoFocus />
-              <label className="profile-form-label">CPF *</label>
-              <input className="doc-input" type="text" value={formCpf} onChange={e => setFormCpf(formatCpf(e.target.value))} required placeholder="000.000.000-00" inputMode="numeric" />
-              <label className="profile-form-label">E-mail *</label>
-              <input className="doc-input" type="email" value={formEmail} onChange={e => setFormEmail(e.target.value)} required placeholder="email@exemplo.com" />
-              {formErr && <div className="profile-err">{formErr}</div>}
-              <div className="modal-footer profile-modal-footer">
-                <button type="button" className="btn-cancel-lg" onClick={closeModal}>Cancelar</button>
-                <button type="submit" className="btn-confirm" disabled={formLoading} style={{ padding: "6px 18px" }}>
-                  {formLoading ? "Salvando..." : (editing ? "Salvar alterações" : "Adicionar")}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
+  const modalitiesDrawer = drawer === "modalities" && (
+    <AdminDrawer title="Modalidades de contrato" subtitle="Modalidades disponíveis ao cadastrar um contrato." onClose={() => setDrawer(null)}>
+      <ModalidadesSection onUnauthorized={onUnauthorized} />
+    </AdminDrawer>
   );
-}
 
-// ── AdminPage ─────────────────────────────────────────────────────────────────
+  if (view === "models") {
+    return (
+      <>
+        <ModelsManager templates={templates} onSave={saveTemplates} onBack={() => setView("main")}
+          onOpenModalities={() => setDrawer("modalities")} confirmBeforeDelete={settings.confirmBeforeDelete} />
+        {modalitiesDrawer}
+      </>
+    );
+  }
 
-export default function AdminPage({ token, currentUserId, onUnauthorized, onSelfDemoted, sectors, onSectorsChange, templates, saveTemplates }) {
-  const [activeTab, setActiveTab] = useState("usuarios");
+  if (view === "security") {
+    return (
+      <SecurityView draft={draft} setDraft={setDraft} changed={changed} saving={saving} saveMessage={saveMessage}
+        onSave={saveSettings} onBack={() => { setSaveMessage(null); setDraft(settings); setView("main"); }} />
+    );
+  }
+
+  const cards = [
+    { key: "users", tone: "blue", title: "Perfis de acesso", text: "Usuários e o nível de acesso de cada um.", action: "Gerenciar usuários", onClick: () => setDrawer("users") },
+    { key: "sectors", tone: "purple", title: "Setores", text: "Organize setores responsáveis.", action: "Gerenciar setores", onClick: () => setDrawer("sectors") },
+    { key: "security", tone: "green", title: "Segurança", text: "Senha, sessões, bloqueio e autenticação.", action: "Configurar segurança", onClick: goToSecurity },
+    { key: "models", tone: "lilac", title: "Modelos", text: "Tipos, fases, documentos padrão e modalidades.", action: "Gerenciar modelos", onClick: () => { setView("models"); window.scrollTo({ top: 0 }); } },
+  ];
 
   return (
-    <div className="admin-panel">
-      <div className="admin-panel-inner">
-        <h1 className="admin-title">Administração</h1>
-
-        <div className="admin-tabs" style={{ maxWidth: "none", width: "fit-content" }}>
-          <button className={`admin-tab ${activeTab === "usuarios"      ? "active" : ""}`} onClick={() => setActiveTab("usuarios")}>Usuários</button>
-          <button className={`admin-tab ${activeTab === "setores"       ? "active" : ""}`} onClick={() => setActiveTab("setores")}>Setores</button>
-          <button className={`admin-tab ${activeTab === "modelos"       ? "active" : ""}`} onClick={() => setActiveTab("modelos")}>Modelos</button>
-          <button className={`admin-tab ${activeTab === "colaboradores" ? "active" : ""}`} onClick={() => setActiveTab("colaboradores")}>Colaboradores</button>
+    // Reaproveita o visual das páginas novas (lk-contracts): cabeçalho, painel lateral e modais.
+    <div className="lk-contracts adm-page">
+      <header className="ct-header">
+        <button className="lk-menu" aria-label="Abrir navegação" onClick={onOpenMenu}>☰</button>
+        <div className="ct-header-text">
+          <h1>Administração</h1>
+          <p>Gerencie acessos, permissões e configurações administrativas do sistema</p>
         </div>
+      </header>
 
-        {activeTab === "usuarios"      && <UsersSection token={token} currentUserId={currentUserId} onUnauthorized={onUnauthorized} onSelfDemoted={onSelfDemoted} />}
-        {activeTab === "setores"       && <SetoresSection token={token} sectors={sectors} onSectorsChange={onSectorsChange} />}
-        {activeTab === "modelos"       && <ModelosSection templates={templates} onSave={saveTemplates} />}
-        {activeTab === "colaboradores" && <ColaboradoresSection token={token} onUnauthorized={onUnauthorized} />}
+      <section className="adm-cards" aria-label="Áreas de administração">
+        {cards.map((card) => (
+          <article className="adm-card" key={card.key}>
+            <div className="adm-card-head">
+              <span className={`adm-card-icon ${card.tone}`} aria-hidden="true">{card.key === "models" ? <i className="adm-lines" /> : <i />}</span>
+              <h2>{card.title}</h2>
+            </div>
+            <p>{card.text}</p>
+            <button type="button" className="adm-card-action" onClick={card.onClick}>{card.action}</button>
+          </article>
+        ))}
+      </section>
+
+      <div className="adm-grid">
+        <section className="adm-panel adm-permissions" aria-labelledby="adm-perm-title">
+          <header className="adm-panel-head">
+            <div>
+              <h2 id="adm-perm-title">Permissões de acesso</h2>
+              <p>O que cada perfil pode visualizar e alterar.</p>
+            </div>
+            <button type="button" className="ct-new-button adm-panel-btn" onClick={() => setDrawer("users")}><IconPlus /> Novo usuário</button>
+          </header>
+          <div className="adm-table-wrap">
+            <table className="adm-table">
+              <thead>
+                <tr><th>Perfil</th><th>Processos</th><th>Contratos</th><th>Colaboradores</th><th>Admin</th></tr>
+              </thead>
+              <tbody>
+                {PERMISSIONS.map((perm) => (
+                  <tr key={perm.role}>
+                    <td className="adm-role">
+                      <strong>{perm.label}</strong>
+                      <small>{roleCount(perm.role)} {roleCount(perm.role) === 1 ? "usuário" : "usuários"}</small>
+                    </td>
+                    {perm.access.map((level, i) => (
+                      <td key={i} data-label={["Processos", "Contratos", "Colaboradores", "Admin"][i]}>
+                        <span className={`adm-access ${level}`}>{ACCESS_LABEL[level]}</span>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="adm-legend">
+            <span className="adm-access total">Total</span> criar, alterar e excluir ·
+            <span className="adm-access read">Leitura</span> só visualizar ·
+            <span className="adm-access none">—</span> sem acesso
+          </p>
+        </section>
+
+        <section className="adm-panel adm-settings" aria-labelledby="adm-settings-title">
+          <header className="adm-panel-head">
+            <div>
+              <h2 id="adm-settings-title">Configurações administrativas</h2>
+              <p>Ajustes gerais que afetam todo o sistema.</p>
+            </div>
+          </header>
+          <ul className="adm-settings-list">
+            <li>
+              <div>
+                <strong>Sessão automática</strong>
+                <small>
+                  Encerrar após{" "}
+                  <select value={draft.sessionTimeoutMinutes} disabled={!draft.sessionTimeoutEnabled}
+                    onChange={(event) => setDraft((d) => ({ ...d, sessionTimeoutMinutes: Number(event.target.value) }))} aria-label="Minutos sem atividade">
+                    {SESSION_OPTIONS.map((minutes) => <option key={minutes} value={minutes}>{minutes} minutos</option>)}
+                  </select>{" "}
+                  sem atividade
+                </small>
+              </div>
+              <Switch checked={draft.sessionTimeoutEnabled} onChange={(value) => setDraft((d) => ({ ...d, sessionTimeoutEnabled: value }))} label="Sessão automática" />
+            </li>
+            <li>
+              <div>
+                <strong>Confirmação ao excluir</strong>
+                <small>Pedir confirmação antes de excluir contratos, colaboradores, documentos e cadastros</small>
+              </div>
+              <Switch checked={draft.confirmBeforeDelete} onChange={(value) => setDraft((d) => ({ ...d, confirmBeforeDelete: value }))} label="Confirmação ao excluir" />
+            </li>
+          </ul>
+          <footer className="adm-settings-foot">
+            {saveMessage && <p className={`adm-save-msg ${saveMessage.type}`} role="status">{saveMessage.text}</p>}
+            <button type="button" className="ct-new-button adm-save" onClick={saveSettings} disabled={!changed || saving}>
+              {saving ? "Salvando..." : changed ? "Salvar configurações" : "Configurações salvas"}
+            </button>
+          </footer>
+        </section>
       </div>
+
+      {drawer === "users" && (
+        <AdminDrawer title="Usuários e perfis" subtitle="Crie usuários, defina o perfil de acesso e redefina senhas." onClose={() => { setDrawer(null); loadUsers(); }}>
+          <UsersSection currentUserId={currentUserId} onUnauthorized={onUnauthorized} onSelfDemoted={onSelfDemoted} />
+        </AdminDrawer>
+      )}
+      {drawer === "sectors" && (
+        <AdminDrawer title="Setores" subtitle="Setores disponíveis para classificar os processos." onClose={() => setDrawer(null)}>
+          <SetoresSection sectors={sectors} onSectorsChange={onSectorsChange} />
+        </AdminDrawer>
+      )}
+      {modalitiesDrawer}
     </div>
   );
 }

@@ -1,9 +1,19 @@
 import express from 'express';
+import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import db from '../db.js';
 import { getIO } from '../socket.js';
 import { requireEditorOrAdmin } from '../middleware/editor.js';
+import { isAllowedStatus, sanitizeProcessDoc, validateProcessPayload } from '../validation.js';
 
 const router = express.Router();
+const processWriteLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 120,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Muitas alterações em pouco tempo. Aguarde alguns minutos e tente novamente.' },
+  keyGenerator: (req) => req.userId || ipKeyGenerator(req.ip),
+});
 
 // GET all processes (active and archived)
 router.get('/', async (req, res) => {
@@ -39,6 +49,9 @@ router.get('/', async (req, res) => {
             ? p.due_date.slice(0, 10)
             : `${p.due_date.getFullYear()}-${String(p.due_date.getMonth()+1).padStart(2,'0')}-${String(p.due_date.getDate()).padStart(2,'0')}`)
         : null,
+      createdAt: p.created_at || null,
+      // Não há coluna própria de conclusão: a última atualização de um arquivado é a melhor aproximação.
+      archivedAt: p.status === 'archived' ? (p.updated_at || null) : null,
       docs: itemsByProcess[p.id] || []
     }));
 
@@ -50,11 +63,15 @@ router.get('/', async (req, res) => {
 });
 
 // POST a new process
-router.post('/', requireEditorOrAdmin, async (req, res) => {
-  const { id, title, processNumber, setor, type, typeColor, docs, status = 'active', dueDate } = req.body;
-
-  if (!dueDate) {
-    return res.status(400).json({ error: 'Data de vencimento é obrigatória' });
+router.post('/', requireEditorOrAdmin, processWriteLimiter, async (req, res) => {
+  const { id } = req.body;
+  const validated = validateProcessPayload(req.body);
+  if (typeof validated === 'string') {
+    return res.status(400).json({ error: validated });
+  }
+  const { title, processNumber, setor, type, typeColor, docs, status, dueDate } = validated.data;
+  if (!id || typeof id !== 'string') {
+    return res.status(400).json({ error: 'ID obrigatório' });
   }
   
   const connection = await db.getConnection();
@@ -91,24 +108,46 @@ router.post('/', requireEditorOrAdmin, async (req, res) => {
 });
 
 // PUT to update a process (except items)
-router.put('/:id', requireEditorOrAdmin, async (req, res) => {
+router.put('/:id', requireEditorOrAdmin, processWriteLimiter, async (req, res) => {
   const { id } = req.params;
-  const { title, processNumber, setor, dueDate } = req.body;
+  const validated = validateProcessPayload({ ...req.body, status: 'active', dueDate: req.body.dueDate ?? null });
+  if (typeof validated === 'string') {
+    return res.status(400).json({ error: validated });
+  }
+  const { title, processNumber, setor, dueDate, type, typeColor, docs } = validated.data;
+  const connection = await db.getConnection();
   try {
-    await db.query(
-      `UPDATE processes SET title = ?, processNumber = ?, setor = ?, due_date = ? WHERE id = ?`,
-      [title, processNumber, setor, dueDate || null, id]
+    await connection.beginTransaction();
+    await connection.query(
+      `UPDATE processes SET title = ?, processNumber = ?, setor = ?, type = ?, typeColor = ?, due_date = ? WHERE id = ?`,
+      [title, processNumber, setor, type ?? null, typeColor ?? null, dueDate ?? null, id]
     );
-    getIO()?.emit('process:updated', { id, title, processNumber, setor, dueDate });
+
+    await connection.query(`DELETE FROM process_items WHERE process_id = ?`, [id]);
+    if (docs && docs.length > 0) {
+      const values = docs.map((doc, index) => [
+        doc.id, id, doc.type, doc.name, doc.done || false, doc.bgColor || null, index
+      ]);
+      await connection.query(
+        `INSERT INTO process_items (id, process_id, type, name, is_done, bg_color, order_index) VALUES ?`,
+        [values]
+      );
+    }
+
+    await connection.commit();
+    getIO()?.emit('process:updated', { id, title, processNumber, setor, dueDate, type: type ?? null, typeColor: typeColor ?? null, docs: docs || [] });
     res.json({ success: true });
   } catch (error) {
+    await connection.rollback();
     console.error(error);
     res.status(500).json({ error: 'Failed to update process' });
+  } finally {
+    connection.release();
   }
 });
 
 // DELETE a process
-router.delete('/:id', requireEditorOrAdmin, async (req, res) => {
+router.delete('/:id', requireEditorOrAdmin, processWriteLimiter, async (req, res) => {
   const { id } = req.params;
   try {
     await db.query(`DELETE FROM processes WHERE id = ?`, [id]);
@@ -121,9 +160,12 @@ router.delete('/:id', requireEditorOrAdmin, async (req, res) => {
 });
 
 // PUT to update process status (active/archived)
-router.put('/:id/status', requireEditorOrAdmin, async (req, res) => {
+router.put('/:id/status', requireEditorOrAdmin, processWriteLimiter, async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
+  if (!isAllowedStatus(status)) {
+    return res.status(400).json({ error: 'Status inválido' });
+  }
   try {
     await db.query(`UPDATE processes SET status = ? WHERE id = ?`, [status, id]);
     getIO()?.emit('process:status_changed', { id, status });
@@ -135,9 +177,10 @@ router.put('/:id/status', requireEditorOrAdmin, async (req, res) => {
 });
 
 // PUT to update process items
-router.put('/:id/items', requireEditorOrAdmin, async (req, res) => {
+router.put('/:id/items', requireEditorOrAdmin, processWriteLimiter, async (req, res) => {
   const { id } = req.params;
   const { docs } = req.body;
+  const safeDocs = Array.isArray(docs) ? docs.map(sanitizeProcessDoc).filter(Boolean) : [];
   
   const connection = await db.getConnection();
   try {
@@ -145,8 +188,8 @@ router.put('/:id/items', requireEditorOrAdmin, async (req, res) => {
     
     await connection.query(`DELETE FROM process_items WHERE process_id = ?`, [id]);
 
-    if (docs && docs.length > 0) {
-      const values = docs.map((doc, index) => [
+    if (safeDocs.length > 0) {
+      const values = safeDocs.map((doc, index) => [
         doc.id, id, doc.type, doc.name, doc.done || false, doc.bgColor || null, index
       ]);
       await connection.query(
@@ -157,7 +200,7 @@ router.put('/:id/items', requireEditorOrAdmin, async (req, res) => {
     }
     
     await connection.commit();
-    getIO()?.emit('process:items_updated', { id, docs: docs || [] });
+    getIO()?.emit('process:items_updated', { id, docs: safeDocs });
     res.json({ success: true });
   } catch (error) {
     await connection.rollback();

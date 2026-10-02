@@ -7,7 +7,7 @@ const normalizeOrigin = (origin) => {
   return origin.trim().replace(/\/$/, '');
 };
 
-const rawOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000,http://127.0.0.1:3000')
+const rawOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001')
   .split(',')
   .map(normalizeOrigin)
   .filter(Boolean);
@@ -26,17 +26,6 @@ for (const origin of rawOrigins) {
   }
 }
 
-const isVercelOrigin = (origin) => {
-  if (!origin) return false;
-
-  try {
-    const { hostname } = new URL(origin);
-    return hostname === 'vercel.app' || hostname.endsWith('.vercel.app');
-  } catch {
-    return false;
-  }
-};
-
 const corsOriginHandler = (origin, callback) => {
   if (!origin) {
     callback(null, true);
@@ -44,8 +33,7 @@ const corsOriginHandler = (origin, callback) => {
   }
 
   const normalizedOrigin = normalizeOrigin(origin);
-  const allowed = configuredOrigins.some(item => normalizeOrigin(item).toLowerCase() === normalizedOrigin.toLowerCase())
-    || isVercelOrigin(normalizedOrigin);
+  const allowed = configuredOrigins.some(item => normalizeOrigin(item).toLowerCase() === normalizedOrigin.toLowerCase());
 
   callback(null, allowed);
 };

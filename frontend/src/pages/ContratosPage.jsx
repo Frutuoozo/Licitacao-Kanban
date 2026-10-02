@@ -1,655 +1,1525 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { IconClose, IconLink, IconUpload } from "../icons";
-import { useStorage } from "../utils";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  IconArchive,
+  IconCalendar,
+  IconClose,
+  IconEdit,
+  IconFileText,
+  IconGrid,
+  IconList,
+  IconPlus,
+  IconTrash,
+  IconUnarchive,
+  IconUser,
+} from "../icons";
+import { authFetch } from "../authFetch";
+import { useAppSettings } from "../appSettings";
+import DatePicker from "../components/DatePicker";
+import "./ContratosPage.css";
 
-// ── Helpers de CSV / datas / valores ─────────────────────────────────────────
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
+// O leitor de PDF (PDF.js) só é baixado quando um documento é aberto.
+const PdfViewer = lazy(() => import("../components/PdfViewer"));
 
-function splitCSVLine(line) {
-  const cols = [];
-  let cur = "", inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') { inQ = !inQ; }
-    else if (ch === "," && !inQ) { cols.push(cur.replace(/^"|"$/g, "").trim()); cur = ""; }
-    else cur += ch;
-  }
-  cols.push(cur.replace(/^"|"$/g, "").trim());
-  return cols;
+const EMPTY_FORM = {
+  processName: "",
+  objectDescription: "",
+  processNumber: "",
+  contractValue: "",
+  valueVariable: false,
+  dueDate: "",
+  fiscalEffective: "",
+  fiscalSubstitute: "",
+  modality: "",
+  lawType: "new",
+};
+
+const LAW_INFO = {
+  old: { short: "Lei antiga", label: "Lei 8.666/93" },
+  new: { short: "Lei nova", label: "Lei 14.133/21" },
+};
+
+function parseLocalDate(value) {
+  if (!value) return null;
+  const date = new Date(`${String(value).slice(0, 10)}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function parseCSV(text) {
-  const lines = text.trim().split("\n");
-  if (lines.length < 3) return [];
-  return lines.slice(2).map(line => {
-    const c = splitCSVLine(line);
-    const g = (i) => (c[i] || "").replace(/\n/g, " ").trim();
-    const aditivoRaw = g(10);
-    let estado = "Contrato Inicial";
-    if (g(22) && g(22) !== "-") {
-      estado = "Emergencial";
-    } else if (aditivoRaw && aditivoRaw !== "-") {
-      const n = aditivoRaw.replace(/[°º]/g, "").trim();
-      const map = { "1": "1º Aditivo", "2": "2º Aditivo", "3": "3º Aditivo", "4": "4º Aditivo" };
-      estado = map[n] || `${aditivoRaw} Aditivo`;
-    }
-    let ultimoVenc = g(13);
-    if (!ultimoVenc || ultimoVenc === "-") ultimoVenc = g(23);
-    if (!ultimoVenc || ultimoVenc === "-") ultimoVenc = g(9);
-    let ultimoValor = g(11);
-    if (!ultimoValor || ultimoValor === "-") ultimoValor = g(22);
-    if (!ultimoValor || ultimoValor === "-") ultimoValor = g(7);
+function formatDate(value) {
+  const date = parseLocalDate(value);
+  return date ? date.toLocaleDateString("pt-BR") : "—";
+}
+
+function formatMoney(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "—";
+  return number.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+// Valor exibido do contrato: "Variável" quando não há valor definido.
+function formatContractValue(contract) {
+  return contract.valueVariable ? "Variável" : formatMoney(contract.contractValue);
+}
+
+function moneyInputToNumber(value) {
+  const clean = String(value).replace(/[^\d,.-]/g, "");
+  if (!clean) return NaN;
+  return Number(clean.includes(",") ? clean.replace(/\./g, "").replace(",", ".") : clean);
+}
+
+// Regras de vigência (as mesmas do backend):
+// - Ativo: faltam mais de 3 meses para vencer.
+// - Perto do vencimento: faltam 3 meses ou menos. Entra em renovação se tiver menos de 4 aditivos;
+//   com 4 aditivos, precisa de nova contratação.
+// - Encerrado: passou do vencimento ou foi encerrado manualmente. Até 45 dias após o vencimento
+//   ainda é possível lançar um aditivo.
+const NEAR_DAYS = 90;
+const MAX_AMENDMENTS = 4;
+const AMENDMENT_GRACE_DAYS = 45;
+
+function daysUntil(value) {
+  const dueDate = parseLocalDate(value);
+  if (!dueDate) return null;
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  return Math.round((dueDate - today) / 86400000);
+}
+
+function getContractStatus(contract) {
+  const days = daysUntil(contract.dueDate);
+  const amendments = contract.amendmentCount || 0;
+  const amendmentsLeft = MAX_AMENDMENTS - amendments;
+  if (contract.closedAt) {
+    return { key: "closed", manual: true, days, amendments, canAmend: false, label: "Encerrado", tone: "gray", css: "expired" };
+  }
+  if (days !== null && days < 0) {
+    const canAmend = amendmentsLeft > 0 && -days <= AMENDMENT_GRACE_DAYS;
+    return { key: "closed", manual: false, days, amendments, canAmend, label: "Encerrado", tone: "gray", css: "expired" };
+  }
+  if (days !== null && days <= NEAR_DAYS) {
+    const renewable = amendmentsLeft > 0;
     return {
-      contratada:        g(1),
-      lei:               g(2),
-      processo:          g(3),
-      modalidade:        g(4),
-      objeto:            g(5),
-      contrato:          g(6),
-      valorInicial:      g(7),
-      assinatura:        g(8),
-      vencInicial:       g(9),
-      valorMensal:       g(12),
-      portaria:          g(27),
-      fiscalEfetivo:     g(28),
-      matriculaFiscal:   g(29),
-      substituto:        g(30),
-      matriculaSubst:    g(31),
-      estado, ultimoVenc, ultimoValor,
+      key: "near", days, amendments, renewable, canAmend: renewable,
+      label: renewable ? "Para renovação" : "Nova contratação", tone: renewable ? "purple" : "amber", css: "soon",
     };
-  }).filter(r => r.contrato && r.contrato !== "" && r.objeto !== "");
+  }
+  return { key: "regular", days, amendments, canAmend: amendmentsLeft > 0, label: "Ativo", tone: "green", css: "regular" };
 }
 
-function parseDate(str) {
-  if (!str) return null;
-  const parts = str.split("/");
-  if (parts.length === 3) return new Date(+parts[2], +parts[1] - 1, +parts[0]);
-  return new Date(str);
+// Data em que o contrato deixou de vigorar: encerramento manual ou vencimento.
+const endedOn = (contract) => contract.closedAt || contract.dueDate || "";
+
+function addDays(iso, days) {
+  const date = parseLocalDate(iso);
+  if (!date) return null;
+  date.setDate(date.getDate() + days);
+  return date.toLocaleDateString("pt-BR");
 }
 
-function formatDate(str) {
-  if (!str) return "—";
-  const d = parseDate(str);
-  if (!d || isNaN(d)) return str;
-  return d.toLocaleDateString("pt-BR");
+function remainingText(status, contract) {
+  const { days } = status;
+  if (contract.closedAt) return `Encerrado manualmente em ${formatDate(contract.closedAt)}`;
+  if (days === null) return "Sem data de vencimento";
+  if (days < 0) {
+    const ago = `Venceu há ${-days} ${-days === 1 ? "dia" : "dias"}`;
+    return status.canAmend ? `${ago} · aditivo possível até ${addDays(contract.dueDate, AMENDMENT_GRACE_DAYS)}` : ago;
+  }
+  if (days === 0) return "Vence hoje";
+  return `Faltam ${days} ${days === 1 ? "dia" : "dias"}`;
 }
 
-function formatMoney(str) {
-  if (!str) return "—";
-  const clean = str.replace(/[R$\s.]/g, "").replace(",", ".");
-  const n = parseFloat(clean);
-  if (isNaN(n)) return str;
-  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+// Opções de vigência dependem da aba: vigentes olham para frente, encerrados para trás.
+const VIGENCIA_FILTERS = {
+  active: [
+    { value: "all", label: "Todas as vigências" },
+    { value: "30", label: "Vencem em 30 dias" },
+    { value: "90", label: "Vencem em 90 dias" },
+    { value: "year", label: "Vencem este ano" },
+    { value: "later", label: "Vencem após este ano" },
+  ],
+  closed: [
+    { value: "all", label: "Todos os encerrados" },
+    { value: "closed30", label: "Encerrados há até 30 dias" },
+    { value: "closedYear", label: "Encerrados este ano" },
+    { value: "closedBefore", label: "Encerrados em anos anteriores" },
+  ],
+  renewal: [
+    { value: "all", label: "Todas as vigências" },
+    { value: "30", label: "Vencem em 30 dias" },
+    { value: "90", label: "Vencem em 90 dias" },
+  ],
+  all: [
+    { value: "all", label: "Todas as vigências" },
+    { value: "30", label: "Vencem em 30 dias" },
+    { value: "90", label: "Vencem em 90 dias" },
+    { value: "year", label: "Vencem este ano" },
+    { value: "later", label: "Vencem após este ano" },
+    { value: "closed30", label: "Encerrados há até 30 dias" },
+    { value: "closedYear", label: "Encerrados este ano" },
+    { value: "closedBefore", label: "Encerrados em anos anteriores" },
+  ],
+};
+const VIEW_KEY = "lk-contracts-view";
+
+function formatShortDate(value) {
+  const date = parseLocalDate(value);
+  return date ? date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "—";
 }
 
-function getStatusVencimento(dateStr) {
-  const d = parseDate(dateStr);
-  if (!d || isNaN(d)) return { label: "Sem data", color: "#8b949e", key: "semdata" };
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-  const diff = Math.ceil((d - hoje) / (1000 * 60 * 60 * 24));
-  if (diff < -30) return { label: "Encerrado",          color: "#6e7681", key: "encerrado" };
-  if (diff < 0)   return { label: "Vencido",             color: "#f85149", key: "vencido"   };
-  if (diff <= 30) return { label: `Vence em ${diff}d`,   color: "#e3b341", key: "alerta"    };
-  if (diff <= 90) return { label: `Vence em ${diff}d`,   color: "#f0883e", key: "alerta"    };
-  return                  { label: `Vence em ${diff}d`,   color: "#3fb950", key: "ok"        };
+function matchesVigencia(contract, filter) {
+  if (filter === "all") return true;
+  const status = getContractStatus(contract);
+  if (filter.startsWith("closed")) {
+    if (status.key !== "closed") return false;
+    const ended = parseLocalDate(endedOn(contract));
+    if (!ended) return false;
+    if (filter === "closed30") return daysUntil(endedOn(contract)) >= -30;
+    return filter === "closedYear" ? ended.getFullYear() === new Date().getFullYear() : ended.getFullYear() < new Date().getFullYear();
+  }
+  if (status.key === "closed" || status.days === null) return false;
+  if (filter === "30") return status.days <= 30;
+  if (filter === "90") return status.days <= 90;
+  const year = parseLocalDate(contract.dueDate).getFullYear();
+  const thisYear = new Date().getFullYear();
+  return filter === "year" ? year === thisYear : year > thisYear;
 }
 
-const LEI_COLORS = {
-  "8.666":  { label: "Lei 8.666/93",  color: "#58a6ff", bg: "#58a6ff18" },
-  "14.133": { label: "Lei 14.133/21", color: "#bc8cff", bg: "#bc8cff18" },
+function exportContractsCsv(contracts) {
+  const header = ["Nº do processo", "Processo", "Objeto", "Modalidade", "Lei", "Fiscal efetivo", "Fiscal substituto", "Vencimento", "Valor", "Aditivos", "Situação", "Encerrado em", "Motivo do encerramento"];
+  const rows = contracts.map((c) => [
+    c.processNumber, c.processName, c.objectDescription, c.modality, (LAW_INFO[c.lawType] || LAW_INFO.new).label,
+    c.fiscalEffective, c.fiscalSubstitute || "", formatDate(c.dueDate),
+    c.valueVariable ? "Variável" : Number(c.contractValue).toLocaleString("pt-BR", { minimumFractionDigits: 2 }), `${c.amendmentCount || 0}/${MAX_AMENDMENTS}`,
+    getContractStatus(c).label, c.closedAt ? formatDate(c.closedAt) : "", c.closedReason || "",
+  ]);
+  // Separador ";" e BOM para abrir com acentos corretos no Excel em português.
+  const csv = [header, ...rows].map((row) => row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(";")).join("\r\n");
+  const url = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }));
+  const link = Object.assign(document.createElement("a"), { href: url, download: `contratos-${new Date().toISOString().slice(0, 10)}.csv` });
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export function RowMenu({ contract, actions, label }) {
+  const [position, setPosition] = useState(null);
+  const ref = useRef(null);
+  const open = position !== null;
+  const setOpen = (next) => {
+    if (!next) { setPosition(null); return; }
+    // Posição fixa calculada a partir do botão: o menu não é cortado pela rolagem horizontal da tabela.
+    const rect = ref.current.getBoundingClientRect();
+    const menuHeight = 44 + actions.length * 36;
+    const top = rect.bottom + 6 + menuHeight > window.innerHeight ? rect.top - 6 - menuHeight : rect.bottom + 6;
+    setPosition({ top, right: window.innerWidth - rect.right });
+  };
+  useEffect(() => {
+    if (!open) return;
+    const close = (event) => { if (!ref.current?.contains(event.target)) setPosition(null); };
+    const onKey = (event) => { if (event.key === "Escape") setPosition(null); };
+    const dismiss = () => setPosition(null);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", dismiss, true);
+    window.addEventListener("resize", dismiss);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", dismiss, true);
+      window.removeEventListener("resize", dismiss);
+    };
+  }, [open]);
+  return (
+    <div className="ct-row-menu" ref={ref}>
+      <button type="button" className="ct-row-menu-trigger" aria-label={label || `Ações do contrato ${contract.processNumber}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>•••</button>
+      {open && (
+        <div className="ct-row-menu-list" role="menu" style={{ top: position.top, right: position.right }}>
+          {actions.map((action) => (
+            <button type="button" role="menuitem" key={action.key} className={action.danger ? "danger" : ""} onClick={() => { setOpen(false); action.run(contract); }}>
+              {action.icon} {action.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Abre os detalhes ao clicar ou ao pressionar Enter/Espaço, sem disparar a partir de botões internos.
+function openableProps(contract, onOpen, label) {
+  const isInner = (event) => event.target.closest("button, a, input, select, textarea");
+  return {
+    tabIndex: 0,
+    role: "button",
+    "aria-label": label,
+    onClick: (event) => { if (!isInner(event)) onOpen(contract); },
+    onKeyDown: (event) => {
+      if ((event.key === "Enter" || event.key === " ") && !isInner(event) && event.target === event.currentTarget) {
+        event.preventDefault();
+        onOpen(contract);
+      }
+    },
+  };
+}
+
+// Ações disponíveis para um contrato, conforme a situação (usadas no menu •••, nos cards e no detalhe).
+function contractActions(contract, handlers) {
+  const status = getContractStatus(contract);
+  return [
+    { key: "edit", label: "Editar", icon: <IconEdit />, run: handlers.onEdit },
+    contract.closedAt
+      ? { key: "reopen", label: "Reabrir contrato", icon: <IconUnarchive />, run: handlers.onReopen }
+      : { key: "close", label: "Encerrar contrato", icon: <IconArchive />, run: handlers.onClose },
+    status.canAmend && { key: "amend", label: "Lançar aditivo", icon: <IconPlus />, run: handlers.onAmend },
+    { key: "delete", label: "Excluir", icon: <IconTrash />, run: handlers.onDelete, danger: true },
+  ].filter(Boolean);
+}
+
+function ContractsTable({ contracts, canEdit, handlers, onOpen }) {
+  return (
+    <div className="ct-table-wrap">
+      <table className="ct-table">
+        <thead>
+          <tr>
+            <th>Contrato</th><th>Objeto</th><th>Fiscal</th><th>Vigência</th><th>Valor</th><th>Situação</th>
+            {canEdit && <th className="ct-col-action">Ação</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {contracts.map((contract) => {
+            const status = getContractStatus(contract);
+            return (
+              <tr key={contract.id} className="ct-row-clickable" {...openableProps(contract, onOpen, `Ver detalhes do contrato ${contract.processNumber}`)}>
+                <td className="ct-col-number">
+                  {contract.processNumber}
+                  {contract.documentCount > 0 && <span className="ct-doc-flag" title={`${contract.documentCount} ${contract.documentCount === 1 ? "documento anexado" : "documentos anexados"}`}><IconFileText /></span>}
+                </td>
+                <td data-label="Objeto" className="ct-col-object"><strong>{contract.processName}</strong><span>{contract.objectDescription}</span></td>
+                <td data-label="Fiscal">{contract.fiscalEffective}</td>
+                <td data-label="Vigência" className="ct-col-date">{contract.dueDate ? <>até <time dateTime={contract.dueDate}>{formatShortDate(contract.dueDate)}</time></> : "—"}</td>
+                <td data-label="Valor" className="ct-col-value">{formatContractValue(contract)}</td>
+                <td data-label="Situação">
+                  <span className={`ct-badge ${status.tone}`}>{status.label}</span>
+                  <small className="ct-amend-count">{status.amendments}/{MAX_AMENDMENTS} aditivos</small>
+                </td>
+                {canEdit && <td className="ct-col-action"><RowMenu contract={contract} actions={contractActions(contract, handlers)} /></td>}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ContractCard({ contract, canEdit, handlers, onOpen }) {
+  const status = getContractStatus(contract);
+  const law = LAW_INFO[contract.lawType] || LAW_INFO.new;
+
+  return (
+    <article className={`contract-card contract-card-${status.css} ct-card-clickable`} {...openableProps(contract, onOpen, `Ver detalhes do contrato ${contract.processName}`)}>
+      <div className="contract-card-top">
+        <div className="contract-card-badges">
+          <span className={`ct-badge ${status.tone}`}>{status.label}</span>
+          <span className={`contract-law-badge contract-law-${contract.lawType}`}>{law.label}</span>
+        </div>
+        {canEdit && (
+          <div className="contract-card-actions">
+            {contractActions(contract, handlers).map((action) => (
+              <button type="button" key={action.key} className={`icon-btn ${action.danger ? "danger" : ""}`} title={action.label} aria-label={action.label} onClick={() => action.run(contract)}>
+                {action.icon}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="contract-card-title-wrap">
+        <p className="contract-card-kicker">
+          Processo
+          {contract.documentCount > 0 && <span className="ct-doc-flag" title={`${contract.documentCount} ${contract.documentCount === 1 ? "documento anexado" : "documentos anexados"}`}><IconFileText /> {contract.documentCount}</span>}
+        </p>
+        <h2 className="contract-card-title" title={contract.processName}>{contract.processName}</h2>
+        <p className="contract-card-object" title={contract.objectDescription}>{contract.objectDescription}</p>
+      </div>
+
+      <div className="contract-info-grid">
+        <div className="contract-info-item">
+          <span>Nº do processo</span>
+          <strong>{contract.processNumber}</strong>
+        </div>
+        <div className="contract-info-item">
+          <span>Modalidade</span>
+          <strong>{contract.modality}</strong>
+        </div>
+        <div className="contract-info-item contract-value-item">
+          <span>Valor do contrato</span>
+          <strong>{formatContractValue(contract)}</strong>
+        </div>
+        <div className="contract-info-item">
+          <span>Vencimento · Aditivos</span>
+          <strong>{formatDate(contract.dueDate)} · {status.amendments}/{MAX_AMENDMENTS}</strong>
+        </div>
+      </div>
+
+      <div className="contract-inspection">
+        <div className="contract-inspection-title"><IconUser /> Fiscalização</div>
+        <div className="contract-inspection-grid">
+          <div>
+            <span>Fiscal efetivo</span>
+            <strong>{contract.fiscalEffective}</strong>
+          </div>
+          <div>
+            <span>Fiscal substituto</span>
+            <strong>{contract.fiscalSubstitute || "Não informado"}</strong>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+const DETAIL_EXIT_MS = 220;
+
+// ── Documentos anexados (termo de contrato / termos de aditivo) ──
+const DOCUMENT_TYPES = ["application/pdf", "image/png", "image/jpeg"];
+const DOCUMENT_MAX_MB = 15;
+const DOCUMENT_ACCEPT = ".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg";
+
+// Retorna a mensagem de erro, ou "" se o arquivo puder ser enviado.
+function validateDocument(file) {
+  if (!file) return "";
+  if (!DOCUMENT_TYPES.includes(file.type)) return "Envie um arquivo PDF, PNG ou JPG.";
+  if (file.size > DOCUMENT_MAX_MB * 1024 * 1024) return `O arquivo passa de ${DOCUMENT_MAX_MB} MB.`;
+  return "";
+}
+
+async function uploadDocument(contractId, file, kind, eventId) {
+  const headers = { "Content-Type": file.type, "X-Document-Kind": kind, "X-File-Name": encodeURIComponent(file.name) };
+  if (eventId) headers["X-Event-Id"] = String(eventId);
+  const response = await authFetch(`${API_URL}/api/contracts/${contractId}/documents`, { method: "POST", headers, body: file });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Não foi possível anexar o documento.");
+  return data;
+}
+
+const documentLabel = (doc) => doc.kind === "term" ? "Termo de contrato" : `${doc.amendmentNumber}º aditivo`;
+const formatSize = (bytes) => bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1).replace(".", ",")} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+// Campo de arquivo no estilo do formulário (usado no cadastro e no aditivo).
+function DocumentField({ label, file, onChange, current, error }) {
+  const inputRef = useRef(null);
+  return (
+    <div className="contract-field contract-field-wide ct-file-field">
+      <span>{label}</span>
+      <div className={`ct-file-drop ${file ? "has-file" : ""}`}>
+        <IconFileText />
+        <div className="ct-file-text">
+          {file ? <><strong>{file.name}</strong><small>{formatSize(file.size)}</small></>
+            : current ? <><strong>{current}</strong><small>Já anexado — escolha outro arquivo para substituir</small></>
+            : <><strong>Nenhum arquivo</strong><small>PDF, PNG ou JPG · até {DOCUMENT_MAX_MB} MB</small></>}
+        </div>
+        {file
+          ? <button type="button" className="ct-file-btn" onClick={() => { onChange(null); if (inputRef.current) inputRef.current.value = ""; }}>Remover</button>
+          : <button type="button" className="ct-file-btn" onClick={() => inputRef.current?.click()}>{current ? "Substituir" : "Escolher arquivo"}</button>}
+        <input ref={inputRef} type="file" accept={DOCUMENT_ACCEPT} hidden onChange={(event) => onChange(event.target.files?.[0] || null)} />
+      </div>
+      {error && <small className="ct-file-error">{error}</small>}
+    </div>
+  );
+}
+
+// Carrega o arquivo autenticado e exibe via URL local (blob), sem depender de embutir o domínio da API.
+function DocumentPreview({ contractId, doc }) {
+  const [url, setUrl] = useState(null);
+  const [blob, setBlob] = useState(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let objectUrl = null;
+    let live = true;
+    setUrl(null);
+    setBlob(null);
+    setError("");
+    authFetch(`${API_URL}/api/contracts/${contractId}/documents/${doc.id}/file`)
+      .then((res) => { if (!res.ok) throw new Error(); return res.blob(); })
+      .then((file) => {
+        objectUrl = URL.createObjectURL(file);
+        if (live) { setUrl(objectUrl); setBlob(file); } else URL.revokeObjectURL(objectUrl);
+      })
+      .catch(() => { if (live) setError("Não foi possível abrir o documento."); });
+    return () => { live = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [contractId, doc.id]);
+
+  return (
+    <div className="ct-viewer-frame">
+      {error ? <p className="ct-viewer-empty">{error}</p>
+        : !url ? <p className="ct-viewer-empty"><span className="contracts-spinner" />Carregando documento…</p>
+        : doc.mimeType === "application/pdf" ? (
+          <Suspense fallback={<p className="ct-viewer-empty"><span className="contracts-spinner" />Carregando leitor…</p>}>
+            <PdfViewer blob={blob} fileName={doc.fileName} fileUrl={url} />
+          </Suspense>
+        )
+        : <div className="ct-viewer-image"><img src={url} alt={`${documentLabel(doc)} — ${doc.fileName}`} /></div>}
+      {url && doc.mimeType !== "application/pdf" && (
+        <div className="ct-viewer-links">
+          <a href={url} target="_blank" rel="noreferrer">Abrir em nova aba</a>
+          <a href={url} download={doc.fileName}>Baixar</a>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Visualizador com abas: termo de contrato + um termo por aditivo (anexar/substituir/remover para quem edita).
+function DocumentViewer({ contract, documents, amendments, canEdit, onChanged, onCloseViewer }) {
+  const termDoc = documents.find((doc) => doc.kind === "term");
+  const tabs = [
+    { key: "term", label: "Termo de contrato", doc: termDoc, kind: "term", eventId: null },
+    ...amendments.map((event) => ({
+      key: `a${event.id}`, label: `${event.amendmentNumber}º aditivo`, kind: "amendment", eventId: event.id,
+      doc: documents.find((doc) => doc.kind === "amendment" && doc.eventId === event.id),
+    })),
+  ];
+  const [active, setActive] = useState(tabs.find((tab) => tab.doc)?.key || "term");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const { settings } = useAppSettings();
+  const inputRef = useRef(null);
+  const tab = tabs.find((item) => item.key === active) || tabs[0];
+
+  const send = async (file) => {
+    const problem = validateDocument(file);
+    if (problem) { setError(problem); return; }
+    setBusy(true); setError("");
+    try { onChanged(await uploadDocument(contract.id, file, tab.kind, tab.eventId)); }
+    catch (uploadError) { setError(uploadError.message); }
+    finally { setBusy(false); if (inputRef.current) inputRef.current.value = ""; }
+  };
+  const remove = async () => {
+    if (!tab.doc) return;
+    setBusy(true); setError("");
+    try {
+      const response = await authFetch(`${API_URL}/api/contracts/${contract.id}/documents/${tab.doc.id}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível remover o documento.");
+      setConfirmRemove(false);
+      onChanged(data);
+    } catch (removeError) { setError(removeError.message); setConfirmRemove(false); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <section className="ct-viewer" aria-label="Documentos do contrato">
+      <header className="ct-viewer-head">
+        <div className="ct-viewer-tabs" role="tablist">
+          {tabs.map((item) => (
+            <button type="button" role="tab" key={item.key} aria-selected={item.key === active} className={item.key === active ? "active" : ""} onClick={() => { setActive(item.key); setError(""); }}>
+              {item.label}{!item.doc && <span className="ct-viewer-missing" title="Sem documento anexado">•</span>}
+            </button>
+          ))}
+        </div>
+        {onCloseViewer && <button type="button" className="ct-detail-close" onClick={onCloseViewer} aria-label="Fechar documento"><IconClose /></button>}
+      </header>
+      {tab.doc && (
+        <div className="ct-viewer-meta">
+          <span title={tab.doc.fileName}><strong>{tab.doc.fileName}</strong> · {formatSize(tab.doc.sizeBytes)}{tab.doc.userName ? ` · enviado por ${tab.doc.userName}` : ""}</span>
+          {canEdit && (
+            <span className="ct-viewer-actions">
+              <button type="button" onClick={() => inputRef.current?.click()} disabled={busy}>Substituir</button>
+              <button type="button" className="danger" onClick={() => (settings.confirmBeforeDelete ? setConfirmRemove(true) : remove())} disabled={busy}>Remover</button>
+            </span>
+          )}
+        </div>
+      )}
+      {error && <p className="ct-file-error ct-viewer-error">{error}</p>}
+      {tab.doc ? <DocumentPreview key={tab.doc.id} contractId={contract.id} doc={tab.doc} /> : (
+        <div className="ct-viewer-frame ct-viewer-placeholder">
+          <IconFileText />
+          <strong>{tab.label}: nenhum documento anexado</strong>
+          <p>PDF, PNG ou JPG · até {DOCUMENT_MAX_MB} MB</p>
+          {canEdit && <button type="button" className="ct-detail-edit" onClick={() => inputRef.current?.click()} disabled={busy}>{busy ? "Enviando…" : `Anexar ${tab.kind === "term" ? "termo de contrato" : `termo do ${tab.label}`}`}</button>}
+        </div>
+      )}
+      <input ref={inputRef} type="file" accept={DOCUMENT_ACCEPT} hidden onChange={(event) => event.target.files?.[0] && send(event.target.files[0])} />
+
+      {/* Mesma confirmação usada para excluir contrato. */}
+      {confirmRemove && tab.doc && (
+        <div className="contract-modal-overlay" onMouseDown={(event) => event.target === event.currentTarget && !busy && setConfirmRemove(false)}
+          onKeyDown={(event) => { if (event.key === "Escape" && !busy) { event.stopPropagation(); setConfirmRemove(false); } }}>
+          <div className="contract-delete-modal" role="alertdialog" aria-modal="true" aria-labelledby="ct-doc-remove-title">
+            <div className="contract-delete-icon"><IconTrash /></div>
+            <h2 id="ct-doc-remove-title">Remover este documento?</h2>
+            <p>O arquivo <strong>{tab.doc.fileName}</strong> ({tab.label}) será removido do contrato. A remoção fica registrada no histórico.</p>
+            <div className="contract-delete-actions">
+              <button type="button" className="btn-cancel-lg" onClick={() => setConfirmRemove(false)} disabled={busy} autoFocus>Cancelar</button>
+              <button type="button" className="btn-danger" onClick={remove} disabled={busy}>{busy ? "Removendo..." : "Remover documento"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// Largura mínima para mostrar o documento ao lado das informações.
+function useWideScreen(query = "(min-width: 1100px)") {
+  const [wide, setWide] = useState(() => typeof window !== "undefined" && window.matchMedia(query).matches);
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const update = () => setWide(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [query]);
+  return wide;
+}
+
+const HISTORY_TITLES = {
+  created: "Termo de contrato",
+  edited: "Contrato editado",
+  closed: "Contrato encerrado",
+  reopened: "Contrato reaberto",
+  document: "Documento",
 };
 
-const ESTADO_COLORS = {
-  "Contrato Inicial": "#3fb950",
-  "1º Aditivo":       "#58a6ff",
-  "2º Aditivo":       "#f0883e",
-  "3º Aditivo":       "#e3b341",
-  "4º Aditivo":       "#f85149",
-  "Emergencial":      "#bc8cff",
-};
-
-function useContratoDerived(row) {
-  const vencStatus  = getStatusVencimento(row.ultimoVenc);
-  const leiKey      = Object.keys(LEI_COLORS).find(k => row.lei.includes(k));
-  const leiInfo     = leiKey ? LEI_COLORS[leiKey] : { label: row.lei || "Lei N/D", color: "#8b949e", bg: "#8b949e18" };
-  const estadoColor = ESTADO_COLORS[row.estado] || "#8b949e";
-  return { vencStatus, leiInfo, estadoColor };
+// Formata valores do histórico de edição conforme o campo alterado.
+function formatChangeValue(field, value) {
+  if (field === "valueVariable") return value === true || value === "true" ? "Sim" : "Não";
+  if (value === "" || value === null || value === undefined) return "—";
+  if (field === "dueDate") return formatDate(value);
+  if (field === "contractValue") return formatMoney(value);
+  if (field === "lawType") return (LAW_INFO[value] || LAW_INFO.new).label;
+  return String(value);
 }
 
-function toGSheetsCsvUrl(input) {
-  const str = input.trim();
-  if (!str) return { url: "", type: "unknown", sheetId: null, gid: null };
-  if (str.includes("docs.google.com/spreadsheets") && str.includes("/pub") && str.includes("output=csv")) {
-    return { url: str, type: "pub-csv", sheetId: null, gid: null };
-  }
-  const isExcelUpload = str.includes("rtpof=true") || str.includes("sd=true");
-  let match = str.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
-  if (!match) match = str.match(/\/spreadsheets\/d\/e\/([a-zA-Z0-9_-]+)/);
-  if (!match) match = str.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-  if (match) {
-    const id = match[1];
-    const gidMatch = str.match(/[#&?]gid=(\d+)/);
-    const gid = gidMatch ? gidMatch[1] : "0";
-    if (isExcelUpload || str.includes("/file/d/")) {
-      return { url: `https://docs.google.com/uc?export=download&id=${id}`, type: "drive-xlsx", sheetId: id, gid: null };
-    }
-    return { url: `https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gid}`, type: "sheets-csv", sheetId: id, gid };
-  }
-  return { url: str, type: "unknown", sheetId: null, gid: null };
+// Histórico e documentos do contrato, recarregados sempre que o contrato muda.
+function useContractRecords(contract) {
+  const [events, setEvents] = useState(null);
+  const [documents, setDocuments] = useState([]);
+  const [error, setError] = useState("");
+  const refreshKey = `${contract.updatedAt}-${contract.amendmentCount}-${contract.closedAt}-${contract.documentCount}`;
+  useEffect(() => {
+    let live = true;
+    setError("");
+    Promise.all([
+      authFetch(`${API_URL}/api/contracts/${contract.id}/history`).then((res) => { if (!res.ok) throw new Error(); return res.json(); }),
+      authFetch(`${API_URL}/api/contracts/${contract.id}/documents`).then((res) => (res.ok ? res.json() : [])),
+    ])
+      .then(([history, docs]) => {
+        if (!live) return;
+        setEvents(Array.isArray(history) ? history : []);
+        setDocuments(Array.isArray(docs) ? docs : []);
+      })
+      .catch(() => { if (live) setError("Não foi possível carregar o histórico."); });
+    return () => { live = false; };
+  }, [contract.id, refreshKey]);
+  return { events, documents, error };
 }
 
-const SYNC_INTERVALS = [
-  { label: "1 min",  value: 1  },
-  { label: "5 min",  value: 5  },
-  { label: "10 min", value: 10 },
-  { label: "30 min", value: 30 },
-  { label: "Manual", value: 0  },
-];
+function ContractHistory({ events, error }) {
+  if (error) return <p className="ct-history-empty">{error}</p>;
+  if (events === null) return <p className="ct-history-empty">Carregando histórico…</p>;
+  if (events.length === 0) return <p className="ct-history-empty">Nenhum registro no histórico.</p>;
 
-const CORS_PROXIES = [
-  (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-  (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-  (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-  (u) => `https://cors.eu.org/${u}`,
-  (u) => u,
-];
+  // Mais recente primeiro.
+  return (
+    <ol className="ct-history">
+      {[...events].reverse().map((event) => {
+        const title = event.type === "amendment" ? `${event.amendmentNumber}º aditivo` : HISTORY_TITLES[event.type] || "Registro";
+        const stamp = new Date(event.createdAt);
+        return (
+          <li key={event.id} className={`ct-history-item ${event.type}`}>
+            <span className="ct-history-dot" aria-hidden="true" />
+            <div className="ct-history-content">
+              <div className="ct-history-head">
+                <strong>{title}</strong>
+                <time dateTime={event.eventDate}>{formatDate(event.eventDate)}</time>
+              </div>
+              {event.type === "created" && event.newDueDate && (
+                <p>Vigência até {formatDate(event.newDueDate)} · {event.newValueVariable ? "Valor variável" : formatMoney(event.newValue)}</p>
+              )}
+              {event.type === "amendment" && (
+                <>
+                  <p>Vencimento: {formatDate(event.previousDueDate)} → <b>{formatDate(event.newDueDate)}</b></p>
+                  {(() => {
+                    const before = event.previousValueVariable ? "Variável" : formatMoney(event.previousValue);
+                    const after = event.newValueVariable ? "Variável" : formatMoney(event.newValue);
+                    return before !== after
+                      ? <p>Valor: {before} → <b>{after}</b></p>
+                      : <p>Valor mantido: {after}</p>;
+                  })()}
+                </>
+              )}
+              {event.type === "edited" && (
+                <ul className="ct-history-changes">
+                  {event.changes.map((change) => (
+                    <li key={change.field}>
+                      <span>{change.label}:</span> {formatChangeValue(change.field, change.from)} → <b>{formatChangeValue(change.field, change.to)}</b>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {event.notes && event.type === "document" && <p>{event.notes}</p>}
+              {event.notes && event.type !== "created" && event.type !== "document" && <p className="ct-history-notes">“{event.notes}”</p>}
+              <small>
+                {event.userName ? `${event.userName} · ` : ""}
+                {Number.isFinite(stamp.getTime()) ? stamp.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : ""}
+              </small>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
 
-// ── Modal de detalhe ──────────────────────────────────────────────────────────
-
-function ContratoModal({ row, onClose }) {
-  const { vencStatus, leiInfo, estadoColor } = useContratoDerived(row);
+function ContractDetails({ contract, canEdit, onClose, handlers, onContractChange }) {
+  const closeRef = useRef(null);
+  const wide = useWideScreen();
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const { events, documents, error: recordsError } = useContractRecords(contract);
+  const amendmentEvents = (events || []).filter((event) => event.type === "amendment");
+  const [closing, setClosing] = useState(false);
+  // Toca a animação de saída antes de desmontar o painel.
+  const requestClose = useCallback((then) => {
+    setClosing(true);
+    setTimeout(() => (then || onClose)(), DETAIL_EXIT_MS);
+  }, [onClose]);
+  const status = getContractStatus(contract);
+  const law = LAW_INFO[contract.lawType] || LAW_INFO.new;
+  const amendmentsLeft = MAX_AMENDMENTS - status.amendments;
 
   useEffect(() => {
-    const h = (e) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", h);
-    return () => document.removeEventListener("keydown", h);
-  }, [onClose]);
-
-  const Field = ({ label, value, accent, full }) => (
-    <div className={full ? "cdm-field cdm-field-full" : "cdm-field"}>
-      <span className="cdm-label">{label}</span>
-      <span className="cdm-value" style={{ color: accent || undefined }}>{value || "—"}</span>
-    </div>
-  );
-
-  const hasSubst = row.substituto && row.substituto !== "-";
+    closeRef.current?.focus();
+    const onKey = (event) => { if (event.key === "Escape") requestClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [requestClose]);
 
   return (
-    <div className="cdm-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="cdm-box">
-
-        {/* Hero */}
-        <div className="cdm-hero" style={{ borderBottom: `3px solid ${vencStatus.color}` }}>
-          <div className="cdm-hero-badges">
-            <span className="cc2-estado"    style={{ background: estadoColor + "22", color: estadoColor,    borderColor: estadoColor + "55" }}>{row.estado}</span>
-            <span className="cc2-lei"       style={{ background: leiInfo.bg,          color: leiInfo.color, borderColor: leiInfo.color + "44" }}>{leiInfo.label}</span>
-            <span className="cc2-venc-badge" style={{ background: vencStatus.color + "22", color: vencStatus.color, borderColor: vencStatus.color + "55", marginLeft: "auto" }}>{vencStatus.label}</span>
+    <div className={`ct-detail-overlay ${closing ? "closing" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && requestClose()}>
+      <aside className={`ct-detail ${wide ? "with-viewer" : ""}`} role="dialog" aria-modal="true" aria-labelledby="ct-detail-title">
+        {wide && events && (
+          <DocumentViewer key={contract.id} contract={contract} documents={documents} amendments={amendmentEvents} canEdit={canEdit} onChanged={onContractChange} />
+        )}
+        {!wide && viewerOpen && events && (
+          <div className="ct-viewer-fullscreen">
+            <DocumentViewer key={contract.id} contract={contract} documents={documents} amendments={amendmentEvents} canEdit={canEdit}
+              onChanged={onContractChange} onCloseViewer={() => setViewerOpen(false)} />
           </div>
-          <div className="cdm-hero-contratada">{row.contratada}</div>
-          <div className="cdm-hero-num">Contrato Nº {row.contrato}</div>
-          <button className="cdm-close" onClick={onClose}><IconClose /></button>
+        )}
+        <div className="ct-detail-main">
+        <header className="ct-detail-header">
+          <div>
+            <span className="ct-detail-number">{contract.processNumber}</span>
+            <h2 id="ct-detail-title">{contract.processName}</h2>
+            <div className="ct-detail-badges">
+              <span className={`ct-badge ${status.tone}`}>{status.label}</span>
+              <span className={`contract-law-badge contract-law-${contract.lawType}`}>{law.label}</span>
+            </div>
+          </div>
+          <button type="button" className="ct-detail-close" ref={closeRef} onClick={() => requestClose()} aria-label="Fechar detalhes"><IconClose /></button>
+        </header>
+
+        <div className="ct-detail-body">
+          <section className="ct-detail-highlight">
+            <div><span>Valor do contrato</span><strong>{formatContractValue(contract)}</strong></div>
+            <div><span>Vencimento</span><strong>{formatDate(contract.dueDate)}</strong><small className={`tone-${status.tone}`}>{remainingText(status, contract)}</small></div>
+          </section>
+
+          <section className="ct-detail-section">
+            <h3>Aditivos</h3>
+            <div className="ct-amend-meter" aria-label={`${status.amendments} de ${MAX_AMENDMENTS} aditivos usados`}>
+              {Array.from({ length: MAX_AMENDMENTS }, (_, i) => <span key={i} className={i < status.amendments ? "used" : ""} />)}
+            </div>
+            <p className="ct-detail-text">
+              {status.amendments} de {MAX_AMENDMENTS} aditivos usados.{" "}
+              {amendmentsLeft > 0
+                ? `${amendmentsLeft === 1 ? "Resta 1 aditivo" : `Restam ${amendmentsLeft} aditivos`} antes de exigir nova contratação.`
+                : "Limite atingido: ao vencer, será necessária uma nova contratação."}
+            </p>
+            {contract.closedAt && (
+              <p className="ct-detail-closed">Encerrado manualmente em {formatDate(contract.closedAt)}{contract.closedReason ? ` — “${contract.closedReason}”` : ""}.</p>
+            )}
+          </section>
+
+          {!wide && (
+            <section className="ct-detail-section">
+              <h3>Documentos</h3>
+              <button type="button" className="ct-docs-open" onClick={() => setViewerOpen(true)}>
+                <IconFileText />
+                <span>
+                  <strong>Ver termo de contrato e aditivos</strong>
+                  <small>{documents.length ? `${documents.length} ${documents.length === 1 ? "documento anexado" : "documentos anexados"}` : "Nenhum documento anexado"}</small>
+                </span>
+              </button>
+            </section>
+          )}
+
+          <section className="ct-detail-section">
+            <h3>Objeto</h3>
+            <p className="ct-detail-text">{contract.objectDescription || "—"}</p>
+          </section>
+
+          <section className="ct-detail-section">
+            <h3>Informações do processo</h3>
+            <dl className="ct-detail-grid">
+              <div><dt>Nº do processo</dt><dd>{contract.processNumber || "—"}</dd></div>
+              <div><dt>Modalidade</dt><dd>{contract.modality || "—"}</dd></div>
+              <div><dt>Lei aplicável</dt><dd>{law.label} ({law.short})</dd></div>
+              <div><dt>Situação</dt><dd>{status.label}</dd></div>
+            </dl>
+          </section>
+
+          <section className="ct-detail-section">
+            <h3>Fiscalização</h3>
+            <dl className="ct-detail-grid">
+              <div><dt>Fiscal efetivo</dt><dd>{contract.fiscalEffective || "—"}</dd></div>
+              <div><dt>Fiscal substituto</dt><dd>{contract.fiscalSubstitute || "Não informado"}</dd></div>
+            </dl>
+          </section>
+
+          <section className="ct-detail-section">
+            <h3>Histórico</h3>
+            <ContractHistory events={events} error={recordsError} />
+          </section>
         </div>
 
-        <div className="cdm-body">
-
-          {/* Objeto */}
-          <div className="cdm-section">
-            <div className="cdm-section-title">📄 Objeto</div>
-            <p className="cdm-objeto-text">{row.objeto}</p>
-          </div>
-
-          {/* Processo */}
-          <div className="cdm-section">
-            <div className="cdm-section-title">📋 Processo</div>
-            <div className="cdm-grid">
-              <Field label="Nº do Processo" value={row.processo} />
-              <Field label="Modalidade"     value={row.modalidade} />
+        {canEdit && (
+          <footer className="ct-detail-footer">
+            <button type="button" className="ct-detail-delete" onClick={() => handlers.onDelete(contract)}><IconTrash /> Excluir</button>
+            <div className="ct-detail-footer-main">
+              {contract.closedAt
+                ? <button type="button" className="ct-detail-secondary" onClick={() => handlers.onReopen(contract)}><IconUnarchive /> Reabrir</button>
+                : <button type="button" className="ct-detail-secondary" onClick={() => handlers.onClose(contract)}><IconArchive /> Encerrar</button>}
+              {status.canAmend && <button type="button" className="ct-detail-secondary" onClick={() => handlers.onAmend(contract)}><IconPlus /> Aditivo</button>}
+              <button type="button" className="ct-detail-edit" onClick={() => handlers.onEdit(contract)}><IconEdit /> Editar</button>
             </div>
-          </div>
-
-          {/* Contrato inicial */}
-          <div className="cdm-section">
-            <div className="cdm-section-title">📝 Contrato Inicial</div>
-            <div className="cdm-grid">
-              <Field label="Valor inicial"    value={formatMoney(row.valorInicial)} accent="#8b949e" />
-              <Field label="Data de assinatura" value={formatDate(row.assinatura)} />
-              <Field label="Vencimento inicial" value={formatDate(row.vencInicial)} />
-              {row.valorMensal && row.valorMensal !== "-" && (
-                <Field label="Valor mensal" value={formatMoney(row.valorMensal)} />
-              )}
-            </div>
-          </div>
-
-          {/* Situação atual */}
-          <div className="cdm-section">
-            <div className="cdm-section-title">💰 Situação Atual ({row.estado})</div>
-            <div className="cdm-grid">
-              <Field label="Último vencimento" value={formatDate(row.ultimoVenc)}    accent={vencStatus.color} />
-              <Field label="Último valor"       value={formatMoney(row.ultimoValor)} accent="#f0883e" />
-            </div>
-          </div>
-
-          {/* Fiscalização */}
-          <div className="cdm-section">
-            <div className="cdm-section-title">👤 Fiscalização</div>
-            <div className="cdm-grid">
-              {row.portaria && row.portaria !== "-" && (
-                <Field label="Portaria" value={row.portaria} />
-              )}
-              <Field label="Fiscal efetivo" value={row.fiscalEfetivo} />
-              {row.matriculaFiscal && <Field label="Matrícula fiscal" value={row.matriculaFiscal} />}
-              <Field label="Fiscal substituto"
-                value={hasSubst ? row.substituto : "Sem substituto designado"}
-                accent={!hasSubst ? "#8b949e" : undefined} />
-              {hasSubst && row.matriculaSubst && <Field label="Matrícula substituto" value={row.matriculaSubst} />}
-            </div>
-          </div>
-
+          </footer>
+        )}
         </div>
+      </aside>
+    </div>
+  );
+}
 
-        <div className="cdm-footer">
-          <button className="btn-cancel-lg" onClick={onClose}>Fechar</button>
+// Aditivo: nova data de vencimento obrigatória; valor mantido ou alterado (caixa para marcar).
+function AmendmentModal({ contract, saving, error, onClose, onSubmit }) {
+  const [newDueDate, setNewDueDate] = useState("");
+  const [valueVariable, setValueVariable] = useState(false);
+  const [newValue, setNewValue] = useState("");
+  const [notes, setNotes] = useState("");
+  const [file, setFile] = useState(null);
+  const fileError = validateDocument(file);
+  const number = (contract.amendmentCount || 0) + 1;
+  useEffect(() => {
+    const onKey = (event) => { if (event.key === "Escape" && !saving) onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose, saving]);
+  return (
+    <div className="ct-detail-overlay ct-form-overlay" onMouseDown={(event) => event.target === event.currentTarget && !saving && onClose()}>
+      <div className="contract-form-modal ct-form-drawer" role="dialog" aria-modal="true" aria-labelledby="ct-amend-title">
+        <div className="contract-form-header">
+          <div>
+            <span className="contract-form-eyebrow">{contract.processNumber} · {number}º de {MAX_AMENDMENTS} aditivos</span>
+            <h2 id="ct-amend-title">Lançar aditivo</h2>
+            <p>{contract.processName}</p>
+          </div>
+          <button type="button" className="icon-btn" onClick={onClose} disabled={saving} aria-label="Fechar"><IconClose /></button>
         </div>
+        <form className="contract-form" onSubmit={(event) => { event.preventDefault(); onSubmit({ newDueDate, valueVariable, newValue: valueVariable || !newValue.trim() ? null : moneyInputToNumber(newValue), notes, file }); }}>
+          <div className="contract-form-body">
+            {error && <div className="contract-form-error">{error}</div>}
+            {number === MAX_AMENDMENTS && <div className="ct-form-warning">Este é o último aditivo permitido. Depois dele, será necessária uma nova contratação.</div>}
+            <section className="contract-form-section">
+              <div className="contract-form-section-title"><div><strong>Vigência atual</strong></div></div>
+              <dl className="ct-detail-grid">
+                <div><dt>Vencimento atual</dt><dd>{formatDate(contract.dueDate)}</dd></div>
+                <div><dt>Valor atual</dt><dd>{formatContractValue(contract)}</dd></div>
+              </dl>
+            </section>
+            <section className="contract-form-section">
+              <div className="contract-form-section-title"><div><strong>Prorrogação</strong></div></div>
+              <div className="contract-form-grid">
+                <label className="contract-field contract-field-wide">
+                  <span>Nova data de vencimento *</span>
+                  <DatePicker value={newDueDate} onChange={setNewDueDate} required />
+                </label>
+                <label className={`contract-field contract-field-wide ${valueVariable ? "ct-field-disabled" : ""}`}>
+                  <span>Novo valor do contrato</span>
+                  <div className="contract-money-field">
+                    <span>R$</span>
+                    <input value={valueVariable ? "" : newValue} onChange={(event) => setNewValue(event.target.value)} inputMode="decimal"
+                      disabled={valueVariable} placeholder={valueVariable ? "Variável" : "0,00"} />
+                  </div>
+                  <small className="ct-field-note">
+                    {valueVariable ? "O valor ficará como “Variável”."
+                      : newValue.trim() ? "Este será o novo valor do contrato."
+                      : `Deixe em branco para manter o último valor informado (${formatContractValue(contract)}).`}
+                  </small>
+                </label>
+                <label className="ct-checkbox contract-field-wide">
+                  <input type="checkbox" checked={valueVariable} onChange={(event) => setValueVariable(event.target.checked)} />
+                  <span>Valor variável <em>— sem valor definido</em></span>
+                </label>
+                <label className="contract-field contract-field-wide">
+                  <span>Observação</span>
+                  <textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={500} rows={3} placeholder="Ex.: prorrogação por mais 12 meses" />
+                </label>
+                <DocumentField label={`Termo do ${number}º aditivo (opcional)`} file={file} onChange={setFile} error={fileError} />
+              </div>
+            </section>
+          </div>
+          <div className="contract-form-footer">
+            <button type="button" className="btn-cancel-lg" onClick={onClose} disabled={saving}><IconClose /> Cancelar</button>
+            <button type="submit" className="btn-primary" disabled={saving || Boolean(fileError)}><IconPlus /> {saving ? "Salvando..." : "Registrar aditivo"}</button>
+          </div>
+        </form>
       </div>
     </div>
   );
 }
 
-// ── Card ──────────────────────────────────────────────────────────────────────
-
-function ContratoCard({ row }) {
-  const [open, setOpen] = useState(false);
-  const { vencStatus, leiInfo } = useContratoDerived(row);
-
+// Encerrar (data + motivo opcional) ou reabrir (motivo opcional) um contrato.
+function CloseReopenModal({ contract, mode, saving, error, onClose, onSubmit }) {
+  const today = new Date();
+  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const [closedAt, setClosedAt] = useState(todayIso);
+  const [reason, setReason] = useState("");
+  const reopening = mode === "reopen";
   return (
-    <>
-      <div className="cc2-card" style={{ "--sc": vencStatus.color, cursor: "pointer" }}
-        onClick={() => setOpen(true)} title="Clique para ver detalhes">
-        <div className="cc2-stripe" style={{ background: vencStatus.color }} />
-        <div className="cc2-body">
-          {/* Nome do contratado */}
-          <div className="cc2-contratada">{row.contratada}</div>
-
-          {/* Badges: lei + modalidade */}
-          <div className="cc2-badges-row">
-            <span className="cc2-lei" style={{ background: leiInfo.bg, color: leiInfo.color, borderColor: leiInfo.color + "44" }}>{leiInfo.label}</span>
-            <span className="cc2-modalidade">{row.modalidade}</span>
-          </div>
-
-          {/* Vencimento */}
-          <div className="cc2-venc-row">
-            <span className="cc2-bottom-label">Vencimento</span>
-            <span className="cc2-venc-val" style={{ color: vencStatus.color }}>{formatDate(row.ultimoVenc)}</span>
-            <span className="cc2-venc-badge" style={{ background: vencStatus.color + "18", color: vencStatus.color, borderColor: vencStatus.color + "44" }}>{vencStatus.label}</span>
-          </div>
+    <div className="contract-modal-overlay" onMouseDown={(event) => event.target === event.currentTarget && !saving && onClose()}>
+      <form className="contract-delete-modal ct-close-modal" role="alertdialog" aria-modal="true" aria-labelledby="ct-close-title"
+        onSubmit={(event) => { event.preventDefault(); onSubmit(reopening ? { reason } : { closedAt, reason }); }}>
+        <div className={`contract-delete-icon ${reopening ? "reopen" : ""}`}>{reopening ? <IconUnarchive /> : <IconArchive />}</div>
+        <h2 id="ct-close-title">{reopening ? "Reabrir este contrato?" : "Encerrar este contrato?"}</h2>
+        <p>
+          <strong>{contract.processName}</strong>{" "}
+          {reopening ? "volta a ficar vigente, conforme a data de vencimento." : "deixa de ser vigente. Você poderá reabri-lo depois, se necessário."}
+        </p>
+        {error && <div className="contract-form-error">{error}</div>}
+        <div className="ct-close-fields">
+          {!reopening && (
+            <label className="contract-field">
+              <span>Data do encerramento *</span>
+              <DatePicker value={closedAt} onChange={setClosedAt} required />
+            </label>
+          )}
+          <label className="contract-field">
+            <span>Motivo (opcional)</span>
+            <textarea value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} rows={3}
+              placeholder={reopening ? "Ex.: encerrado por engano" : "Ex.: objeto entregue integralmente"} />
+          </label>
         </div>
-      </div>
-      {open && <ContratoModal row={row} onClose={() => setOpen(false)} />}
-    </>
+        <div className="contract-delete-actions">
+          <button type="button" className="btn-cancel-lg" onClick={onClose} disabled={saving}>Cancelar</button>
+          <button type="submit" className="btn-danger" disabled={saving}>{saving ? "Salvando..." : reopening ? "Reabrir contrato" : "Encerrar contrato"}</button>
+        </div>
+      </form>
+    </div>
   );
 }
 
-// ── Página principal ──────────────────────────────────────────────────────────
+function ContractFormModal({ editing, form, setForm, modalities, collaborators, saving, error, closing, onClose, onSubmit, termFile, onTermFileChange }) {
+  const availableModalities = editing?.modality && !modalities.includes(editing.modality)
+    ? [editing.modality, ...modalities]
+    : modalities;
+  const update = (field) => (event) => setForm((current) => ({ ...current, [field]: event.target.value }));
+  const [currentTerm, setCurrentTerm] = useState("");
+  const termError = validateDocument(termFile);
+  useEffect(() => {
+    if (!editing?.documentCount) return;
+    authFetch(`${API_URL}/api/contracts/${editing.id}/documents`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((docs) => setCurrentTerm(docs.find((doc) => doc.kind === "term")?.fileName || ""))
+      .catch(() => {});
+  }, [editing]);
+  // Lista de colaboradores + nomes já salvos no contrato que não estejam mais cadastrados.
+  const collaboratorNames = [...new Set([
+    // Só colaboradores ativos; quem já está no contrato continua aparecendo (logo abaixo).
+    ...collaborators.filter((collaborator) => collaborator.ativo !== false).map((collaborator) => collaborator.nome?.trim()).filter(Boolean),
+    editing?.fiscalEffective?.trim(),
+    editing?.fiscalSubstitute?.trim(),
+  ].filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
 
-export default function ContratosAtivos({ isViewer }) {
-  const DEFAULT_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRgWXyIcoaK2D_vska_TC7vlvmhnEkZ6TyPGoX2wyJJVBnSIv85TM4P-RS7MPo68Q/pub?gid=1218345147&single=true&output=csv";
-  const [csvUrl, setCsvUrl]           = useStorage("licit_csv_url", DEFAULT_CSV);
-  const [syncInterval, setSyncInterval] = useStorage("licit_sync_interval", 5);
-  const [inputUrl, setInputUrl]       = useState("");
-  const [contratos, setContratos]     = useState([]);
-  const [loading, setLoading]         = useState(false);
-  const [syncing, setSyncing]         = useState(false);
-  const [error, setError]             = useState("");
-  const [search, setSearch]           = useState("");
-  const [filterStatus, setFilterStatus] = useState("todos");
-  const [fonte, setFonte]             = useState("link");
-  const [fileName, setFileName]       = useState("");
-  const [lastSync, setLastSync]       = useState(null);
-  const [nextSyncIn, setNextSyncIn]   = useState(null);
-  const fileRef       = useRef();
-  const syncTimerRef  = useRef(null);
-  const countdownRef  = useRef(null);
+  useEffect(() => {
+    const handleKeyDown = (event) => { if (event.key === "Escape" && !saving) onClose(); };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, saving]);
 
-  const loadSheetJS = useCallback(() => new Promise((resolve, reject) => {
-    if (window.XLSX) return resolve(window.XLSX);
-    const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
-    script.onload  = () => resolve(window.XLSX);
-    script.onerror = () => reject(new Error("Falha ao carregar a biblioteca de Excel."));
-    document.head.appendChild(script);
-  }), []);
+  return (
+    <div className={`ct-detail-overlay ct-form-overlay ${closing ? "closing" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && !saving && onClose()}>
+      <div className="contract-form-modal ct-form-drawer" role="dialog" aria-modal="true" aria-labelledby="contract-form-title">
+        <div className="contract-form-header">
+          <div>
+            <span className="contract-form-eyebrow">{editing ? editing.processNumber : "Novo cadastro"}</span>
+            <h2 id="contract-form-title">{editing ? editing.processName : "Novo contrato"}</h2>
+            <p>{editing ? "Editando contrato — altere os campos e salve." : "Preencha os dados do contrato."}</p>
+          </div>
+          <button type="button" className="icon-btn" onClick={onClose} disabled={saving} aria-label="Fechar">
+            <IconClose />
+          </button>
+        </div>
 
-  const fetchWithFallback = useCallback(async (rawUrl, asArrayBuffer = false) => {
-    const cacheBust = rawUrl + (rawUrl.includes("?") ? "&" : "?") + "_t=" + Date.now();
-    let lastError = null;
-    for (const buildProxy of CORS_PROXIES) {
-      try {
-        const proxied = buildProxy(cacheBust);
-        const res = await fetch(proxied, { redirect: "follow" });
-        if (!res.ok) { lastError = new Error(`HTTP ${res.status}`); continue; }
-        return asArrayBuffer ? await res.arrayBuffer() : await res.text();
-      } catch (e) { lastError = e; continue; }
+        <form onSubmit={onSubmit} className="contract-form">
+          <div className="contract-form-body">
+            {error && <div className="contract-form-error">{error}</div>}
+
+            <section className="contract-form-section">
+              <div className="contract-form-section-title">
+                <IconFileText />
+                <div><strong>Informações do processo</strong><span>Identificação e objeto contratado</span></div>
+              </div>
+              <div className="contract-form-grid">
+                <label className="contract-field contract-field-wide">
+                  <span>Nome do processo *</span>
+                  <input value={form.processName} onChange={update("processName")} maxLength={255} required autoFocus placeholder="Ex.: Manutenção preventiva dos equipamentos" />
+                </label>
+                <label className="contract-field contract-field-wide">
+                  <span>Descrição do objeto *</span>
+                  <textarea value={form.objectDescription} onChange={update("objectDescription")} maxLength={2000} required rows={4} placeholder="Descreva de forma objetiva o que foi contratado" />
+                </label>
+                <label className="contract-field">
+                  <span>Nº do processo *</span>
+                  <input value={form.processNumber} onChange={update("processNumber")} maxLength={120} required placeholder="Ex.: 2026/000123" />
+                </label>
+                <label className="contract-field">
+                  <span>Modalidade *</span>
+                  {availableModalities.length > 0 ? (
+                    <select value={form.modality} onChange={update("modality")} required>
+                      <option value="" disabled>Selecione a modalidade</option>
+                      {availableModalities.map((name) => <option key={name} value={name}>{name}</option>)}
+                    </select>
+                  ) : (
+                    <input value={form.modality} onChange={update("modality")} maxLength={120} required placeholder="Cadastre as modalidades em Administração" />
+                  )}
+                </label>
+                <label className="contract-field">
+                  <span>Lei aplicável *</span>
+                  <select value={form.lawType} onChange={update("lawType")} required>
+                    <option value="new">Lei nova — 14.133/21</option>
+                    <option value="old">Lei antiga — 8.666/93</option>
+                  </select>
+                </label>
+              </div>
+            </section>
+
+            <section className="contract-form-section">
+              <div className="contract-form-section-title">
+                <IconCalendar />
+                <div><strong>Contrato e vigência</strong><span>Valor total e prazo atual</span></div>
+              </div>
+              <div className="contract-form-grid">
+                <label className={`contract-field ${form.valueVariable ? "ct-field-disabled" : ""}`}>
+                  <span>Valor do contrato {form.valueVariable ? "" : "*"}</span>
+                  <div className="contract-money-field">
+                    <span>R$</span>
+                    <input value={form.valueVariable ? "" : form.contractValue} onChange={update("contractValue")} inputMode="decimal"
+                      required={!form.valueVariable} disabled={form.valueVariable} placeholder={form.valueVariable ? "Variável" : "0,00"} />
+                  </div>
+                </label>
+                <label className="contract-field">
+                  <span>Vencimento *</span>
+                  <DatePicker value={form.dueDate} onChange={(dueDate) => setForm((current) => ({ ...current, dueDate }))} required />
+                </label>
+                <label className="ct-checkbox contract-field-wide">
+                  <input type="checkbox" checked={form.valueVariable} onChange={(event) => setForm((current) => ({ ...current, valueVariable: event.target.checked }))} />
+                  <span>Valor variável <em>— sem valor definido</em></span>
+                </label>
+              </div>
+            </section>
+
+            <section className="contract-form-section">
+              <div className="contract-form-section-title">
+                <IconUser />
+                <div><strong>Fiscalização</strong><span>Responsáveis pelo acompanhamento</span></div>
+              </div>
+              <div className="contract-form-grid">
+                <label className="contract-field">
+                  <span>Fiscal efetivo *</span>
+                  <select value={form.fiscalEffective} onChange={update("fiscalEffective")} required>
+                    <option value="" disabled>{collaboratorNames.length ? "Selecione um colaborador" : "Nenhum colaborador cadastrado"}</option>
+                    {collaboratorNames.map((name) => <option key={name} value={name} disabled={name === form.fiscalSubstitute}>{name}</option>)}
+                  </select>
+                </label>
+                <label className="contract-field">
+                  <span>Fiscal substituto</span>
+                  <select value={form.fiscalSubstitute} onChange={update("fiscalSubstitute")}>
+                    <option value="">Não informado</option>
+                    {collaboratorNames.map((name) => <option key={name} value={name} disabled={name === form.fiscalEffective}>{name}</option>)}
+                  </select>
+                </label>
+                {collaboratorNames.length === 0 && <p className="contract-field-hint contract-field-wide">Cadastre colaboradores na seção Colaboradores para escolher os fiscais.</p>}
+              </div>
+            </section>
+
+            <section className="contract-form-section">
+              <div className="contract-form-section-title"><div><strong>Termo de contrato</strong></div></div>
+              <div className="contract-form-grid">
+                <DocumentField label="Arquivo do termo (opcional)" file={termFile} onChange={onTermFileChange} current={currentTerm} error={termError} />
+              </div>
+            </section>
+          </div>
+
+          <div className="contract-form-footer">
+            <button type="button" className="btn-cancel-lg" onClick={onClose} disabled={saving}><IconClose /> Cancelar</button>
+            <button type="submit" className="btn-primary" disabled={saving || Boolean(termError)}>
+              {editing ? <IconEdit /> : <IconPlus />} {saving ? "Salvando..." : editing ? "Salvar alterações" : "Adicionar contrato"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+export default function ContratosAtivos({ isViewer, onUnauthorized, onOpenMenu }) {
+  const [contracts, setContracts] = useState([]);
+  const [modalities, setModalities] = useState([]);
+  const [collaborators, setCollaborators] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [modalityFilter, setModalityFilter] = useState("all");
+  const [vigenciaFilter, setVigenciaFilter] = useState("all");
+  const [scope, setScope] = useState("active");
+  const changeScope = (next) => {
+    setScope(next);
+    // Os filtros de status/vigência mudam de sentido entre as abas.
+    setStatusFilter("all");
+    setVigenciaFilter("all");
+  };
+  const [view, setView] = useState(() => {
+    try { return localStorage.getItem(VIEW_KEY) === "cards" ? "cards" : "list"; } catch { return "list"; }
+  });
+  const changeView = (next) => {
+    setView(next);
+    try { localStorage.setItem(VIEW_KEY, next); } catch { /* preferência só desta sessão */ }
+  };
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [formError, setFormError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [formClosing, setFormClosing] = useState(false);
+  const [termFile, setTermFile] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [detailId, setDetailId] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  // Ações com modal próprio: { type: "amend" | "close" | "reopen", contract }.
+  const [action, setAction] = useState(null);
+  const [actionSaving, setActionSaving] = useState(false);
+  const [actionError, setActionError] = useState("");
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [contractsResponse, modalitiesResponse, collaboratorsResponse] = await Promise.all([
+        authFetch(`${API_URL}/api/contracts`),
+        authFetch(`${API_URL}/api/contract-modalities`),
+        authFetch(`${API_URL}/api/collaborators`),
+      ]);
+      if ([contractsResponse.status, modalitiesResponse.status].some((status) => status === 401 || status === 403)) {
+        onUnauthorized?.();
+        return;
+      }
+      if (!contractsResponse.ok) throw new Error("Não foi possível carregar os contratos.");
+      const contractsData = await contractsResponse.json();
+      const modalitiesData = modalitiesResponse.ok ? await modalitiesResponse.json() : [];
+      const collaboratorsData = collaboratorsResponse.ok ? await collaboratorsResponse.json() : [];
+      setCollaborators(Array.isArray(collaboratorsData) ? collaboratorsData : []);
+      setContracts(Array.isArray(contractsData) ? contractsData : []);
+      setModalities(Array.isArray(modalitiesData) ? modalitiesData.map((modality) => modality.name).filter(Boolean) : []);
+    } catch (requestError) {
+      setError(requestError.message || "Erro de conexão ao carregar os contratos.");
+    } finally {
+      setLoading(false);
     }
-    throw lastError || new Error("Todos os proxies falharam.");
+  }, [onUnauthorized]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const openAdd = () => {
+    setEditing(null);
+    setForm({ ...EMPTY_FORM, modality: modalities[0] || "" });
+    setTermFile(null);
+    setFormError("");
+    setShowForm(true);
+  };
+
+  const openEdit = (contract) => {
+    setEditing(contract);
+    setForm({
+      processName: contract.processName,
+      objectDescription: contract.objectDescription,
+      processNumber: contract.processNumber,
+      contractValue: contract.valueVariable ? "" : Number(contract.contractValue).toFixed(2).replace(".", ","),
+      valueVariable: Boolean(contract.valueVariable),
+      dueDate: contract.dueDate || "",
+      fiscalEffective: contract.fiscalEffective,
+      fiscalSubstitute: contract.fiscalSubstitute || "",
+      modality: contract.modality,
+      lawType: contract.lawType,
+    });
+    setTermFile(null);
+    setFormError("");
+    setShowForm(true);
+  };
+
+  // Toca a animação de saída do formulário (mesma do painel de detalhes) antes de fechá-lo.
+  const finishCloseForm = useCallback(() => {
+    setFormClosing(true);
+    setTimeout(() => {
+      setShowForm(false);
+      setEditing(null);
+      setFormError("");
+      setFormClosing(false);
+    }, DETAIL_EXIT_MS);
   }, []);
 
-  const fetchCSV = useCallback(async (url, silent = false) => {
-    if (!silent) setLoading(true); else setSyncing(true);
-    setError("");
-    const detected = typeof url === "string" ? toGSheetsCsvUrl(url) : { url, type: "sheets-csv" };
-    const isExcel  = detected.type === "drive-xlsx";
+  const closeForm = useCallback(() => {
+    if (saving || formClosing) return;
+    finishCloseForm();
+  }, [saving, formClosing, finishCloseForm]);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setFormError("");
+    const contractValue = form.valueVariable && !String(form.contractValue).trim() ? "" : moneyInputToNumber(form.contractValue);
+    if (!form.valueVariable && (!Number.isFinite(contractValue) || contractValue < 0)) {
+      setFormError("Informe um valor de contrato válido.");
+      return;
+    }
+
+    setSaving(true);
     try {
-      let rows;
-      if (isExcel) {
-        const XLSX   = await loadSheetJS();
-        const buffer = await fetchWithFallback(detected.url, true);
-        const wb     = XLSX.read(buffer, { type: "array" });
-        rows = parseCSV(XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]));
-      } else {
-        const text = await fetchWithFallback(detected.url, false);
-        if (text.trim().startsWith("<!DOCTYPE") || text.trim().startsWith("<html")) {
-          throw new Error("Planilha não está pública. Em Compartilhar, libere para 'Qualquer pessoa com o link'.");
+      const response = await authFetch(
+        editing ? `${API_URL}/api/contracts/${editing.id}` : `${API_URL}/api/contracts`,
+        {
+          method: editing ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...form, contractValue }),
         }
-        rows = parseCSV(text);
+      );
+      if (response.status === 401 || response.status === 403) {
+        onUnauthorized?.();
+        return;
       }
-      if (rows.length === 0) throw new Error("Planilha vazia ou formato inválido.");
-      setContratos(rows);
-      setCsvUrl(url);
-      setLastSync(new Date());
-    } catch (e) {
-      const msg = e.message === "Failed to fetch"
-        ? "Não foi possível baixar o arquivo. Verifique sua conexão ou tente upload manual."
-        : (e.message || "Erro ao carregar.");
-      if (!silent) setError(msg);
+      const data = await response.json();
+      if (!response.ok) {
+        setFormError(data.error || "Não foi possível salvar o contrato.");
+        return;
+      }
+      let saved = data;
+      // O termo é enviado depois que o contrato existe; se falhar, o contrato continua salvo.
+      if (termFile) {
+        try { saved = await uploadDocument(data.id, termFile, "term"); }
+        catch (uploadError) { setError(`Contrato salvo, mas o termo não foi anexado: ${uploadError.message}`); }
+      }
+      setContracts((current) => editing
+        ? current.map((contract) => contract.id === saved.id ? saved : contract)
+        : [...current, saved]);
+      finishCloseForm();
+    } catch {
+      setFormError("Erro de conexão ao salvar o contrato.");
     } finally {
-      setLoading(false);
-      setSyncing(false);
+      setSaving(false);
     }
-  }, [fetchWithFallback]);
-
-  const scheduleSync = useCallback((url, intervalMin) => {
-    if (syncTimerRef.current)  clearInterval(syncTimerRef.current);
-    if (countdownRef.current)  clearInterval(countdownRef.current);
-    if (!url || intervalMin === 0) { setNextSyncIn(null); return; }
-    const ms = intervalMin * 60 * 1000;
-    let remaining = ms;
-    countdownRef.current = setInterval(() => {
-      remaining -= 1000;
-      setNextSyncIn(Math.max(0, Math.ceil(remaining / 1000)));
-      if (remaining <= 0) remaining = ms;
-    }, 1000);
-    syncTimerRef.current = setInterval(() => { remaining = ms; fetchCSV(url, true); }, ms);
-    setNextSyncIn(Math.ceil(ms / 1000));
-  }, [fetchCSV]);
-
-  useEffect(() => {
-    if (csvUrl && fonte === "link") { fetchCSV(csvUrl); scheduleSync(csvUrl, syncInterval); }
-    return () => {
-      if (syncTimerRef.current) clearInterval(syncTimerRef.current);
-      if (countdownRef.current) clearInterval(countdownRef.current);
-    };
-  }, [csvUrl, fonte, fetchCSV, scheduleSync, syncInterval]);
-
-  useEffect(() => {
-    if (csvUrl && fonte === "link") scheduleSync(csvUrl, syncInterval);
-    else {
-      if (syncTimerRef.current) clearInterval(syncTimerRef.current);
-      if (countdownRef.current) clearInterval(countdownRef.current);
-      setNextSyncIn(null);
-    }
-  }, [csvUrl, fonte, scheduleSync, syncInterval]);
-
-  const formatCountdown = (secs) => {
-    if (secs === null) return null;
-    if (secs <= 60) return `${secs}s`;
-    return `${Math.floor(secs / 60)}m ${secs % 60}s`;
   };
 
-  const handleConnect = () => {
-    const raw = inputUrl.trim();
-    if (!raw) return;
-    const result = toGSheetsCsvUrl(raw);
-    if (result.type === "unknown") { setError("Link não reconhecido. Cole um link válido do Google Sheets."); return; }
-    fetchCSV(result.url);
-    scheduleSync(result.url, syncInterval);
-    setInputUrl("");
-  };
-
-  const handleFileUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setLoading(true); setError("");
-    setFileName(file.name);
-    const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+  const { settings } = useAppSettings();
+  // Com "Confirmação ao excluir" desligada nas configurações, exclui direto, sem o modal.
+  const requestDelete = (contract) => (settings.confirmBeforeDelete ? setDeleteTarget(contract) : handleDelete(contract));
+  const handleDelete = async (target = deleteTarget) => {
+    if (!target) return;
+    setDeleting(true);
+    setError("");
     try {
-      let rows;
-      if (isExcel) {
-        const XLSX   = await loadSheetJS();
-        const buffer = await file.arrayBuffer();
-        const wb     = XLSX.read(buffer, { type: "array" });
-        rows = parseCSV(XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]));
-      } else {
-        rows = parseCSV(await file.text());
+      const response = await authFetch(`${API_URL}/api/contracts/${target.id}`, { method: "DELETE" });
+      if (response.status === 401 || response.status === 403) {
+        onUnauthorized?.();
+        return;
       }
-      if (rows.length === 0) throw new Error("Arquivo vazio ou formato não reconhecido.");
-      setContratos(rows);
-      setLastSync(new Date());
-    } catch (err) {
-      setError(err.message || "Erro ao ler o arquivo.");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Não foi possível excluir o contrato.");
+      setContracts((current) => current.filter((contract) => contract.id !== target.id));
+      setDeleteTarget(null);
+    } catch (requestError) {
+      setError(requestError.message || "Erro de conexão ao excluir o contrato.");
     } finally {
-      setLoading(false);
+      setDeleting(false);
     }
   };
 
-  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const summary = useMemo(() => contracts.reduce((totals, contract) => {
+    const status = getContractStatus(contract);
+    if (status.key === "closed") totals.closed += 1;
+    else if (status.key === "near") {
+      totals.near += 1;
+      if (status.renewable) totals.renewal += 1;
+    } else totals.active += 1;
+    return totals;
+  }, { active: 0, near: 0, renewal: 0, closed: 0 }), [contracts]);
 
-  const filtered = contratos.filter(row => {
-    const texto = Object.values(row).join(" ").toLowerCase();
-    if (search && !texto.includes(search.toLowerCase())) return false;
-    if (filterStatus !== "todos") {
-      const d    = parseDate(row.ultimoVenc);
-      const diff = d ? Math.ceil((d - hoje) / (1000 * 60 * 60 * 24)) : null;
-      if (filterStatus === "encerrado" && (diff === null || diff >= -30))          return false;
-      if (filterStatus === "vencido"   && (diff === null || diff < -30 || diff >= 0)) return false;
-      if (filterStatus === "alerta"    && (diff === null || diff < 0 || diff > 90))   return false;
-      if (filterStatus === "ok"        && (diff === null || diff <= 90))              return false;
+  const filteredContracts = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase("pt-BR");
+    return contracts
+      .filter((contract) => {
+        const status = getContractStatus(contract);
+        if (scope === "renewal" && !(status.key === "near" && status.renewable)) return false;
+        if ((scope === "active" || scope === "closed") && (status.key === "closed") !== (scope === "closed")) return false;
+        if (statusFilter === "regular" && status.key !== "regular") return false;
+        if (statusFilter === "renewal" && !(status.key === "near" && status.renewable)) return false;
+        if (statusFilter === "newContract" && !(status.key === "near" && !status.renewable)) return false;
+        if (statusFilter === "closed" && status.key !== "closed") return false;
+        if (modalityFilter !== "all" && contract.modality !== modalityFilter) return false;
+        if (!matchesVigencia(contract, vigenciaFilter)) return false;
+        if (!query) return true;
+        return [contract.processName, contract.objectDescription, contract.processNumber,
+          contract.fiscalEffective, contract.fiscalSubstitute, contract.modality]
+          .join(" ").toLocaleLowerCase("pt-BR").includes(query);
+      })
+      .sort((a, b) => {
+        // Vigentes primeiro, pelo vencimento mais próximo; encerrados no fim, os mais recentes primeiro.
+        const aClosed = getContractStatus(a).key === "closed", bClosed = getContractStatus(b).key === "closed";
+        if (aClosed !== bClosed) return aClosed ? 1 : -1;
+        if (aClosed) return endedOn(b).localeCompare(endedOn(a));
+        return (a.dueDate || "").localeCompare(b.dueDate || "");
+      });
+  }, [contracts, modalityFilter, search, statusFilter, vigenciaFilter, scope]);
+  const activeTotal = contracts.length - summary.closed;
+  const scopeTotal = { all: contracts.length, active: activeTotal, renewal: summary.renewal, closed: summary.closed }[scope];
+  const scopeWord = (count) => ({
+    all: "",
+    active: ` vigente${count === 1 ? "" : "s"}`,
+    renewal: " para renovação",
+    closed: ` encerrado${count === 1 ? "" : "s"}`,
+  })[scope];
+
+  // Todos os contratos numa página só; a página rola pelo documento com a barra discreta.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.add("ct-scroll");
+    return () => root.classList.remove("ct-scroll");
+  }, []);
+  const modalityOptions = [...new Set([...modalities, ...contracts.map((contract) => contract.modality)])].filter(Boolean);
+
+  const canEdit = !isViewer;
+  // Guarda só o id: o painel mostra sempre a versão atual (ex.: logo após editar).
+  const detailContract = detailId ? contracts.find((contract) => contract.id === detailId) : null;
+  const openDetails = useCallback((contract) => setDetailId(contract.id), []);
+  const closeDetails = useCallback(() => setDetailId(null), []);
+
+  const replaceContract = useCallback((saved) => {
+    setContracts((current) => current.map((contract) => contract.id === saved.id ? saved : contract));
+  }, []);
+  const openAction = (type) => (contract) => { setAction({ type, contract }); setActionError(""); };
+  const handlers = {
+    onEdit: openEdit,
+    onDelete: requestDelete,
+    onAmend: openAction("amend"),
+    onClose: openAction("close"),
+    onReopen: openAction("reopen"),
+  };
+  const submitAction = async (payload) => {
+    if (!action) return;
+    if (action.type === "amend" && payload.newValue !== null && payload.newValue !== undefined && (!Number.isFinite(payload.newValue) || payload.newValue < 0)) {
+      setActionError("Informe um novo valor válido.");
+      return;
     }
-    return true;
-  });
-
-  const totalEncerrados = contratos.filter(r => { const d = parseDate(r.ultimoVenc); return d && Math.ceil((d - hoje) / (1000 * 60 * 60 * 24)) < -30; }).length;
-  const totalVencidos   = contratos.filter(r => { const d = parseDate(r.ultimoVenc); const diff = d ? Math.ceil((d - hoje) / (1000 * 60 * 60 * 24)) : null; return diff !== null && diff >= -30 && diff < 0; }).length;
-  const totalAlerta     = contratos.filter(r => { const d = parseDate(r.ultimoVenc); const diff = d ? Math.ceil((d - hoje) / (1000 * 60 * 60 * 24)) : null; return diff !== null && diff >= 0 && diff <= 90; }).length;
+    const path = { amend: "amendments", close: "close", reopen: "reopen" }[action.type];
+    const { file, ...body } = payload;
+    setActionSaving(true);
+    setActionError("");
+    try {
+      const response = await authFetch(`${API_URL}/api/contracts/${action.contract.id}/${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (response.status === 401) { onUnauthorized?.(); return; }
+      const { amendmentEventId, ...data } = await response.json();
+      if (!response.ok) { setActionError(data.error || "Não foi possível concluir a ação."); return; }
+      let saved = data;
+      if (file && amendmentEventId) {
+        try { saved = await uploadDocument(data.id, file, "amendment", amendmentEventId); }
+        catch (uploadError) { setError(`Aditivo registrado, mas o termo não foi anexado: ${uploadError.message}`); }
+      }
+      replaceContract(saved);
+      setAction(null);
+    } catch {
+      setActionError("Erro de conexão. Tente novamente.");
+    } finally {
+      setActionSaving(false);
+    }
+  };
 
   return (
-    <div className="contratos-page">
+    <div className="lk-contracts">
+      <header className="ct-header">
+        <button className="lk-menu" aria-label="Abrir navegação" onClick={onOpenMenu}>☰</button>
+        <div className="ct-header-text">
+          <h1>Contratos</h1>
+          <p>Gerencie vigências, valores, fiscais e prazos dos contratos</p>
+        </div>
+        <div className="ct-header-actions">
+          <button type="button" className="ct-header-export" onClick={() => exportContractsCsv(filteredContracts)} disabled={filteredContracts.length === 0} title="Exporta os contratos exibidos (com os filtros atuais) em CSV">Exportar</button>
+          {canEdit && <button type="button" className="ct-new-button" onClick={openAdd}><IconPlus /> Novo contrato</button>}
+        </div>
+      </header>
 
-      {/* Painel de fonte de dados */}
-      {!isViewer && (
-        <div className="contratos-config">
-        <div style={{ width: "100%" }}>
-          <div className="fonte-tabs">
-            <button className={`fonte-tab ${fonte === "link" ? "active" : ""}`} onClick={() => setFonte("link")}>
-              <IconLink />Link Google Sheets<span className="fonte-badge">Tempo real</span>
-            </button>
-            <button className={`fonte-tab ${fonte === "arquivo" ? "active" : ""}`} onClick={() => setFonte("arquivo")}>
-              <IconUpload />Upload de arquivo<span className="fonte-badge">CSV / Excel</span>
-            </button>
+      {error && (
+        <div className="ct-message" role="alert">
+          <span>{error}</span>
+          <button type="button" onClick={loadData}>Tentar novamente</button>
+        </div>
+      )}
+
+      <section className="lk-kpis ct-kpis" aria-label="Resumo dos contratos">
+        {[
+          ["ATIVOS", summary.active, "green", "Regularizados: faltam mais de 3 meses para vencer"],
+          ["PERTO DO VENCIMENTO", summary.near, "amber", "Vencem em até 3 meses"],
+          ["PARA RENOVAÇÃO", summary.renewal, "purple", `Perto do vencimento e com menos de ${MAX_AMENDMENTS} aditivos`],
+          ["ENCERRADOS", summary.closed, "gray", "Vencidos ou encerrados manualmente"],
+        ].map(([label, value, tone, hint]) => (
+          <article className={`lk-kpi ${tone}`} key={label} title={hint}>
+            <h2><i aria-hidden="true" />{label}</h2>
+            <strong>{loading ? "—" : value}</strong>
+          </article>
+        ))}
+      </section>
+
+      <section className="ct-toolbar" aria-label="Filtros de contratos">
+        <label className="ct-field ct-field-search">
+          <span>Buscar contrato</span>
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Número, fiscal ou objeto..." />
+        </label>
+        {(scope === "all" || scope === "active") && (
+          <label className="ct-field">
+            <span>Status</span>
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="all">Todos</option>
+              <option value="regular">Ativos</option>
+              <option value="renewal">Para renovação</option>
+              <option value="newContract">Nova contratação</option>
+              {scope === "all" && <option value="closed">Encerrados</option>}
+            </select>
+          </label>
+        )}
+        <label className="ct-field">
+          <span>Vigência</span>
+          <select value={vigenciaFilter} onChange={(event) => setVigenciaFilter(event.target.value)}>
+            {VIGENCIA_FILTERS[scope].map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="ct-field">
+          <span>Modalidade</span>
+          <select value={modalityFilter} onChange={(event) => setModalityFilter(event.target.value)}>
+            <option value="all">Todas</option>
+            {modalityOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </label>
+        <div className="ct-toolbar-actions">
+          <div className="ct-view-toggle" role="group" aria-label="Situação dos contratos">
+            <button type="button" className={scope === "all" ? "active" : ""} aria-pressed={scope === "all"} onClick={() => changeScope("all")}>Todos <span className="ct-toggle-count">{loading ? "—" : contracts.length}</span></button>
+            <button type="button" className={scope === "active" ? "active" : ""} aria-pressed={scope === "active"} onClick={() => changeScope("active")}>Vigentes <span className="ct-toggle-count">{loading ? "—" : activeTotal}</span></button>
+            <button type="button" className={scope === "renewal" ? "active" : ""} aria-pressed={scope === "renewal"} onClick={() => changeScope("renewal")}>Renovação <span className="ct-toggle-count">{loading ? "—" : summary.renewal}</span></button>
+            <button type="button" className={scope === "closed" ? "active" : ""} aria-pressed={scope === "closed"} onClick={() => changeScope("closed")}>Encerrados <span className="ct-toggle-count">{loading ? "—" : summary.closed}</span></button>
           </div>
+          <div className="ct-view-toggle ct-icon-toggle" role="group" aria-label="Visualização">
+            <button type="button" className={view === "list" ? "active" : ""} aria-pressed={view === "list"} aria-label="Lista" title="Lista" onClick={() => changeView("list")}><IconList /></button>
+            <button type="button" className={view === "cards" ? "active" : ""} aria-pressed={view === "cards"} aria-label="Cards" title="Cards" onClick={() => changeView("cards")}><IconGrid /></button>
+          </div>
+        </div>
+      </section>
 
-          {fonte === "link" && (
-            <div className="fonte-panel">
-              <p className="contratos-config-label">Cole o link do Google Sheets (qualquer formato)</p>
-              <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-                <input className="csv-input"
-                  placeholder="https://docs.google.com/spreadsheets/d/... (link de edição ou publicação)"
-                  value={inputUrl} onChange={e => setInputUrl(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && handleConnect()} />
-                <button className="btn-primary" onClick={handleConnect} disabled={!inputUrl.trim() || loading}>
-                  {loading ? "Carregando..." : csvUrl ? "Atualizar link" : "Conectar"}
-                </button>
-              </div>
-              {(() => {
-                if (!inputUrl.trim()) return null;
-                const detected = toGSheetsCsvUrl(inputUrl);
-                if (detected.type === "pub-csv")
-                  return <p style={{ fontSize: "0.7rem", color: "#3fb950", marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>✓ Link CSV publicado — pronto pra conectar</p>;
-                if (detected.type === "drive-xlsx")
-                  return (
-                    <div style={{ marginTop: 6, padding: "8px 10px", background: "rgba(63,185,80,.08)", border: "1px solid rgba(63,185,80,.25)", borderRadius: 8 }}>
-                      <p style={{ fontSize: "0.72rem", color: "#3fb950", marginBottom: 3 }}>✦ Arquivo Excel (.xlsx) detectado — será baixado e processado</p>
-                      <p style={{ fontSize: "0.66rem", color: "#8b949e", lineHeight: 1.4 }}>O arquivo precisa estar com <strong style={{ color: "#e6edf3" }}>"Qualquer pessoa com o link pode ver"</strong> em Compartilhar. Lê apenas a primeira aba.</p>
-                    </div>
-                  );
-                if (detected.type === "sheets-csv")
-                  return (
-                    <div style={{ marginTop: 6, padding: "8px 10px", background: "rgba(88,166,255,.08)", border: "1px solid rgba(88,166,255,.25)", borderRadius: 8 }}>
-                      <p style={{ fontSize: "0.72rem", color: "#58a6ff", marginBottom: 3 }}>✦ Link de Google Sheets — será convertido para CSV</p>
-                      <p style={{ fontSize: "0.66rem", color: "#8b949e", lineHeight: 1.4 }}>Sua planilha precisa estar com <strong style={{ color: "#e6edf3" }}>"Qualquer pessoa com o link pode ver"</strong> em Compartilhar.</p>
-                    </div>
-                  );
-                if (detected.type === "unknown" && inputUrl.trim().length > 10)
-                  return <p style={{ fontSize: "0.7rem", color: "#f85149", marginTop: 6 }}>✗ Link não reconhecido. Verifique se é do Google Sheets ou Drive.</p>;
-                return null;
-              })()}
-
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, flexWrap: "wrap", gap: 6 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {csvUrl && !error && (
-                    <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: "0.72rem", color: "#3fb950" }}>
-                      {syncing
-                        ? <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "#e3b341" }} />
-                        : <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "#3fb950" }} />}
-                      {syncing ? "Sincronizando..." : `Conectado · ${contratos.length} contratos`}
-                      {lastSync && !syncing && ` · ${lastSync.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`}
-                    </span>
-                  )}
-                  {error && <span style={{ fontSize: "0.72rem", color: "#f85149" }}>Erro: {error}</span>}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  {csvUrl && nextSyncIn !== null && (
-                    <span style={{ fontSize: "0.68rem", color: "#8b949e" }}>
-                      Próxima sync: <strong style={{ color: "#58a6ff" }}>{formatCountdown(nextSyncIn)}</strong>
-                    </span>
-                  )}
-                  {csvUrl && (
-                    <button className="btn-outline" onClick={() => fetchCSV(csvUrl, true)} disabled={loading || syncing} style={{ fontSize: "0.75rem", padding: "4px 10px" }}>
-                      {syncing ? "Sincronizando..." : "Sincronizar agora"}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {csvUrl && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, padding: "8px 12px", background: "#1c2330", borderRadius: 8, border: "1px solid #30363d" }}>
-                  <span style={{ fontSize: "0.72rem", color: "#8b949e", flexShrink: 0 }}>Sincronizar a cada:</span>
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                    {SYNC_INTERVALS.map(opt => (
-                      <button key={opt.value} onClick={() => setSyncInterval(opt.value)}
-                        style={{ fontSize: "0.7rem", padding: "3px 9px", borderRadius: 99, border: "1px solid", cursor: "pointer", transition: "all .15s", fontFamily: "'Nunito Sans', sans-serif",
-                          background:   syncInterval === opt.value ? "#f0883e22" : "transparent",
-                          color:        syncInterval === opt.value ? "#f0883e"   : "#8b949e",
-                          borderColor:  syncInterval === opt.value ? "#f0883e66" : "#30363d" }}>
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {!csvUrl && (
-                <div style={{ marginTop: 10, padding: "10px 12px", background: "#161b22", borderRadius: 8, border: "1px solid #30363d" }}>
-                  <p style={{ fontSize: "0.72rem", color: "#8b949e", marginBottom: 4 }}><strong style={{ color: "#e6edf3" }}>Como publicar sua planilha:</strong></p>
-                  <div style={{ fontSize: "0.7rem", color: "#8b949e", display: "flex", flexDirection: "column", gap: 2 }}>
-                    <span>1. No Google Sheets: <strong style={{ color: "#e6edf3" }}>Arquivo → Compartilhar → Publicar na web</strong></span>
-                    <span>2. Selecione a aba e o formato <strong style={{ color: "#e6edf3" }}>Valores separados por vírgula (.csv)</strong></span>
-                    <span>3. Clique em <strong style={{ color: "#e6edf3" }}>Publicar</strong> e cole o link acima</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {fonte === "arquivo" && (
-            <div className="fonte-panel">
-              <p className="contratos-config-label">Faça upload do arquivo exportado (.csv)</p>
-              <p style={{ fontSize: "0.72rem", color: "#8b949e", margin: "4px 0 10px" }}>
-                No Google Sheets: <strong style={{ color: "#e6edf3" }}>Arquivo → Fazer download → Valores separados por vírgula (.csv)</strong>
-              </p>
-              <div className="upload-zone"
-                onClick={() => fileRef.current?.click()}
-                onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add("drag-over"); }}
-                onDragLeave={e => e.currentTarget.classList.remove("drag-over")}
-                onDrop={e => {
-                  e.preventDefault(); e.currentTarget.classList.remove("drag-over");
-                  const file = e.dataTransfer.files?.[0];
-                  if (file) { const dt = new DataTransfer(); dt.items.add(file); fileRef.current.files = dt.files; handleFileUpload({ target: { files: [file] } }); }
-                }}>
-                <input ref={fileRef} type="file" accept=".csv,.txt,.xlsx,.xls" style={{ display: "none" }} onChange={handleFileUpload} />
-                {loading ? (
-                  <p style={{ color: "#8b949e", fontSize: "0.85rem" }}>Lendo arquivo...</p>
-                ) : fileName ? (
-                  <div style={{ textAlign: "center" }}>
-                    <p style={{ color: "#3fb950", fontSize: "0.85rem", fontWeight: 600 }}>✓ {fileName}</p>
-                    <p style={{ color: "#8b949e", fontSize: "0.72rem", marginTop: 4 }}>{contratos.length} contratos carregados · Clique para trocar o arquivo</p>
-                  </div>
-                ) : (
-                  <div style={{ textAlign: "center" }}>
-                    <p style={{ fontSize: "1.8rem", marginBottom: 8 }}>📂</p>
-                    <p style={{ color: "#e6edf3", fontSize: "0.85rem", fontWeight: 600 }}>Clique ou arraste o arquivo aqui</p>
-                    <p style={{ color: "#8b949e", fontSize: "0.72rem", marginTop: 4 }}>Suporta .csv exportado do Google Sheets ou Excel</p>
-                  </div>
-                )}
-              </div>
-              {error && <p style={{ fontSize: "0.72rem", color: "#f85149", marginTop: 6 }}>⚠ {error}</p>}
-              {lastSync && !error && fileName && (
-                <p style={{ fontSize: "0.7rem", color: "#8b949e", marginTop: 4 }}>
-                  Carregado às {lastSync.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · Para atualizar, faça upload novamente
-                </p>
-              )}
-            </div>
+      {loading ? (
+        <div className="ct-state">
+          <span className="contracts-spinner" />
+          <h2>Carregando contratos</h2>
+          <p>Aguarde enquanto buscamos os dados cadastrados.</p>
+        </div>
+      ) : filteredContracts.length === 0 ? (
+        <div className="ct-state">
+          <div className="contracts-state-icon"><IconFileText /></div>
+          <h2>{contracts.length === 0 ? "Nenhum contrato cadastrado"
+            : scopeTotal === 0 ? ({ closed: "Nenhum contrato encerrado", renewal: "Nenhum contrato para renovação", active: "Nenhum contrato vigente" })[scope]
+            : "Nenhum contrato encontrado"}</h2>
+          <p>{contracts.length === 0
+            ? "Cadastre o primeiro contrato para começar o acompanhamento."
+            : scopeTotal === 0 ? ({
+              closed: "Contratos aparecem aqui quando vencem ou são encerrados manualmente.",
+              renewal: `Aparecem aqui os contratos que vencem em até 3 meses e ainda têm aditivos disponíveis (menos de ${MAX_AMENDMENTS}).`,
+              active: "Todos os contratos cadastrados já estão encerrados.",
+            })[scope]
+            : "Ajuste os filtros ou use outro termo de busca."}</p>
+          {canEdit && contracts.length === 0 && (
+            <button type="button" className="ct-add" onClick={openAdd}><IconPlus /> Adicionar primeiro contrato</button>
           )}
         </div>
-      </div>
+      ) : (
+        <section className={view === "list" ? "ct-list" : "ct-cards-section"} aria-label="Lista de contratos">
+          {view === "list"
+            ? <ContractsTable contracts={filteredContracts} canEdit={canEdit} handlers={handlers} onOpen={openDetails} />
+            : <div className="contracts-grid">{filteredContracts.map((contract) => (
+                <ContractCard key={contract.id} contract={contract} canEdit={canEdit} handlers={handlers} onOpen={openDetails} />
+              ))}</div>}
+          <footer className="ct-pagination">
+            <span>{filteredContracts.length === scopeTotal
+              ? `${scopeTotal} ${scopeTotal === 1 ? "contrato" : "contratos"}${scopeWord(scopeTotal)}`
+              : `Mostrando ${filteredContracts.length} de ${scopeTotal} contratos${scopeWord(scopeTotal)}`}</span>
+          </footer>
+        </section>
       )}
 
-      {contratos.length > 0 && (
-        <>
-          <div className="contratos-resumo">
-            <div className="resumo-card" onClick={() => setFilterStatus("todos")}     style={{ borderLeftColor: "#58a6ff", cursor: "pointer" }}><div className="resumo-val" style={{ color: "#58a6ff" }}>{contratos.length}</div><div className="resumo-label">Total de contratos</div></div>
-            <div className="resumo-card" onClick={() => setFilterStatus("alerta")}    style={{ borderLeftColor: "#e3b341", cursor: "pointer" }}><div className="resumo-val" style={{ color: "#e3b341" }}>{totalAlerta}</div><div className="resumo-label">Vencem em 90 dias</div></div>
-            <div className="resumo-card" onClick={() => setFilterStatus("vencido")}   style={{ borderLeftColor: "#f85149", cursor: "pointer" }}><div className="resumo-val" style={{ color: "#f85149" }}>{totalVencidos}</div><div className="resumo-label">Vencidos</div></div>
-            <div className="resumo-card" onClick={() => setFilterStatus("encerrado")} style={{ borderLeftColor: "#6e7681", cursor: "pointer" }}><div className="resumo-val" style={{ color: "#6e7681" }}>{totalEncerrados}</div><div className="resumo-label">Encerrados</div></div>
-            <div className="resumo-card" onClick={() => setFilterStatus("ok")}        style={{ borderLeftColor: "#3fb950", cursor: "pointer" }}><div className="resumo-val" style={{ color: "#3fb950" }}>{contratos.length - totalAlerta - totalVencidos - totalEncerrados}</div><div className="resumo-label">Em dia</div></div>
-          </div>
-
-          <div className="contratos-filters">
-            <input className="contratos-search" placeholder="🔍  Buscar por objeto, fiscal, contrato..."
-              value={search} onChange={e => setSearch(e.target.value)} />
-            <div className="filter-btns">
-              {[["todos","Todos"],["ok","Em dia"],["alerta","⚠ Alerta"],["vencido","Vencidos"],["encerrado","Encerrados"]].map(([v,l]) => (
-                <button key={v} className={`filter-btn ${filterStatus === v ? "active" : ""}`} onClick={() => setFilterStatus(v)}>{l}</button>
-              ))}
-            </div>
-          </div>
-
-          {loading ? (
-            <div className="contratos-loading">Carregando...</div>
-          ) : filtered.length === 0 ? (
-            <div className="contratos-empty">Nenhum contrato encontrado com esses filtros.</div>
-          ) : (
-            <div className="cc2-grid">
-              {filtered.map((row, i) => <ContratoCard key={i} row={row} />)}
-            </div>
-          )}
-        </>
+      {detailContract && !showForm && !deleteTarget && !action && (
+        <ContractDetails
+          contract={detailContract}
+          canEdit={canEdit}
+          onClose={closeDetails}
+          handlers={handlers}
+          onContractChange={replaceContract}
+        />
       )}
 
-      {contratos.length === 0 && !loading && (
-        <div className="contratos-empty-state">
-          <div style={{ fontSize: "2.5rem", marginBottom: 12 }}>📄</div>
-          <h3>Nenhum dado carregado</h3>
-          <p>Use o link do Google Sheets para atualização em tempo real, ou faça upload do arquivo CSV para carregar manualmente.</p>
+      {action?.type === "amend" && (
+        <AmendmentModal contract={action.contract} saving={actionSaving} error={actionError} onClose={() => !actionSaving && setAction(null)} onSubmit={submitAction} />
+      )}
+      {(action?.type === "close" || action?.type === "reopen") && (
+        <CloseReopenModal contract={action.contract} mode={action.type} saving={actionSaving} error={actionError} onClose={() => !actionSaving && setAction(null)} onSubmit={submitAction} />
+      )}
+
+      {showForm && (
+        <ContractFormModal
+          editing={editing}
+          form={form}
+          setForm={setForm}
+          modalities={modalities}
+          collaborators={collaborators}
+          saving={saving}
+          error={formError}
+          closing={formClosing}
+          onClose={closeForm}
+          onSubmit={handleSubmit}
+          termFile={termFile}
+          onTermFileChange={setTermFile}
+        />
+      )}
+
+      {deleteTarget && (
+        <div className="contract-modal-overlay" onMouseDown={(event) => event.target === event.currentTarget && !deleting && setDeleteTarget(null)}>
+          <div className="contract-delete-modal" role="alertdialog" aria-modal="true" aria-labelledby="contract-delete-title">
+            <div className="contract-delete-icon"><IconTrash /></div>
+            <h2 id="contract-delete-title">Excluir este contrato?</h2>
+            <p>O contrato <strong>{deleteTarget.processName}</strong> será removido permanentemente. Essa ação não pode ser desfeita.</p>
+            <div className="contract-delete-actions">
+              <button type="button" className="btn-cancel-lg" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancelar</button>
+              <button type="button" className="btn-danger" onClick={() => handleDelete()} disabled={deleting}>{deleting ? "Excluindo..." : "Excluir contrato"}</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

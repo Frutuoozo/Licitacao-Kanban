@@ -35,7 +35,10 @@ export const PHASE_COLORS = ["#1e88e5","#8e24aa","#43a047","#66bb6a","#2e7d32","
 
 export function normalizeTemplateLine(item) {
   if (typeof item === "string") return { type: "doc", name: item, bgColor: null };
-  return { type: item.type || "doc", name: item.name, bgColor: item.bgColor || null };
+  const line = { type: item.type || "doc", name: item.name, bgColor: item.bgColor || null };
+  // "Obrigatório" só existe para documentos; sem a informação, o documento é obrigatório.
+  if (line.type === "doc") line.required = item.required !== false;
+  return line;
 }
 
 export function tmplItems(entry) {
@@ -75,6 +78,7 @@ export function normalizeTemplatesFromApi(raw) {
         items: (v.items || []).map(normalizeTemplateLine),
         color: v.color || TYPE_COLORS[k] || "#30363d",
         order: typeof v.order === "number" ? v.order : 999,
+        description: v.description || "",
       };
     }
   }
@@ -98,7 +102,12 @@ export const DEFAULT_TEMPLATES = (() => {
   return out;
 })();
 
-export function generateId() { return Math.random().toString(36).substr(2, 9); }
+export function generateId() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  window.crypto.getRandomValues(bytes);
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+}
 
 export function useStorage(key, defaultValue) {
   const [state, setState] = useState(() => {

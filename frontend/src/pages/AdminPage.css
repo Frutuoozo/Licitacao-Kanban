@@ -1,0 +1,102 @@
+/* Administração — segue o frame do Figma; base visual compartilhada com Contratos (.lk-contracts). */
+.adm-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+.adm-card { display: flex; flex-direction: column; min-width: 0; padding: 18px; background: var(--lk-surface); border: 1px solid var(--lk-border); border-radius: 16px; }
+.adm-card-head { display: flex; align-items: center; gap: 12px; }
+.adm-card-head h2 { font: 600 15px/22px 'Manrope', sans-serif; color: var(--lk-text); }
+.adm-card-icon { display: grid; place-items: center; flex-shrink: 0; width: 34px; height: 34px; border-radius: 9px; }
+.adm-card-icon i { width: 10px; height: 10px; border-radius: 50%; background: currentColor; }
+.adm-card-icon .adm-lines { width: 18px; height: 12px; border-radius: 0; background: linear-gradient(currentColor 0 0) 0 0 / 100% 2.5px no-repeat, linear-gradient(currentColor 0 0) 0 50% / 100% 2.5px no-repeat, linear-gradient(currentColor 0 0) 0 100% / 100% 2.5px no-repeat; }
+.adm-card-icon.blue { background: #eff6ff; color: #2563eb; }
+.adm-card-icon.purple { background: #f3eefe; color: #7c3aed; }
+.adm-card-icon.green { background: #ecfdf2; color: #16a34a; }
+.adm-card-icon.lilac { background: #f3eefe; color: #8b5cf6; }
+.adm-card p { flex: 1; margin: 14px 0 16px; font-size: 11px; line-height: 1.5; color: var(--lk-muted); }
+.lk-dashboard .adm-card-action { width: 100%; height: 30px; padding: 0 10px; border: 1px solid var(--lk-border); border-radius: 8px; background: var(--lk-soft); color: #2563eb; font-size: 11px; font-weight: 600; text-align: left; transition: border-color .15s, background .15s; }
+.lk-dashboard .adm-card-action:hover { border-color: #bfdbfe; background: var(--lk-tint); }
+
+.adm-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr); gap: 20px; align-items: start; }
+.adm-panel { min-width: 0; padding: 20px 18px 18px; background: var(--lk-surface); border: 1px solid var(--lk-border); border-radius: 16px; }
+.adm-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.adm-panel-head h2 { font: 600 16px/22px 'Manrope', sans-serif; color: var(--lk-text); }
+.adm-panel-head p { margin-top: 3px; font-size: 11px; color: var(--lk-muted); }
+.lk-dashboard .adm-panel-btn { min-height: 36px; padding: 0 16px; gap: 6px; }
+
+.adm-table-wrap { overflow-x: auto; scrollbar-width: thin; }
+.adm-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.adm-table thead tr { background: var(--lk-soft); }
+.adm-table th { height: 40px; padding: 0 12px; font-size: 9px; font-weight: 600; color: var(--lk-muted); text-align: left; text-transform: uppercase; letter-spacing: .02em; white-space: nowrap; }
+.adm-table td { height: 66px; padding: 10px 12px; border-bottom: 1px solid var(--lk-border); }
+.adm-table tbody tr:last-child td { border-bottom: 0; }
+.adm-role strong { display: block; font-weight: 600; color: var(--lk-text); }
+.adm-role small { display: block; margin-top: 3px; font-size: 10px; color: var(--lk-muted); }
+.adm-access { font-size: 11px; font-weight: 600; }
+.adm-access.total { color: #16a34a; }
+.adm-access.edit { color: #2563eb; }
+.adm-access.read { color: #7c3aed; }
+.adm-access.none { color: #b6bcc6; }
+.adm-legend { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--lk-border); font-size: 10px; color: var(--lk-muted); line-height: 1.8; }
+.adm-legend .adm-access { margin: 0 4px 0 6px; font-size: 10px; }
+
+.adm-settings { transition: box-shadow .3s, border-color .3s; }
+.adm-settings.highlight { border-color: #93c5fd; box-shadow: 0 0 0 4px #2563eb1f; }
+.adm-settings-list { list-style: none; margin: 0; padding: 0; }
+.adm-settings-list li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; }
+.adm-settings-list li + li { border-top: 1px solid var(--lk-border); }
+.adm-settings-list strong { display: block; font-size: 12px; font-weight: 600; color: var(--lk-text); }
+.adm-settings-list small { display: block; margin-top: 4px; font-size: 10px; line-height: 1.6; color: var(--lk-muted); }
+.adm-settings-list select { height: 24px; padding: 0 4px; border: 1px solid var(--lk-border); border-radius: 6px; background: var(--lk-soft); color: var(--lk-text); font: 600 10px 'Inter', sans-serif; cursor: pointer; }
+.adm-settings-list select:disabled { opacity: .55; cursor: not-allowed; }
+.lk-dashboard .adm-switch { position: relative; flex-shrink: 0; width: 40px; height: 22px; border-radius: 999px; background: #e2e5ea; transition: background .18s; }
+.lk-dashboard .adm-switch span { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #11182733; transition: transform .18s cubic-bezier(.4, 0, .2, 1); }
+.lk-dashboard .adm-switch.on { background: #2563eb; }
+.lk-dashboard .adm-switch.on span { transform: translateX(18px); }
+.lk-dashboard .adm-switch:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.adm-settings-foot { margin-top: 16px; }
+.lk-dashboard .adm-save { width: 100%; justify-content: center; min-height: 38px; }
+.lk-dashboard .adm-save:disabled { opacity: .55; cursor: not-allowed; }
+.adm-save-msg { margin-bottom: 10px; font-size: 11px; font-weight: 600; }
+.adm-save-msg.ok { color: #16a34a; }
+.adm-save-msg.error { color: #dc2626; }
+
+/* Painéis laterais com as gestões existentes (usuários, setores, modelos). */
+.lk-contracts .adm-drawer { width: min(860px, 100%); }
+.adm-drawer-subtitle { margin-top: 6px; font-size: 12px; color: var(--lk-muted); }
+.adm-drawer-body .admin-section { padding: 0; }
+.adm-drawer-body .admin-section-title { display: none; }
+.adm-subtabs { margin-bottom: 18px; }
+
+@media (max-width: 1200px) { .adm-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1024px) { .adm-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) {
+  .adm-cards { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .adm-panel-head { flex-wrap: wrap; }
+  .lk-dashboard .adm-panel-btn { width: 100%; justify-content: center; min-height: 44px; }
+  .adm-table thead { display: none; }
+  .adm-table, .adm-table tbody, .adm-table tr, .adm-table td { display: block; width: 100%; }
+  .adm-table tbody tr { margin-bottom: 10px; border: 1px solid var(--lk-border); border-radius: 12px; overflow: hidden; }
+  .adm-table td { display: flex; justify-content: space-between; align-items: center; height: auto; padding: 9px 14px; border-bottom: 0; border-top: 1px solid var(--lk-border); }
+  .adm-table td::before { content: attr(data-label); font-size: 10px; font-weight: 600; color: var(--lk-muted); text-transform: uppercase; }
+  .adm-table td.adm-role { display: block; border-top: 0; background: var(--lk-soft); }
+  .adm-table td.adm-role::before { display: none; }
+}
+
+/* ── Configuração de segurança ── */
+.lk-dashboard .adm-back { flex-shrink: 0; padding: 9px 16px; }
+.adm-sec-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+.adm-sec-kpi { display: flex; align-items: flex-start; gap: 14px; min-width: 0; padding: 16px 18px; background: var(--lk-surface); border: 1px solid var(--lk-border); border-radius: 14px; }
+.adm-sec-kpi small { display: block; font-size: 10px; font-weight: 600; color: var(--lk-muted); }
+.adm-sec-kpi strong { display: block; margin: 4px 0 6px; font: 700 20px/26px 'Manrope', sans-serif; color: var(--lk-text); white-space: nowrap; }
+.adm-sec-kpi p { font-size: 10px; color: var(--lk-muted); }
+.adm-card-icon.amber { background: #fff7e0; color: #d97706; }
+.adm-card-icon.red { background: #fdeaea; color: #dc2626; }
+.adm-policy { margin-top: 12px; padding: 9px 12px; border-radius: 8px; background: var(--lk-soft); font-size: 10px; color: var(--lk-muted); }
+.adm-params { display: flex; flex-direction: column; gap: 16px; }
+.adm-param { width: 100%; }
+.lk-contracts .adm-param select { height: 40px; }
+.lk-contracts .adm-param select:disabled { opacity: .55; cursor: not-allowed; }
+@media (max-width: 1200px) { .adm-sec-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) {
+  .adm-sec-kpis { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .ct-header:has(.adm-back) { flex-wrap: wrap; }
+  .lk-dashboard .adm-back { width: 100%; justify-content: center; }
+}

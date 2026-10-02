@@ -1,10 +1,11 @@
 import db from '../db.js';
+import { isEditorOrAdminRole } from '../permissions.js';
 
 /** Exige que o usuário autenticado tenha role = admin ou role = editor no banco (req.userId definido por verifyToken). */
 export const requireEditorOrAdmin = async (req, res, next) => {
   try {
     const [rows] = await db.query('SELECT role FROM users WHERE id = ?', [req.userId]);
-    if (rows.length === 0 || (rows[0].role !== 'admin' && rows[0].role !== 'editor')) {
+    if (rows.length === 0 || !isEditorOrAdminRole(rows[0].role)) {
       return res.status(403).json({ error: 'Acesso restrito a editores ou administradores' });
     }
     next();

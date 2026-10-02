@@ -1,10 +1,11 @@
 import db from '../db.js';
+import { isAdminRole } from '../permissions.js';
 
 /** Exige que o usuário autenticado tenha role = admin no banco (req.userId definido por verifyToken). */
 export const requireAdmin = async (req, res, next) => {
   try {
     const [rows] = await db.query('SELECT role FROM users WHERE id = ?', [req.userId]);
-    if (rows.length === 0 || rows[0].role !== 'admin') {
+    if (rows.length === 0 || !isAdminRole(rows[0].role)) {
       return res.status(403).json({ error: 'Acesso restrito a administradores' });
     }
     next();

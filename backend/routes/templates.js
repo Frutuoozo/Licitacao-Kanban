@@ -1,10 +1,20 @@
 import express from 'express';
+import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import db from '../db.js';
 import { getIO } from '../socket.js';
 import crypto from 'crypto';
 import { requireAdmin } from '../middleware/admin.js';
+import { isHexColor, isNonEmptyString, MAX_LENGTHS, normalizeText } from '../validation.js';
 
 const router = express.Router();
+const templateWriteLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Muitas alterações em modelos. Aguarde alguns minutos e tente novamente.' },
+  keyGenerator: (req) => req.userId || ipKeyGenerator(req.ip),
+});
 
 function parseItems(row) {
   const raw = row.items;
@@ -15,7 +25,7 @@ function parseItems(row) {
 router.get('/', async (req, res) => {
   try {
     const [rows] = await db.query(
-      'SELECT name, items, sort_order, type_color FROM templates ORDER BY sort_order ASC, name ASC'
+      'SELECT name, items, sort_order, type_color, description FROM templates ORDER BY sort_order ASC, name ASC'
     );
 
     const templates = {};
@@ -26,15 +36,17 @@ router.get('/', async (req, res) => {
           items,
           color: row.type_color || null,
           order: row.sort_order ?? idx,
+          description: row.description || '',
         };
       } else if (items && typeof items === 'object' && Array.isArray(items.items)) {
         templates[row.name] = {
           items: items.items,
           color: row.type_color || items.color || null,
           order: row.sort_order ?? items.order ?? idx,
+          description: row.description || '',
         };
       } else {
-        templates[row.name] = { items: [], color: row.type_color || null, order: row.sort_order ?? idx };
+        templates[row.name] = { items: [], color: row.type_color || null, order: row.sort_order ?? idx, description: row.description || '' };
       }
     });
 
@@ -46,8 +58,11 @@ router.get('/', async (req, res) => {
 });
 
 // PUT — body: { "Tipo": { items: [...], color: "#hex", order: n }, ... } ou legado { "Tipo": [...] }
-router.put('/', requireAdmin, async (req, res) => {
+router.put('/', requireAdmin, templateWriteLimiter, async (req, res) => {
   const templates = req.body;
+  if (!templates || typeof templates !== 'object' || Array.isArray(templates)) {
+    return res.status(400).json({ error: 'Payload de templates inválido' });
+  }
 
   const connection = await db.getConnection();
   try {
@@ -58,26 +73,35 @@ router.put('/', requireAdmin, async (req, res) => {
     const entries = Object.entries(templates || {});
     if (entries.length > 0) {
       const normalized = entries.map(([name, val], i) => {
+        const cleanName = normalizeText(name);
+        if (!isNonEmptyString(cleanName, MAX_LENGTHS.templateName)) {
+          throw new Error('Nome de template inválido');
+        }
         let items;
         let color = null;
         let sortOrder = i;
+        let description = null;
         if (Array.isArray(val)) {
           items = val;
         } else if (val && typeof val === 'object') {
           items = val.items || [];
           color = val.color || null;
           if (typeof val.order === 'number') sortOrder = val.order;
+          description = normalizeText(val.description).slice(0, 255) || null;
+          if (color !== null && !isHexColor(color)) {
+            throw new Error('Cor de template inválida');
+          }
         } else {
           items = [];
         }
-        return [name, JSON.stringify(items), sortOrder, color];
+        return [cleanName, JSON.stringify(items), sortOrder, color, description];
       });
 
       normalized.sort((a, b) => a[2] - b[2]);
 
-      const values = normalized.map((row) => [row[0], row[1], row[2], row[3]]);
+      const values = normalized.map((row) => [row[0], row[1], row[2], row[3], row[4]]);
       await connection.query(
-        'INSERT INTO templates (name, items, sort_order, type_color) VALUES ?',
+        'INSERT INTO templates (name, items, sort_order, type_color, description) VALUES ?',
         [values]
       );
 
@@ -158,7 +182,7 @@ router.put('/', requireAdmin, async (req, res) => {
   } catch (error) {
     await connection.rollback();
     console.error(error);
-    res.status(500).json({ error: 'Failed to update templates' });
+    res.status(400).json({ error: error.message || 'Failed to update templates' });
   } finally {
     connection.release();
   }

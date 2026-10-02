@@ -1,0 +1,440 @@
+/* Contratos — segue o frame "06 — Contratos" do Figma (LicitKanban V2), com alternância Lista / Cards. */
+.lk-contracts { display: flex; flex-direction: column; gap: 20px; min-width: 0; padding-bottom: 24px; color: var(--lk-text); }
+.lk-contracts * { box-sizing: border-box; }
+/* Barra de rolagem da página: bem discreta, como em Relatórios. */
+html.ct-scroll { scrollbar-width: thin; scrollbar-color: #1118271a transparent; }
+html.ct-scroll::-webkit-scrollbar { width: 6px; }
+html.ct-scroll::-webkit-scrollbar-track { background: transparent; }
+html.ct-scroll::-webkit-scrollbar-thumb { background: #1118271a; border-radius: 999px; }
+html.ct-scroll::-webkit-scrollbar-thumb:hover { background: #11182733; }
+html.ct-scroll::-webkit-scrollbar-button, html.ct-scroll::-webkit-scrollbar-corner { display: none; background: transparent; }
+.ct-table-wrap { scrollbar-color: #1118271a transparent; }
+.ct-table-wrap::-webkit-scrollbar { height: 4px; }
+.ct-table-wrap::-webkit-scrollbar-thumb { background: #1118271a; border-radius: 999px; }
+
+.ct-header { display: flex; align-items: center; gap: 12px; min-height: 60px; }
+.ct-header-text { flex: 1; min-width: 0; }
+/* Colunas iguais: Exportar e Novo contrato ficam com a mesma largura (a do maior) e a mesma altura. */
+.ct-header-actions { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; align-items: stretch; gap: 10px; flex-shrink: 0; }
+/* Exportar: mesma altura/forma do "Novo contrato", em versão contornada. */
+.lk-dashboard .ct-header-export { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 9px 12px; border: 1px solid var(--lk-border); border-radius: 10px; background: var(--lk-surface); color: var(--lk-text); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.lk-dashboard .ct-header-export:hover:not(:disabled) { border-color: #2563eb; color: #2563eb; }
+.lk-dashboard .ct-header-export:disabled { opacity: .5; cursor: not-allowed; }
+/* Igual ao "+ Novo processo" da página de Processos. */
+.lk-dashboard .ct-new-button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; flex-shrink: 0; min-height: 38px; padding: 9px 12px; border: 1px solid #2563eb; border-radius: 10px; background: #2563eb; color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.lk-dashboard .ct-new-button:hover { background: #1d4ed8; border-color: #1d4ed8; }
+.ct-header h1 { font: 700 28px/38px 'Manrope', sans-serif; }
+.ct-header p { font-size: 12px; line-height: 18px; color: var(--lk-muted); }
+.ct-message { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; border: 1px solid #fca5a5; border-radius: 12px; background: #fef2f2; color: #b91c1c; font-size: 12px; }
+.lk-dashboard .ct-message button { font-weight: 600; text-decoration: underline; }
+
+/* KPIs: usam .lk-kpis/.lk-kpi do Dashboard; o espaçamento vem do gap da página. */
+.lk-contracts .lk-kpis { margin-bottom: 0; }
+.lk-kpi.purple { --tone: #7c3aed; }
+.lk-kpi.red { --tone: #dc2626; }
+.lk-dashboard .ct-add { display: inline-flex; align-items: center; justify-content: center; gap: 8px; justify-self: end; min-width: 156px; height: 40px; padding: 0 20px; border-radius: 10px; background: #2563eb; color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.lk-dashboard .ct-add:hover { background: #1d4ed8; }
+
+/* Barra de filtros */
+/* Mesmas medidas da barra de filtros de Relatórios: campos de largura igual, crescendo até 240px. */
+.ct-toolbar { display: grid; grid-template-columns: repeat(4, minmax(150px, 240px)) minmax(max-content, 1fr); align-items: end; gap: 24px; padding: 18px 24px; background: var(--lk-surface); border: 1px solid var(--lk-border); border-radius: 16px; }
+.ct-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ct-field > span { font-size: 10px; font-weight: 600; color: var(--lk-muted); }
+.ct-field input, .ct-field select { width: 100%; height: 38px; padding: 0 14px; border: 1px solid var(--lk-border); border-radius: 10px; background: var(--lk-soft); color: var(--lk-text); font: 500 12px 'Inter', sans-serif; outline: none; transition: border-color .15s, box-shadow .15s; }
+.ct-field input { font-weight: 400; }
+.ct-field input::placeholder { color: var(--lk-muted); }
+.ct-field select { appearance: none; padding-right: 30px; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
+.ct-field input:focus, .ct-field select:focus { border-color: var(--lk-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lk-blue) 12%, transparent); }
+.ct-toolbar-actions { grid-column: -2; display: flex; align-items: center; justify-self: end; gap: 10px; }
+/* Lista / Cards: só ícones, botões quadrados. */
+.lk-dashboard .ct-icon-toggle button { width: 32px; padding: 0; justify-content: center; }
+.ct-toggle-count { min-width: 20px; padding: 1px 6px; border-radius: 999px; background: color-mix(in srgb, var(--lk-muted) 14%, transparent); font-size: 10px; font-variant-numeric: tabular-nums; }
+.ct-view-toggle button.active .ct-toggle-count { background: var(--lk-tint); color: #2563eb; }
+.ct-view-toggle { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--lk-border); border-radius: 10px; background: var(--lk-soft); }
+.lk-dashboard .ct-view-toggle button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 7px; color: var(--lk-muted); font-size: 11px; font-weight: 600; transition: background .15s, color .15s; }
+.lk-dashboard .ct-view-toggle button:hover { color: var(--lk-text); }
+.lk-dashboard .ct-view-toggle button.active { background: var(--lk-surface); color: var(--lk-blue); box-shadow: 0 1px 2px #1118271a; }
+.lk-dashboard .ct-export { height: 38px; padding: 0 24px; border: 1px solid var(--lk-border); border-radius: 10px; background: var(--lk-surface); color: var(--lk-text); font-size: 11px; font-weight: 600; }
+.lk-dashboard .ct-export:hover:not(:disabled) { border-color: var(--lk-blue); color: var(--lk-blue); }
+.lk-dashboard .ct-export:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Lista */
+.ct-list { background: var(--lk-surface); border: 1px solid var(--lk-border); border-radius: 14px; overflow: visible; }
+.ct-table-wrap { overflow-x: auto; border-radius: 14px 14px 0 0; scrollbar-width: thin; }
+.ct-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.ct-table thead tr { background: var(--lk-soft); }
+.ct-table th { height: 48px; padding: 0 12px; font-size: 10px; font-weight: 600; color: var(--lk-muted); text-align: left; text-transform: uppercase; white-space: nowrap; }
+.ct-table th:first-child, .ct-table td:first-child { padding-left: 18px; }
+.ct-table th:last-child, .ct-table td:last-child { padding-right: 18px; }
+.ct-table td { height: 78px; padding: 12px; font-weight: 500; vertical-align: middle; }
+/* Divisória recuada como no design (não toca as bordas do card). */
+.ct-table tbody tr { background-image: linear-gradient(var(--lk-border), var(--lk-border)); background-size: calc(100% - 36px) 1px; background-position: 18px 100%; background-repeat: no-repeat; }
+.ct-table tbody tr:last-child { background-image: none; }
+.ct-table tbody tr:hover { background-color: color-mix(in srgb, var(--lk-soft) 70%, transparent); }
+.ct-col-number { font-size: 12px; font-weight: 600 !important; white-space: nowrap; }
+.ct-col-object { min-width: 220px; max-width: 360px; }
+.ct-col-object strong { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.ct-col-object span { display: -webkit-box; margin-top: 3px; overflow: hidden; color: var(--lk-muted); font-size: 10px; line-height: 15px; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
+.ct-col-date { font-size: 10px; color: var(--lk-muted); white-space: nowrap; }
+.ct-col-date time { color: var(--lk-text); font-variant-numeric: tabular-nums; }
+.ct-col-value { font-weight: 600 !important; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ct-badge { display: inline-flex; align-items: center; min-width: 110px; height: 28px; padding: 0 14px; border-radius: 14px; font-size: 10px; font-weight: 600; white-space: nowrap; }
+.ct-badge.green { background: #e3f4e9; color: #16a34a; }
+.ct-badge.amber { background: #faefe1; color: #d97805; }
+.ct-badge.red { background: #fdeaea; color: #dc2626; }
+.ct-badge.gray { background: #eef0f3; color: #64748b; }
+.ct-col-action { width: 72px; text-align: center !important; }
+.ct-row-menu { position: relative; display: inline-block; }
+.lk-dashboard .ct-row-menu-trigger { width: 48px; height: 28px; border: 1px solid var(--lk-border); border-radius: 8px; background: var(--lk-surface); color: var(--lk-muted); font-size: 11px; font-weight: 600; letter-spacing: 1px; }
+.lk-dashboard .ct-row-menu-trigger:hover, .lk-dashboard .ct-row-menu-trigger[aria-expanded="true"] { border-color: var(--lk-blue); color: var(--lk-blue); }
+.ct-row-menu-list { position: fixed; z-index: 60; min-width: 140px; padding: 4px; background: var(--lk-surface); border: 1px solid var(--lk-border); border-radius: 10px; box-shadow: 0 12px 28px #1118271f; }
+.lk-dashboard .ct-row-menu-list button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border-radius: 6px; font-size: 12px; text-align: left; }
+.lk-dashboard .ct-row-menu-list button:hover { background: var(--lk-soft); }
+.lk-dashboard .ct-row-menu-list button.danger { color: #dc2626; }
+.lk-dashboard .ct-row-menu-list button.danger:hover { background: #fdeaea; }
+
+/* Paginação (lista e cards) */
+.ct-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; padding: 12px 18px; font-size: 10px; font-weight: 500; color: var(--lk-muted); }
+.ct-list .ct-pagination { border-top: 1px solid var(--lk-border); }
+.ct-pagination nav { display: flex; gap: 8px; }
+.lk-dashboard .ct-pagination button { min-width: 32px; height: 28px; padding: 0 8px; border: 1px solid var(--lk-border); border-radius: 8px; background: var(--lk-surface); color: var(--lk-muted); font-size: 11px; font-weight: 600; }
+.lk-dashboard .ct-pagination button:hover:not(:disabled) { color: var(--lk-text); }
+.lk-dashboard .ct-pagination button.active { border-color: #2563eb; background: var(--lk-tint); color: #2563eb; }
+.lk-dashboard .ct-pagination button:disabled { opacity: .45; cursor: not-allowed; }
+.ct-cards-section .ct-pagination { padding: 4px 2px 0; }
+
+/* Cards: mesmo conteúdo de antes, no visual novo */
+.lk-contracts .contracts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); grid-auto-rows: minmax(400px, auto); gap: 18px; align-items: stretch; }
+/* Todos os cards com a mesma altura: a área do título cresce e empurra valores/fiscalização para baixo. */
+.lk-contracts .contract-card { display: flex; flex-direction: column; min-height: 400px; background: var(--lk-surface); border-color: var(--lk-border); border-radius: 14px; box-shadow: none; }
+.lk-contracts .contract-card:hover { box-shadow: 0 10px 24px #1118270f; }
+.lk-contracts .contract-card-regular { --contract-state: #16a34a; }
+.lk-contracts .contract-card-soon, .lk-contracts .contract-card-urgent { --contract-state: #d97805; }
+.lk-contracts .contract-card-expired { --contract-state: #94a3b8; }
+.lk-kpi.gray { --tone: #94a3b8; }
+.lk-contracts .contract-card-no-date { --contract-state: var(--lk-muted); }
+.lk-contracts .contract-card-title-wrap { flex: 1; }
+.lk-contracts .contract-card-title { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font: 600 15px/1.35 'Manrope', sans-serif; }
+.lk-contracts .contract-card-object { font-size: 12px; }
+.lk-contracts .contract-value-item strong { color: #2563eb; font-family: 'Manrope', sans-serif; }
+.lk-contracts .contract-inspection-title svg { color: #2563eb; }
+.lk-contracts .contract-law-badge { color: #2563eb; border-color: #bfdbfe; background: var(--lk-tint); }
+.lk-contracts .contract-law-old { color: #92680c; border-color: #f5d99a; background: #fdf6e3; }
+.lk-contracts .contract-card-actions .icon-btn { color: var(--lk-muted); }
+
+/* Estados vazio / carregando */
+.ct-state { display: flex; min-height: 280px; padding: 44px 20px; flex-direction: column; align-items: center; justify-content: center; gap: 9px; text-align: center; color: var(--lk-muted); background: var(--lk-surface); border: 1px dashed var(--lk-border); border-radius: 14px; }
+.ct-state h2 { font: 600 16px 'Manrope', sans-serif; color: var(--lk-text); }
+.ct-state p { max-width: 420px; margin-bottom: 7px; font-size: 12px; line-height: 1.5; }
+
+/* Tela larga */
+@media (min-width: 1600px) {
+  .lk-contracts { gap: 24px; }
+  .ct-toolbar { padding: 20px 28px; gap: 28px; }
+}
+/* Notebook / tablet deitado */
+@media (max-width: 1500px) {
+  /* Ações descem para uma linha própria, alinhadas à direita. */
+  .ct-toolbar { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 20px; }
+  .ct-toolbar-actions { grid-column: 1 / -1; }
+}
+@media (max-width: 1024px) {
+  .ct-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* Celular: KPIs empilhados e a lista vira cartões. */
+@media (max-width: 700px) {
+  .lk-contracts { gap: 14px; }
+  .ct-header h1 { font-size: 24px; line-height: 32px; }
+  .ct-header { flex-wrap: wrap; }
+  .ct-header-actions { width: 100%; }
+  .lk-dashboard .ct-new-button, .lk-dashboard .ct-header-export { flex: 1; justify-content: center; min-height: 44px; }
+  .ct-toolbar-actions { flex-wrap: wrap; }
+  .ct-toolbar-actions .ct-view-toggle { flex: 1 1 100%; }
+  .ct-toolbar-actions .ct-icon-toggle { flex: 0 0 auto; margin-left: auto; }
+  .lk-dashboard .ct-icon-toggle button { flex: 0 0 auto; width: 44px; }
+  .ct-toolbar { grid-template-columns: minmax(0, 1fr); padding: 16px; gap: 14px; }
+  .ct-toolbar-actions { justify-self: stretch; }
+  .ct-field input, .ct-field select { height: 42px; font-size: 13px; }
+  .ct-view-toggle { flex: 1; } .lk-dashboard .ct-view-toggle button { flex: 1; justify-content: center; height: 36px; }
+  .lk-dashboard .ct-export { height: 44px; }
+  .ct-list { background: transparent; border: 0; }
+  .ct-table-wrap { overflow: visible; }
+  .ct-table, .ct-table tbody, .ct-table tr, .ct-table td { display: block; width: 100%; }
+  .ct-table thead { display: none; }
+  .ct-table tbody tr { margin-bottom: 10px; background: var(--lk-surface); background-image: none; border: 1px solid var(--lk-border); border-radius: 12px; }
+  .ct-table td, .ct-table td:first-child, .ct-table td:last-child { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: auto; min-height: 44px; padding: 10px 14px; border-top: 1px solid var(--lk-border); text-align: right; }
+  .ct-table td::before { content: attr(data-label); flex-shrink: 0; font-size: 10px; font-weight: 600; color: var(--lk-muted); text-transform: uppercase; text-align: left; }
+  .ct-table td.ct-col-number { position: relative; display: block; padding: 14px 80px 14px 14px; border-top: 0; font-size: 14px; text-align: left; }
+  .ct-table td.ct-col-number::before, .ct-table td.ct-col-action::before { display: none; }
+  /* O botão de ações fica no canto superior direito do cartão, ao lado do número. */
+  .ct-table tbody tr { position: relative; }
+  .ct-table td.ct-col-action { position: absolute; top: 8px; right: 12px; width: auto; min-height: 0; padding: 0; border: 0; }
+  .ct-col-object { max-width: none; } .ct-col-object strong, .ct-col-object span { text-align: right; }
+  .ct-list .ct-pagination { border-top: 0; padding: 4px 2px 0; flex-wrap: wrap; }
+  .lk-dashboard .ct-row-menu-trigger { width: 44px; height: 36px; }
+}
+
+/* Botões dos modais (excluir / formulário): o reset de botões do layout novo apagava fundo e borda. */
+.lk-contracts .contract-delete-actions button,
+.lk-contracts .contract-form-footer button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 18px; border-radius: 10px; font: 600 13px 'Inter', sans-serif; transition: background .15s, border-color .15s, color .15s; }
+.lk-contracts .contract-delete-actions .btn-danger,
+.lk-contracts .contract-form-footer .btn-primary { border: 1px solid #2563eb; background: #2563eb; color: #fff; }
+.lk-contracts .contract-delete-actions .btn-danger:hover:not(:disabled),
+.lk-contracts .contract-form-footer .btn-primary:hover:not(:disabled) { border-color: #1d4ed8; background: #1d4ed8; }
+.lk-contracts .contract-delete-actions .btn-cancel-lg,
+.lk-contracts .contract-form-footer .btn-cancel-lg { border: 1px solid var(--lk-border); background: var(--lk-surface); color: var(--lk-text); }
+.lk-contracts .contract-delete-actions .btn-cancel-lg:hover:not(:disabled),
+.lk-contracts .contract-form-footer .btn-cancel-lg:hover:not(:disabled) { background: var(--lk-soft); }
+.lk-contracts .contract-delete-actions button:disabled,
+.lk-contracts .contract-form-footer button:disabled { opacity: .6; cursor: not-allowed; }
+
+/* Linhas e cards clicáveis: abrem o painel de detalhes. */
+.ct-row-clickable, .ct-card-clickable { cursor: pointer; }
+.ct-row-clickable:focus-visible { outline: 2px solid var(--lk-blue); outline-offset: -2px; }
+.lk-contracts .ct-card-clickable:focus-visible { outline: 2px solid var(--lk-blue); outline-offset: 2px; }
+.lk-contracts .ct-card-clickable:hover { border-color: color-mix(in srgb, #2563eb 35%, var(--lk-border)); }
+
+/* Painel de detalhes: desliza pela direita (no celular, sobe de baixo). */
+.ct-detail-overlay { position: fixed; inset: 0; z-index: 210; display: flex; justify-content: flex-end; background: #11182747; backdrop-filter: blur(3px); animation: ctFade .25s ease-out; }
+.ct-detail { display: flex; flex-direction: column; width: min(640px, 100%); height: 100%; background: var(--lk-surface); border-left: 1px solid var(--lk-border); box-shadow: -18px 0 48px #1118271f; color: var(--lk-text); animation: ctSlideIn .42s cubic-bezier(.16, 1, .3, 1); }
+@keyframes ctFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ctSlideIn { from { transform: translateX(100%); } to { transform: none; } }
+/* Conteúdo entra em cascata depois do painel. */
+.ct-detail-header > div, .ct-detail-body > section, .ct-detail-footer { animation: ctRise .4s cubic-bezier(.16, 1, .3, 1) both; }
+.ct-detail-header > div { animation-delay: .08s; }
+.ct-detail-body > section:nth-child(1) { animation-delay: .14s; }
+.ct-detail-body > section:nth-child(2) { animation-delay: .19s; }
+.ct-detail-body > section:nth-child(3) { animation-delay: .24s; }
+.ct-detail-body > section:nth-child(4) { animation-delay: .29s; }
+.ct-detail-body > section:nth-child(5) { animation-delay: .34s; }
+.ct-detail-footer { animation-delay: .3s; }
+.ct-detail-highlight > div { animation: ctPop .45s cubic-bezier(.34, 1.56, .64, 1) both; }
+.ct-detail-highlight > div:nth-child(2) { animation-delay: .06s; }
+@keyframes ctRise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes ctPop { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
+/* Saída: o painel volta para a direita e o fundo some. */
+.ct-detail-overlay.closing { animation: ctFadeOut .22s ease-in forwards; }
+.ct-detail-overlay.closing .ct-detail { animation: ctSlideOut .22s cubic-bezier(.7, 0, .84, 0) forwards; }
+@keyframes ctFadeOut { to { opacity: 0; } }
+@keyframes ctSlideOut { to { transform: translateX(100%); } }
+.ct-detail-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 24px 24px 20px; border-bottom: 1px solid var(--lk-border); }
+.ct-detail-number { font-size: 11px; font-weight: 600; color: var(--lk-muted); font-variant-numeric: tabular-nums; }
+.ct-detail-header h2 { margin-top: 4px; font: 700 20px/28px 'Manrope', sans-serif; overflow-wrap: anywhere; }
+.ct-detail-badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.ct-detail-badges .ct-badge { min-width: 0; }
+.lk-dashboard .ct-detail-close { display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; border: 1px solid var(--lk-border); border-radius: 10px; color: var(--lk-muted); }
+.lk-dashboard .ct-detail-close:hover { background: var(--lk-soft); color: var(--lk-text); }
+.ct-detail-body { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px 28px; scrollbar-width: thin; scrollbar-color: #1118271a transparent; }
+.ct-detail-highlight { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+.ct-detail-highlight > div { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: 12px; background: var(--lk-soft); border: 1px solid var(--lk-border); }
+.ct-detail-highlight span { font-size: 10px; font-weight: 600; color: var(--lk-muted); text-transform: uppercase; }
+.ct-detail-highlight strong { font: 700 18px/26px 'Manrope', sans-serif; font-variant-numeric: tabular-nums; }
+.ct-detail-highlight small { font-size: 11px; font-weight: 600; }
+.tone-green { color: #16a34a; } .tone-amber { color: #d97805; } .tone-red { color: #dc2626; } .tone-gray { color: #64748b; }
+.ct-detail-section + .ct-detail-section { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--lk-border); }
+.ct-detail-section h3 { margin-bottom: 12px; font-size: 11px; font-weight: 700; color: var(--lk-muted); text-transform: uppercase; letter-spacing: .04em; }
+.ct-detail-text { font-size: 13px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ct-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; margin: 0; }
+.ct-detail-grid dt { font-size: 10px; font-weight: 600; color: var(--lk-muted); }
+.ct-detail-grid dd { margin: 4px 0 0; font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.ct-detail-footer { display: flex; justify-content: space-between; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--lk-border); background: var(--lk-soft); }
+.lk-dashboard .ct-detail-footer button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 18px; border-radius: 10px; font-size: 13px; font-weight: 600; }
+.lk-dashboard .ct-detail-delete { border: 1px solid #fca5a5; background: var(--lk-surface); color: #dc2626; }
+.lk-dashboard .ct-detail-delete:hover { background: #fef2f2; }
+.lk-dashboard .ct-detail-edit { border: 1px solid #2563eb; background: #2563eb; color: #fff; }
+.lk-dashboard .ct-detail-edit:hover { background: #1d4ed8; border-color: #1d4ed8; }
+@media (max-width: 600px) {
+  .ct-detail-overlay { align-items: flex-end; }
+  .ct-detail { width: 100%; height: auto; max-height: 92vh; border-left: 0; border-radius: 18px 18px 0 0; animation-name: ctSlideUp; }
+  @keyframes ctSlideUp { from { transform: translateY(100%); } to { transform: none; } }
+  .ct-detail-overlay.closing .ct-detail { animation-name: ctSlideDown; }
+  @keyframes ctSlideDown { to { transform: translateY(100%); } }
+  .ct-detail-header, .ct-detail-body, .ct-detail-footer { padding-left: 16px; padding-right: 16px; }
+  .ct-detail-highlight, .ct-detail-grid { grid-template-columns: 1fr; }
+  .ct-detail-footer button { flex: 1; min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) { .ct-detail, .ct-detail-overlay, .ct-detail-header > div, .ct-detail-body > section, .ct-detail-footer, .ct-detail-highlight > div { animation: none !important; } }
+
+.lk-contracts .contract-field-hint { margin: -4px 0 0; font-size: 11px; color: var(--lk-muted); }
+
+/* Formulário de contrato: mesmo painel lateral e animações do detalhe. */
+.lk-contracts .ct-form-drawer { width: min(640px, 100%); max-height: none; height: 100%; border: 0; border-left: 1px solid var(--lk-border); border-radius: 0; background: var(--lk-surface); box-shadow: -18px 0 48px #1118271f; animation: ctSlideIn .42s cubic-bezier(.16, 1, .3, 1); }
+.ct-form-overlay.closing .ct-form-drawer { animation: ctSlideOut .22s cubic-bezier(.7, 0, .84, 0) forwards; }
+.ct-form-drawer .contract-form-header { padding: 24px; }
+.ct-form-drawer .contract-form-header > div, .ct-form-drawer .contract-form-section, .ct-form-drawer .contract-form-footer { animation: ctRise .4s cubic-bezier(.16, 1, .3, 1) both; }
+.ct-form-drawer .contract-form-header > div { animation-delay: .08s; }
+.ct-form-drawer .contract-form-section:nth-of-type(1) { animation-delay: .14s; }
+.ct-form-drawer .contract-form-section:nth-of-type(2) { animation-delay: .2s; }
+.ct-form-drawer .contract-form-section:nth-of-type(3) { animation-delay: .26s; }
+.ct-form-drawer .contract-form-footer { animation-delay: .3s; }
+.ct-form-drawer .contract-form-header h2 { font: 700 20px/28px 'Manrope', sans-serif; }
+.ct-form-drawer .contract-form-eyebrow { color: #2563eb; }
+.ct-form-drawer .contract-form-body { scrollbar-width: thin; scrollbar-color: #1118271a transparent; }
+.lk-dashboard .ct-form-drawer .contract-form-header .icon-btn { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--lk-border); border-radius: 10px; color: var(--lk-muted); }
+.lk-dashboard .ct-form-drawer .contract-form-header .icon-btn:hover { background: var(--lk-soft); color: var(--lk-text); }
+@media (max-width: 600px) {
+  .lk-contracts .ct-form-drawer { height: auto; max-height: 94vh; border-left: 0; border-radius: 18px 18px 0 0; animation-name: ctSlideUp; }
+  .ct-form-overlay.closing .ct-form-drawer { animation-name: ctSlideDown; }
+  .ct-form-drawer .contract-form-header { padding: 18px 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .ct-form-drawer, .ct-form-drawer * { animation: none !important; } }
+
+/* Formulário com o mesmo design do painel de detalhes: cabeçalho, seções, rótulos e rodapé. */
+.ct-form-drawer { color: var(--lk-text); font-family: 'Inter', sans-serif; }
+.ct-form-drawer .contract-form-header { gap: 16px; padding: 24px 24px 20px; border-bottom: 1px solid var(--lk-border); }
+.ct-form-drawer .contract-form-eyebrow { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--lk-muted); }
+.ct-form-drawer .contract-form-header h2 { margin-top: 4px; }
+.ct-form-drawer .contract-form-header p { margin-top: 6px; font-size: 12px; color: var(--lk-muted); }
+/* O corpo ocupa o espaço livre e rola sozinho; o rodapé fica preso no fundo do painel. */
+.ct-form-drawer .contract-form { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ct-form-drawer .contract-form-body { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px 28px; }
+.ct-form-drawer .contract-form-footer { flex-shrink: 0; margin-top: auto; }
+.ct-form-drawer .contract-form-error { border-radius: 12px; font-size: 12px; }
+/* Seções: só o título em maiúsculas, como no detalhe. */
+.ct-form-drawer .contract-form-section + .contract-form-section { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--lk-border); }
+.ct-form-drawer .contract-form-section-title { margin-bottom: 12px; }
+.ct-form-drawer .contract-form-section-title > svg, .ct-form-drawer .contract-form-section-title span { display: none; }
+.ct-form-drawer .contract-form-section-title strong { font-size: 11px; font-weight: 700; color: var(--lk-muted); text-transform: uppercase; letter-spacing: .04em; }
+.ct-form-drawer .contract-form-grid { gap: 16px 20px; }
+.ct-form-drawer .contract-field { gap: 6px; font-size: 10px; font-weight: 600; color: var(--lk-muted); }
+.ct-form-drawer .contract-field input, .ct-form-drawer .contract-field select, .ct-form-drawer .contract-field textarea { border: 1px solid var(--lk-border); border-radius: 10px; background: var(--lk-surface); color: var(--lk-text); font: 500 13px/1.45 'Inter', sans-serif; }
+.ct-form-drawer .contract-field input, .ct-form-drawer .contract-field select { height: 40px; padding: 0 12px; }
+.ct-form-drawer .contract-field textarea { padding: 10px 12px; line-height: 1.6; }
+.ct-form-drawer .contract-field input:focus, .ct-form-drawer .contract-field select:focus, .ct-form-drawer .contract-field textarea:focus { border-color: #2563eb; box-shadow: 0 0 0 3px #2563eb1f; }
+/* "Contrato e vigência" vira os dois destaques (Valor / Vencimento) do detalhe. */
+.ct-form-drawer .contract-form-section:nth-of-type(2) .contract-form-grid { gap: 12px; }
+.ct-form-drawer .contract-form-section:nth-of-type(2) .contract-field { padding: 14px 16px; border: 1px solid var(--lk-border); border-radius: 12px; background: var(--lk-soft); text-transform: uppercase; }
+.ct-form-drawer .contract-form-section:nth-of-type(2) .contract-field input { height: 36px; border-color: transparent; background: transparent; padding-left: 0; font: 700 18px/26px 'Manrope', sans-serif; text-transform: none; }
+.ct-form-drawer .contract-form-section:nth-of-type(2) .contract-field input:focus { border-color: transparent; box-shadow: inset 0 -2px 0 #2563eb; border-radius: 0; }
+.ct-form-drawer .contract-form-section:nth-of-type(2) .contract-money-field > span { left: 0; font: 700 18px 'Manrope', sans-serif; color: var(--lk-text); text-transform: none; }
+.ct-form-drawer .contract-form-section:nth-of-type(2) .contract-money-field input { padding-left: 32px; }
+/* Rodapé igual ao do painel de detalhes: ação secundária à esquerda, principal à direita, com ícones e sem sombra. */
+.ct-form-drawer .contract-form-footer { justify-content: space-between; gap: 10px; padding: 16px 24px; background: var(--lk-soft); border-top: 1px solid var(--lk-border); }
+.lk-contracts .ct-form-drawer .contract-form-footer button { box-shadow: none; transform: none; font-size: 13px; font-weight: 600; }
+.lk-contracts .ct-form-drawer .contract-form-footer button svg { width: 14px; height: 14px; flex-shrink: 0; }
+@media (max-width: 600px) {
+  .ct-form-drawer .contract-form-header, .ct-form-drawer .contract-form-body, .ct-form-drawer .contract-form-footer { padding-left: 16px; padding-right: 16px; }
+  .ct-form-drawer .contract-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .ct-form-drawer .contract-form-footer button { flex: 1; min-height: 44px; }
+}
+
+/* ── Situação, aditivos e histórico ── */
+.ct-badge.purple { background: #f1ebfe; color: #7c3aed; }
+.ct-amend-count { display: block; margin-top: 4px; font-size: 10px; color: var(--lk-muted); font-variant-numeric: tabular-nums; }
+.lk-contracts .contract-card-actions { gap: 2px; }
+
+.ct-amend-meter { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px; }
+.ct-amend-meter span { height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--lk-border) 80%, transparent); }
+.ct-amend-meter span.used { background: #2563eb; }
+.ct-detail-closed { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #eef0f3; color: #475569; font-size: 12px; line-height: 1.5; }
+
+.ct-history { list-style: none; margin: 0; padding: 0; position: relative; }
+.ct-history::before { content: ""; position: absolute; top: 6px; bottom: 6px; left: 5px; width: 2px; background: var(--lk-border); border-radius: 2px; }
+.ct-history-item { position: relative; display: flex; gap: 14px; padding-bottom: 16px; }
+.ct-history-item:last-child { padding-bottom: 0; }
+.ct-history-dot { position: relative; z-index: 1; flex-shrink: 0; width: 12px; height: 12px; margin-top: 3px; border: 2px solid var(--lk-surface); border-radius: 50%; background: var(--lk-muted); box-shadow: 0 0 0 1px var(--lk-border); }
+.ct-history-item.created .ct-history-dot { background: #16a34a; }
+.ct-history-item.amendment .ct-history-dot { background: #2563eb; }
+.ct-history-item.edited .ct-history-dot { background: #94a3b8; }
+.ct-history-item.closed .ct-history-dot { background: #94a3b8; }
+.ct-history-item.reopened .ct-history-dot { background: #7c3aed; }
+.ct-history-content { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--lk-border); border-radius: 10px; background: var(--lk-soft); font-size: 12px; line-height: 1.5; }
+.ct-history-head { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 2px; }
+.ct-history-head strong { font-weight: 700; }
+.ct-history-head time { flex-shrink: 0; font-size: 11px; color: var(--lk-muted); font-variant-numeric: tabular-nums; }
+.ct-history-content p { margin: 2px 0 0; overflow-wrap: anywhere; }
+.ct-history-content b { font-weight: 600; }
+.ct-history-changes { margin: 4px 0 0; padding-left: 16px; }
+.ct-history-changes li { overflow-wrap: anywhere; }
+.ct-history-changes span { color: var(--lk-muted); }
+.ct-history-notes { font-style: italic; color: var(--lk-muted); }
+.ct-history-content small { display: block; margin-top: 6px; font-size: 10px; color: var(--lk-muted); }
+.ct-history-empty { font-size: 12px; color: var(--lk-muted); }
+
+/* Rodapé do detalhe com mais ações */
+.ct-detail-footer-main { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.lk-dashboard .ct-detail-secondary { border: 1px solid var(--lk-border); background: var(--lk-surface); color: var(--lk-text); }
+.lk-dashboard .ct-detail-secondary:hover { border-color: #2563eb; color: #2563eb; }
+
+/* Modal de aditivo */
+.ct-form-warning { margin-bottom: 16px; padding: 10px 12px; border: 1px solid #f5d99a; border-radius: 10px; background: #fdf6e3; color: #92680c; font-size: 12px; }
+.ct-checkbox { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid var(--lk-border); border-radius: 10px; background: var(--lk-soft); font-size: 13px; font-weight: 500; color: var(--lk-text); cursor: pointer; }
+.ct-checkbox input { width: 16px; height: 16px; accent-color: #2563eb; cursor: pointer; }
+
+/* Modal de encerrar / reabrir */
+.lk-contracts .ct-close-modal { width: min(460px, 100%); text-align: left; }
+.lk-contracts .ct-close-modal .contract-delete-icon { margin-left: 0; color: #dc2626; }
+.lk-contracts .ct-close-modal .contract-delete-icon.reopen { color: #7c3aed; background: #f1ebfe; }
+.ct-close-fields { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
+.ct-close-fields .contract-field { gap: 6px; font-size: 10px; font-weight: 600; color: var(--lk-muted); }
+.ct-close-fields .contract-field textarea, .ct-close-fields .contract-field .dp-input { width: 100%; border: 1px solid var(--lk-border); border-radius: 10px; background: var(--lk-surface); color: var(--lk-text); font: 500 13px/1.45 'Inter', sans-serif; outline: none; }
+.ct-close-fields .contract-field .dp-input { height: 40px; padding: 0 12px; }
+.ct-close-fields .contract-field textarea { padding: 10px 12px; resize: vertical; }
+.ct-close-fields .contract-field textarea:focus, .ct-close-fields .contract-field .dp-input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px #2563eb1f; }
+.lk-contracts .ct-close-modal .contract-delete-actions { justify-content: space-between; }
+.lk-contracts .ct-close-modal .contract-form-error { margin-top: 14px; }
+@media (max-width: 600px) { .ct-detail-footer { flex-wrap: wrap; } .ct-detail-footer-main { width: 100%; } .ct-detail-footer-main button { flex: 1; } }
+
+/* Valor variável */
+.ct-field-note { margin-top: 2px; font-size: 11px; font-weight: 500; text-transform: none; color: var(--lk-muted); }
+.ct-field-disabled .contract-money-field input:disabled { opacity: .6; cursor: not-allowed; background: var(--lk-soft); }
+.ct-checkbox em { font-style: normal; color: var(--lk-muted); font-weight: 400; }
+
+/* ── Documentos: visualizador ao lado das informações ── */
+.ct-detail-main { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.ct-detail.with-viewer { flex-direction: row; width: min(1480px, calc(100vw - 24px)); }
+.ct-detail.with-viewer .ct-detail-main { flex: 0 0 580px; border-left: 1px solid var(--lk-border); }
+.ct-viewer { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; background: #eef0f3; animation: ctRise .4s cubic-bezier(.16, 1, .3, 1) .1s both; }
+.ct-viewer-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px 0; }
+.ct-viewer-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.lk-dashboard .ct-viewer-tabs button { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; height: 34px; padding: 0 14px; border: 1px solid transparent; border-radius: 9px 9px 0 0; color: var(--lk-muted); font-size: 12px; font-weight: 600; }
+.lk-dashboard .ct-viewer-tabs button:hover { color: var(--lk-text); }
+.lk-dashboard .ct-viewer-tabs button.active { border-color: var(--lk-border); border-bottom-color: var(--lk-surface); background: var(--lk-surface); color: #2563eb; }
+.ct-viewer-missing { color: #d97805; font-size: 16px; line-height: 1; }
+.ct-viewer-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 16px; padding: 10px 14px; border: 1px solid var(--lk-border); border-bottom: 0; background: var(--lk-surface); font-size: 11px; color: var(--lk-muted); }
+.ct-viewer-meta > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ct-viewer-meta strong { color: var(--lk-text); font-weight: 600; }
+.ct-viewer-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.lk-dashboard .ct-viewer-actions button { height: 28px; padding: 0 10px; border: 1px solid var(--lk-border); border-radius: 7px; background: var(--lk-surface); font-size: 11px; font-weight: 600; color: var(--lk-text); }
+.lk-dashboard .ct-viewer-actions button:hover:not(:disabled) { border-color: #2563eb; color: #2563eb; }
+.lk-dashboard .ct-viewer-actions button.danger:hover:not(:disabled) { border-color: #fca5a5; color: #dc2626; }
+.ct-viewer-error { margin: 8px 16px 0; }
+.ct-viewer-frame { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; margin: 0 16px 16px; border: 1px solid var(--lk-border); border-radius: 0 0 12px 12px; background: var(--lk-surface); overflow: hidden; }
+.ct-viewer-head + .ct-viewer-frame, .ct-viewer-head + .ct-viewer-error + .ct-viewer-frame { border-radius: 0 12px 12px 12px; }
+.ct-viewer-frame iframe { flex: 1; width: 100%; border: 0; background: #525659; }
+.ct-viewer-image { flex: 1; overflow: auto; display: grid; place-items: start center; padding: 16px; background: #f6f7f9; }
+.ct-viewer-image img { max-width: 100%; height: auto; box-shadow: 0 4px 18px #1118271f; }
+.ct-viewer-links { display: flex; justify-content: flex-end; gap: 14px; padding: 8px 14px; border-top: 1px solid var(--lk-border); font-size: 11px; font-weight: 600; }
+.ct-viewer-links a { color: #2563eb; text-decoration: none; }
+.ct-viewer-links a:hover { text-decoration: underline; }
+.ct-viewer-empty { display: flex; flex: 1; align-items: center; justify-content: center; gap: 10px; color: var(--lk-muted); font-size: 12px; }
+.ct-viewer-empty .contracts-spinner { width: 18px; height: 18px; margin: 0; border-width: 2px; }
+.ct-viewer-placeholder { align-items: center; justify-content: center; gap: 8px; padding: 24px; text-align: center; color: var(--lk-muted); }
+.ct-viewer-placeholder > svg { width: 36px; height: 36px; color: #94a3b8; }
+.ct-viewer-placeholder strong { color: var(--lk-text); font-size: 13px; }
+.ct-viewer-placeholder p { font-size: 11px; margin-bottom: 8px; }
+.lk-dashboard .ct-viewer-placeholder .ct-detail-edit { display: inline-flex; align-items: center; min-height: 40px; padding: 0 18px; border-radius: 10px; font-size: 13px; font-weight: 600; }
+
+/* Telas menores: botão para abrir o documento em tela cheia */
+.ct-viewer-fullscreen { position: fixed; inset: 0; z-index: 5; display: flex; background: #eef0f3; animation: ctFade .2s ease-out; }
+.ct-viewer-fullscreen .ct-viewer { animation: none; }
+.lk-dashboard .ct-docs-open { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; border: 1px solid var(--lk-border); border-radius: 12px; background: var(--lk-soft); text-align: left; }
+.lk-dashboard .ct-docs-open:hover { border-color: #2563eb; }
+.ct-docs-open > svg { width: 22px; height: 22px; flex-shrink: 0; color: #2563eb; }
+.ct-docs-open strong { display: block; font-size: 13px; }
+.ct-docs-open small { display: block; margin-top: 2px; font-size: 11px; color: var(--lk-muted); }
+
+/* Campo de arquivo nos formulários */
+.ct-file-drop { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px dashed var(--lk-border); border-radius: 12px; background: var(--lk-soft); text-transform: none; }
+.ct-file-drop.has-file { border-style: solid; border-color: #bfdbfe; background: var(--lk-tint); }
+.ct-file-drop > svg { width: 22px; height: 22px; flex-shrink: 0; color: #2563eb; }
+.ct-file-text { flex: 1; min-width: 0; }
+.ct-file-text strong { display: block; overflow: hidden; color: var(--lk-text); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.ct-file-text small { display: block; margin-top: 2px; font-size: 11px; font-weight: 500; color: var(--lk-muted); }
+.lk-dashboard .ct-file-btn { flex-shrink: 0; height: 32px; padding: 0 12px; border: 1px solid var(--lk-border); border-radius: 8px; background: var(--lk-surface); color: var(--lk-text); font-size: 12px; font-weight: 600; }
+.lk-dashboard .ct-file-btn:hover { border-color: #2563eb; color: #2563eb; }
+.ct-file-error { display: block; color: #dc2626; font-size: 11px; font-weight: 600; text-transform: none; }
+
+/* Indicador de documento anexado */
+.ct-doc-flag { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; vertical-align: middle; color: #2563eb; font-size: 10px; font-weight: 600; letter-spacing: 0; }
+.ct-doc-flag svg { width: 13px; height: 13px; }

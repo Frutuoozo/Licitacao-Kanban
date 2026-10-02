@@ -1,0 +1,39 @@
+/* Calendário próprio no visual do LicitKanban (substitui o seletor nativo do navegador). */
+.dp { position: relative; display: flex; align-items: center; width: 100%; }
+.dp-input { width: 100%; font-variant-numeric: tabular-nums; }
+.dp .dp-input { padding-right: 42px !important; }
+.dp-toggle, .lk-dashboard .dp-toggle { position: absolute; right: 4px; display: grid; place-items: center; width: 34px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: #6b7280; cursor: pointer; transition: background .15s, color .15s; }
+.dp-toggle:hover, .dp-toggle.active, .lk-dashboard .dp-toggle:hover, .lk-dashboard .dp-toggle.active { background: #eff6ff; color: #2563eb; }
+
+.dp-popover { position: fixed; z-index: 400; width: 300px; padding: 14px; border: 1px solid #e2e5ea; border-radius: 14px; background: #fff; box-shadow: 0 18px 40px #11182729, 0 2px 6px #1118270f; color: #111827; font-family: 'Inter', sans-serif; text-transform: none; animation: dpIn .18s cubic-bezier(.16, 1, .3, 1); }
+@keyframes dpIn { from { opacity: 0; transform: translateY(-6px) scale(.98); } to { opacity: 1; transform: none; } }
+.dp-popover button { font: inherit; cursor: pointer; }
+
+.dp-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 10px; }
+.dp-popover .dp-nav { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid #e2e5ea; border-radius: 8px; background: #fff; color: #2563eb; font-size: 20px; line-height: 1; }
+.dp-popover .dp-nav:hover { background: #eff6ff; border-color: #bfdbfe; }
+.dp-title { display: flex; gap: 4px; }
+.dp-title select { height: 32px; padding: 0 6px; border: 0; border-radius: 8px; background: transparent; color: #111827; font: 600 13px 'Manrope', sans-serif; cursor: pointer; }
+.dp-title select:hover, .dp-title select:focus { background: #f6f7f9; outline: none; }
+
+.dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.dp-weekday { display: grid; place-items: center; height: 28px; font-size: 10px; font-weight: 600; color: #6b7280; }
+.dp-popover .dp-day { display: grid; place-items: center; height: 36px; border: 0; border-radius: 10px; background: transparent; color: #111827; font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; transition: background .12s, color .12s; }
+.dp-popover .dp-day:hover { background: #f1f5f9; }
+.dp-popover .dp-day.outside { color: #b6bcc6; }
+.dp-popover .dp-day.today { color: #2563eb; font-weight: 700; box-shadow: inset 0 0 0 1px #bfdbfe; }
+.dp-popover .dp-day.selected, .dp-popover .dp-day.selected:hover { background: #2563eb; color: #fff; font-weight: 700; box-shadow: 0 4px 10px #2563eb40; }
+.dp-popover .dp-day:focus-visible, .dp-popover button:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
+
+.dp-shortcuts { display: flex; gap: 6px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e2e5ea; }
+.dp-popover .dp-shortcuts button { flex: 1; height: 30px; border: 1px solid #e2e5ea; border-radius: 8px; background: #fafbfc; color: #374151; font-size: 11px; font-weight: 600; }
+.dp-popover .dp-shortcuts button:hover { border-color: #2563eb; background: #eff6ff; color: #2563eb; }
+
+.dp-foot { display: flex; justify-content: space-between; margin-top: 10px; }
+.dp-popover .dp-link { padding: 6px 8px; border: 0; border-radius: 8px; background: transparent; color: #6b7280; font-size: 12px; font-weight: 600; }
+.dp-popover .dp-link:hover { background: #f6f7f9; color: #111827; }
+.dp-popover .dp-link.strong { color: #2563eb; }
+.dp-popover .dp-link.strong:hover { background: #eff6ff; color: #2563eb; }
+
+@media (max-width: 600px) { .dp-popover .dp-day { height: 40px; } }
+@media (prefers-reduced-motion: reduce) { .dp-popover { animation: none; } }

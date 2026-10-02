@@ -1,193 +1,287 @@
-import { useState, useEffect, useCallback } from "react";
-import { IconTrash, IconEdit, IconClose, IconPlus, IconUsers, IconCopy, IconCheck } from "../icons";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { IconArchive, IconClose, IconEdit, IconPlus, IconTrash, IconUnarchive, IconUsers } from "../icons";
+import { authFetch } from "../authFetch";
+import { useAppSettings } from "../appSettings";
+import { RowMenu } from "./ContratosPage";
+import "./ColaboradoresPage.css";
 
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
-
-function CopyBtn({ text }) {
-  const [copied, setCopied] = useState(false);
-  const handle = () => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    }).catch(() => {});
-  };
-  return (
-    <button
-      type="button"
-      className={`icon-btn colab-copy-btn${copied ? " colab-copy-done" : ""}`}
-      title={copied ? "Copiado!" : "Copiar"}
-      onClick={handle}
-    >
-      {copied ? <IconCheck /> : <IconCopy />}
-    </button>
-  );
-}
+const EMPTY_FORM = { nome: "", cpf: "", email: "", codigo: "", ativo: true };
+const EXIT_MS = 220;
 
 function formatCpf(val) {
   const d = val.replace(/\D/g, "").slice(0, 11);
   if (d.length <= 3) return d;
-  if (d.length <= 6) return `${d.slice(0,3)}.${d.slice(3)}`;
-  if (d.length <= 9) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`;
-  return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`;
+  if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
+  if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
 }
 
-export default function ColaboradoresPage({ token, isAdmin, onUnauthorized }) {
-  const [collabs, setCollabs]         = useState([]);
-  const [loading, setLoading]         = useState(true);
-  const [err, setErr]                 = useState("");
-  const [showModal, setShowModal]     = useState(false);
-  const [editing, setEditing]         = useState(null);
-  const [formNome, setFormNome]       = useState("");
-  const [formCpf, setFormCpf]         = useState("");
-  const [formEmail, setFormEmail]     = useState("");
-  const [formErr, setFormErr]         = useState("");
-  const [formLoading, setFormLoading] = useState(false);
-  const [search, setSearch]           = useState("");
+// Formulário em painel lateral, no mesmo padrão do cadastro de contratos.
+function CollaboratorForm({ editing, form, setForm, saving, error, closing, onClose, onSubmit }) {
+  const update = (field) => (event) => setForm((current) => ({ ...current, [field]: event.target.value }));
+  useEffect(() => {
+    const onKey = (event) => { if (event.key === "Escape" && !saving) onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose, saving]);
 
+  return (
+    <div className={`ct-detail-overlay ct-form-overlay ${closing ? "closing" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && !saving && onClose()}>
+      <div className="contract-form-modal ct-form-drawer cb-form" role="dialog" aria-modal="true" aria-labelledby="cb-form-title">
+        <div className="contract-form-header">
+          <div>
+            <span className="contract-form-eyebrow">{editing ? editing.codigo : "Novo cadastro"}</span>
+            <h2 id="cb-form-title">{editing ? editing.nome : "Novo colaborador"}</h2>
+            <p>{editing ? "Editando colaborador — altere os campos e salve." : "Preencha os dados do colaborador."}</p>
+          </div>
+          <button type="button" className="icon-btn" onClick={onClose} disabled={saving} aria-label="Fechar"><IconClose /></button>
+        </div>
+        <form className="contract-form" onSubmit={onSubmit}>
+          <div className="contract-form-body">
+            {error && <div className="contract-form-error">{error}</div>}
+            <section className="contract-form-section">
+              <div className="contract-form-section-title"><div><strong>Dados pessoais</strong></div></div>
+              <div className="contract-form-grid">
+                <label className="contract-field contract-field-wide">
+                  <span>Nome completo *</span>
+                  <input value={form.nome} onChange={update("nome")} maxLength={255} required autoFocus placeholder="Nome completo" />
+                </label>
+                <label className="contract-field">
+                  <span>CPF *</span>
+                  <input value={form.cpf} onChange={(event) => setForm((current) => ({ ...current, cpf: formatCpf(event.target.value) }))} required inputMode="numeric" placeholder="000.000.000-00" />
+                </label>
+                <label className="contract-field">
+                  <span>E-mail *</span>
+                  <input type="email" value={form.email} onChange={update("email")} maxLength={254} required placeholder="email@exemplo.com" />
+                </label>
+              </div>
+            </section>
+            <section className="contract-form-section">
+              <div className="contract-form-section-title"><div><strong>Matrícula</strong></div></div>
+              <div className="contract-form-grid">
+                <label className="contract-field">
+                  <span>COD</span>
+                  <input value={form.codigo} onChange={(event) => setForm((current) => ({ ...current, codigo: event.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, "") }))}
+                    maxLength={20} placeholder={editing ? editing.codigo : "Gerado automaticamente"} />
+                </label>
+                <label className="ct-checkbox cb-status-check">
+                  <input type="checkbox" checked={form.ativo} onChange={(event) => setForm((current) => ({ ...current, ativo: event.target.checked }))} />
+                  <span>Colaborador ativo <em>— inativos não aparecem nas listas de seleção</em></span>
+                </label>
+              </div>
+            </section>
+          </div>
+          <div className="contract-form-footer">
+            <button type="button" className="btn-cancel-lg" onClick={onClose} disabled={saving}><IconClose /> Cancelar</button>
+            <button type="submit" className="btn-primary" disabled={saving}>
+              {editing ? <IconEdit /> : <IconPlus />} {saving ? "Salvando..." : editing ? "Salvar alterações" : "Adicionar colaborador"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+export default function ColaboradoresPage({ isAdmin, onUnauthorized, onOpenMenu }) {
+  const [collabs, setCollabs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [showForm, setShowForm] = useState(false);
+  const [formClosing, setFormClosing] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [formError, setFormError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Admin usa a rota completa; os demais perfis, a de leitura.
+  const listUrl = isAdmin ? `${API_URL}/api/admin/collaborators` : `${API_URL}/api/collaborators`;
   const load = useCallback(() => {
-    setErr(""); setLoading(true);
-    fetch(`${API_URL}/api/collaborators`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => {
-        if (r.status === 401) throw new Error("401");
-        if (!r.ok) throw new Error("fail");
-        return r.json();
+    setError(""); setLoading(true);
+    authFetch(listUrl)
+      .then((res) => {
+        if (res.status === 401) throw new Error("401");
+        if (!res.ok) throw new Error("fail");
+        return res.json();
       })
-      .then(data => setCollabs(data))
-      .catch(e => {
+      .then((data) => setCollabs(Array.isArray(data) ? data : []))
+      .catch((e) => {
         if (e.message === "401") onUnauthorized();
-        else setErr("Não foi possível carregar os colaboradores.");
+        else setError("Não foi possível carregar os colaboradores.");
       })
       .finally(() => setLoading(false));
-  }, [token, onUnauthorized]);
+  }, [listUrl, onUnauthorized]);
 
   useEffect(() => { load(); }, [load]);
 
-  const openAdd = () => {
-    setEditing(null); setFormNome(""); setFormCpf(""); setFormEmail(""); setFormErr(""); setShowModal(true);
-  };
+  // Rolagem discreta da página, como em Contratos.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.add("ct-scroll");
+    return () => root.classList.remove("ct-scroll");
+  }, []);
+
+  const openAdd = () => { setEditing(null); setForm(EMPTY_FORM); setFormError(""); setShowForm(true); };
   const openEdit = (c) => {
-    setEditing(c); setFormNome(c.nome); setFormCpf(c.cpf); setFormEmail(c.email); setFormErr(""); setShowModal(true);
+    setEditing(c);
+    setForm({ nome: c.nome, cpf: c.cpf, email: c.email, codigo: c.codigo || "", ativo: c.ativo !== false });
+    setFormError("");
+    setShowForm(true);
   };
-  const closeModal = () => { setShowModal(false); setEditing(null); setFormErr(""); };
+  const closeForm = useCallback(() => {
+    if (saving || formClosing) return;
+    setFormClosing(true);
+    setTimeout(() => { setShowForm(false); setEditing(null); setFormError(""); setFormClosing(false); }, EXIT_MS);
+  }, [saving, formClosing]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault(); setFormErr(""); setFormLoading(true);
-    const body = { nome: formNome.trim(), cpf: formCpf.trim(), email: formEmail.trim() };
+  const save = async (target, body) => {
+    const res = await authFetch(target ? `${API_URL}/api/admin/collaborators/${target.id}` : `${API_URL}/api/admin/collaborators`, {
+      method: target ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.status === 401) { onUnauthorized(); return null; }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Falha ao salvar");
+    setCollabs((current) => target ? current.map((c) => (c.id === data.id ? data : c)) : [...current, data]);
+    return data;
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setFormError(""); setSaving(true);
     try {
-      const url    = editing
-        ? `${API_URL}/api/admin/collaborators/${editing.id}`
-        : `${API_URL}/api/admin/collaborators`;
-      const method = editing ? "PUT" : "POST";
-      const res    = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!res.ok) { setFormErr(data.error || "Falha ao salvar"); return; }
-      closeModal(); load();
-    } catch { setFormErr("Erro de conexão"); } finally { setFormLoading(false); }
+      const saved = await save(editing, { ...form, nome: form.nome.trim(), cpf: form.cpf.trim(), email: form.email.trim(), codigo: form.codigo.trim() });
+      if (saved) { setSaving(false); closeFormAfterSave(); }
+    } catch (saveError) { setFormError(saveError.message); }
+    finally { setSaving(false); }
+  };
+  // Depois de salvar, fecha com a mesma animação (sem a trava de "salvando").
+  const closeFormAfterSave = () => {
+    setFormClosing(true);
+    setTimeout(() => { setShowForm(false); setEditing(null); setFormClosing(false); }, EXIT_MS);
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("Remover este colaborador permanentemente?")) return;
-    setErr("");
+  const toggleStatus = async (c) => {
+    setError("");
+    try { await save(c, { nome: c.nome, cpf: c.cpf, email: c.email, codigo: c.codigo || "", ativo: !c.ativo }); }
+    catch (toggleError) { setError(toggleError.message); }
+  };
+
+  const { settings } = useAppSettings();
+  const requestDelete = (c) => (settings.confirmBeforeDelete ? setDeleteTarget(c) : handleDelete(c));
+  const handleDelete = async (target = deleteTarget) => {
+    if (!target) return;
+    setDeleting(true); setError("");
     try {
-      const res  = await fetch(`${API_URL}/api/admin/collaborators/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await authFetch(`${API_URL}/api/admin/collaborators/${target.id}`, { method: "DELETE" });
       const data = await res.json();
-      if (!res.ok) { setErr(data.error || "Falha ao remover"); return; }
-      load();
-    } catch { setErr("Erro de conexão"); }
+      if (!res.ok) throw new Error(data.error || "Falha ao remover");
+      setCollabs((current) => current.filter((c) => c.id !== target.id));
+      setDeleteTarget(null);
+    } catch (deleteError) { setError(deleteError.message); }
+    finally { setDeleting(false); }
   };
 
-  const filtered = collabs.filter(c => {
-    const q = search.toLowerCase();
-    return !q || c.nome.toLowerCase().includes(q) || c.cpf.includes(q) || c.email.toLowerCase().includes(q);
-  });
+  const filtered = useMemo(() => {
+    const q = search.trim().toLocaleLowerCase("pt-BR");
+    const digits = q.replace(/\D/g, "");
+    return collabs
+      .filter((c) => statusFilter === "all" || (statusFilter === "active") === (c.ativo !== false))
+      .filter((c) => !q
+        || c.nome.toLocaleLowerCase("pt-BR").includes(q)
+        || c.email.toLocaleLowerCase("pt-BR").includes(q)
+        || (c.codigo || "").toLocaleLowerCase("pt-BR").includes(q)
+        || (digits && c.cpf.replace(/\D/g, "").includes(digits)))
+      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  }, [collabs, search, statusFilter]);
+
+  const actionsFor = (c) => [
+    { key: "edit", label: "Editar", icon: <IconEdit />, run: openEdit },
+    c.ativo !== false
+      ? { key: "deactivate", label: "Inativar", icon: <IconArchive />, run: toggleStatus }
+      : { key: "activate", label: "Ativar", icon: <IconUnarchive />, run: toggleStatus },
+    { key: "delete", label: "Excluir", icon: <IconTrash />, run: requestDelete, danger: true },
+  ];
 
   return (
-    <div className="colab-page">
-      <div className="colab-inner">
-        <div className="colab-header-row">
-          <div>
-            <h1 className="admin-title" style={{ marginBottom: 4 }}>Colaboradores</h1>
-            <p className="admin-lead" style={{ marginBottom: 0 }}>
-              Informações de colaboradores cadastradas pelo administrador.
-            </p>
-          </div>
-          {isAdmin && (
-            <button className="btn-primary" onClick={openAdd} style={{ flexShrink: 0 }}>
-              <IconPlus /> Adicionar
-            </button>
-          )}
+    // Reaproveita o visual de Contratos (lk-contracts): barra, tabela, selos, menu, painel e modais.
+    <div className="lk-contracts cb-page">
+      <header className="ct-header">
+        <button className="lk-menu" aria-label="Abrir navegação" onClick={onOpenMenu}>☰</button>
+        <div className="ct-header-text">
+          <h1>Colaboradores</h1>
+          <p>Cadastre e consulte os dados dos colaboradores vinculados ao sistema</p>
         </div>
+      </header>
 
-        {err && <div className="profile-err" style={{ marginBottom: 12 }}>{err}</div>}
-
-        <div className="colab-search-wrap">
-          <svg className="colab-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-          </svg>
-          <input
-            className="colab-search"
-            type="text"
-            placeholder="Buscar por nome, CPF ou e-mail..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
+      {error && (
+        <div className="ct-message" role="alert">
+          <span>{error}</span>
+          <button type="button" onClick={load}>Tentar novamente</button>
         </div>
+      )}
+
+      <section className="ct-toolbar cb-toolbar" aria-label="Filtros de colaboradores">
+        <label className="ct-field cb-field-search">
+          <span>Buscar colaborador</span>
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nome, CPF, e-mail ou COD..." />
+        </label>
+        <label className="ct-field">
+          <span>Status</span>
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="all">Todos os status</option>
+            <option value="active">Ativos</option>
+            <option value="inactive">Inativos</option>
+          </select>
+        </label>
+        {isAdmin && <button type="button" className="ct-new-button cb-new" onClick={openAdd}><IconPlus /> Novo colaborador</button>}
+      </section>
+
+      <section className="cb-card" aria-label="Cadastro de colaboradores">
+        <header className="cb-card-head">
+          <h2>Cadastro de colaboradores</h2>
+          <p>Dados pessoais e código interno de matrícula</p>
+        </header>
 
         {loading ? (
-          <div className="admin-muted" style={{ padding: "28px 0", textAlign: "center" }}>Carregando...</div>
+          <div className="cb-state"><span className="contracts-spinner" /><p>Carregando colaboradores…</p></div>
         ) : filtered.length === 0 ? (
-          <div className="colab-empty">
-            <IconUsers />
-            <p>{search ? "Nenhum resultado encontrado." : "Nenhum colaborador cadastrado ainda."}</p>
-            {isAdmin && !search && (
-              <button className="btn-primary" onClick={openAdd}><IconPlus /> Adicionar primeiro</button>
-            )}
+          <div className="cb-state">
+            <div className="contracts-state-icon"><IconUsers /></div>
+            <h3>{collabs.length === 0 ? "Nenhum colaborador cadastrado" : "Nenhum colaborador encontrado"}</h3>
+            <p>{collabs.length === 0 ? "Cadastre o primeiro colaborador para usá-lo nos processos e contratos." : "Ajuste a busca ou o filtro de status."}</p>
+            {isAdmin && collabs.length === 0 && <button type="button" className="ct-new-button" onClick={openAdd}><IconPlus /> Adicionar primeiro colaborador</button>}
           </div>
         ) : (
-          <div className="admin-table-wrap">
-            <table className="admin-table">
+          <div className="cb-table-wrap">
+            <table className="cb-table">
               <thead>
                 <tr>
-                  <th>Nome</th>
-                  <th>CPF</th>
-                  <th className="collab-col-email">E-mail</th>
-                  {isAdmin && <th />}
+                  <th>Nome completo</th>
+                  <th>E-mail</th>
+                  <th>COD</th>
+                  <th className="cb-col-status">Status</th>
+                  {isAdmin && <th className="cb-col-action">Ações</th>}
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(c => (
-                  <tr key={c.id}>
-                    <td className="admin-td-user">
-                      <div className="colab-cell">
-                        <span>{c.nome}</span>
-                        <CopyBtn text={c.nome} />
-                      </div>
-                    </td>
-                    <td>
-                      <div className="colab-cell">
-                        <span style={{ fontFamily: "ui-monospace, monospace", fontSize: "0.82rem", color: "var(--muted)" }}>{c.cpf}</span>
-                        <CopyBtn text={c.cpf} />
-                      </div>
-                    </td>
-                    <td className="collab-col-email">
-                      <div className="colab-cell">
-                        <span className="admin-muted">{c.email}</span>
-                        <CopyBtn text={c.email} />
-                      </div>
+                {filtered.map((c) => (
+                  <tr key={c.id} className={c.ativo === false ? "inactive" : ""}>
+                    <td className="cb-col-name"><strong>{c.nome}</strong><small>CPF {c.cpf}</small></td>
+                    <td data-label="E-mail" className="cb-col-email">{c.email}</td>
+                    <td data-label="COD"><span className="cb-cod">{c.codigo || "—"}</span></td>
+                    <td data-label="Status" className="cb-col-status">
+                      <span className={`ct-badge ${c.ativo === false ? "gray" : "green"} cb-badge`}>{c.ativo === false ? "Inativo" : "Ativo"}</span>
                     </td>
                     {isAdmin && (
-                      <td className="admin-td-actions">
-                        <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
-                          <button type="button" className="icon-btn" title="Editar" onClick={() => openEdit(c)}><IconEdit /></button>
-                          <button type="button" className="icon-btn danger" title="Remover" onClick={() => handleDelete(c.id)}><IconTrash /></button>
-                        </div>
+                      <td className="cb-col-action">
+                        <RowMenu contract={c} actions={actionsFor(c)} label={`Ações do colaborador ${c.nome}`} />
                       </td>
                     )}
                   </tr>
@@ -196,53 +290,34 @@ export default function ColaboradoresPage({ token, isAdmin, onUnauthorized }) {
             </table>
           </div>
         )}
-      </div>
 
-      {showModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && closeModal()}>
-          <div className="modal sm-modal">
-            <div className="modal-header">
-              <h2>{editing ? "Editar Colaborador" : "Novo Colaborador"}</h2>
-              <button type="button" className="icon-btn" onClick={closeModal} aria-label="Fechar"><IconClose /></button>
+        {!loading && filtered.length > 0 && (
+          <footer className="cb-card-foot">
+            {filtered.length === collabs.length
+              ? `Mostrando ${collabs.length} ${collabs.length === 1 ? "colaborador" : "colaboradores"}`
+              : `Mostrando ${filtered.length} de ${collabs.length} colaboradores`}
+          </footer>
+        )}
+      </section>
+
+      {showForm && (
+        <CollaboratorForm editing={editing} form={form} setForm={setForm} saving={saving} error={formError}
+          closing={formClosing} onClose={closeForm} onSubmit={handleSubmit} />
+      )}
+
+      {deleteTarget && (
+        <div className="contract-modal-overlay" onMouseDown={(event) => event.target === event.currentTarget && !deleting && setDeleteTarget(null)}>
+          <div className="contract-delete-modal" role="alertdialog" aria-modal="true" aria-labelledby="cb-delete-title">
+            <div className="contract-delete-icon"><IconTrash /></div>
+            <h2 id="cb-delete-title">Excluir este colaborador?</h2>
+            <p>
+              <strong>{deleteTarget.nome}</strong> será removido permanentemente. Processos e contratos que já o usam continuam com o nome salvo.
+              Se for apenas um afastamento, prefira <strong>inativar</strong>.
+            </p>
+            <div className="contract-delete-actions">
+              <button type="button" className="btn-cancel-lg" onClick={() => setDeleteTarget(null)} disabled={deleting} autoFocus>Cancelar</button>
+              <button type="button" className="btn-danger" onClick={() => handleDelete()} disabled={deleting}>{deleting ? "Excluindo..." : "Excluir colaborador"}</button>
             </div>
-            <form className="modal-body col" onSubmit={handleSubmit}>
-              <label className="profile-form-label">Nome *</label>
-              <input
-                className="doc-input"
-                type="text"
-                value={formNome}
-                onChange={e => setFormNome(e.target.value)}
-                required
-                placeholder="Nome completo"
-                autoFocus
-              />
-              <label className="profile-form-label">CPF *</label>
-              <input
-                className="doc-input"
-                type="text"
-                value={formCpf}
-                onChange={e => setFormCpf(formatCpf(e.target.value))}
-                required
-                placeholder="000.000.000-00"
-                inputMode="numeric"
-              />
-              <label className="profile-form-label">E-mail *</label>
-              <input
-                className="doc-input"
-                type="email"
-                value={formEmail}
-                onChange={e => setFormEmail(e.target.value)}
-                required
-                placeholder="email@exemplo.com"
-              />
-              {formErr && <div className="profile-err">{formErr}</div>}
-              <div className="modal-footer profile-modal-footer">
-                <button type="button" className="btn-cancel-lg" onClick={closeModal}>Cancelar</button>
-                <button type="submit" className="btn-confirm" disabled={formLoading} style={{ padding: "6px 18px" }}>
-                  {formLoading ? "Salvando..." : (editing ? "Salvar alterações" : "Adicionar")}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
