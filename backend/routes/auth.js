@@ -31,6 +31,7 @@ function setAuthCookies(res, token) {
   const csrfToken = generateCsrfToken();
   res.cookie('auth_token', token, buildAuthCookieOptions());
   res.cookie('csrf_token', csrfToken, buildCsrfCookieOptions());
+  res.setHeader('X-CSRF-Token', csrfToken);
 }
 
 function bumpSessionVersion(connection, userId) {

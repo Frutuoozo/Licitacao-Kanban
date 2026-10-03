@@ -32,8 +32,16 @@ const PORT = process.env.PORT || 3001;
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-app.use(cors({ origin: CORS_ORIGINS, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }));
+app.use(cors({ origin: CORS_ORIGINS, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'], exposedHeaders: ['X-CSRF-Token'] }));
 app.use(express.json({ limit: '100kb' }));
+
+// Site e API em domínios diferentes (Vercel x Render): o site não consegue ler o cookie csrf_token
+// da API. Por isso o token também segue no cabeçalho X-CSRF-Token, visível só para origens liberadas no CORS.
+app.use((req, res, next) => {
+  const csrfCookie = parse(req.headers.cookie || '').csrf_token;
+  if (csrfCookie) res.setHeader('X-CSRF-Token', csrfCookie);
+  next();
+});
 
 function requireCsrf(req, res, next) {
   const method = req.method.toUpperCase();
