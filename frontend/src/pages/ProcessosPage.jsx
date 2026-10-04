@@ -15,7 +15,8 @@ import {
 
 function DocCard({ doc, onToggle, onDelete, isViewer }) {
   return (
-    <div className={`doc-card ${doc.done ? "done" : ""}`} style={doc.bgColor ? { background: doc.bgColor } : {}}>
+    // Cor do documento em tom pastel: fundo claro na cor escolhida e barra lateral mais viva.
+    <div className={`doc-card ${doc.done ? "done" : ""} ${doc.bgColor ? "doc-pastel" : ""}`} style={doc.bgColor ? { "--doc-color": doc.bgColor } : {}}>
       <button className="check-btn" aria-label={`${doc.done ? "Desmarcar" : "Concluir"} ${doc.name}`} aria-pressed={doc.done} onClick={() => !isViewer && onToggle(doc.id)} disabled={isViewer}>
         <div className="check-box">{doc.done && <IconCheck />}</div>
       </button>

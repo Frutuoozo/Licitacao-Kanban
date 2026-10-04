@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import { authFetch } from "../authFetch";
 import { normalizeDocs } from "../utils";
-import { IconPalette, IconCalendar } from "../icons";
+import { IconMoon, IconSun, IconCalendar } from "../icons";
 import { ActiveProcessProgress, SetorPieChart } from "./ProcessosPage";
 import "./DashboardPage.css";
 
@@ -52,7 +52,8 @@ export default function DashboardPage({ columns, archived, sortedColumns = [], u
     return {
       ...process,
       key: `p-${process.id}`,
-      label: process.processNumber ? `Processo ${process.processNumber}` : process.title,
+      label: process.title || (process.processNumber ? `Processo ${process.processNumber}` : "Processo sem título"),
+      number: process.title && process.processNumber ? `Nº ${process.processNumber}` : "",
       section: "processos",
       days,
     };
@@ -80,7 +81,7 @@ export default function DashboardPage({ columns, archived, sortedColumns = [], u
     {menuOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setMenuOpen(false)} />}
     <AppSidebar user={user} activeSection="dashboard" menuOpen={menuOpen} onNavigate={go} onLogout={onLogout} />
     <main className="lk-main">
-      <header className="lk-heading"><div><button className="lk-menu" aria-label="Abrir navegação" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>☰</button><h1>Dashboard</h1><p>Visão geral dos processos e contratos</p></div><div className="lk-actions"><button aria-label="Ver alertas de prazos" title="Ver alertas de prazos" onClick={() => document.getElementById("lk-attention").scrollIntoView({ behavior: "smooth" })}><IconCalendar /></button><button aria-label="Alternar tema do dashboard" aria-pressed={dark} onClick={() => setDark(!dark)}><IconPalette /></button></div></header>
+      <header className="lk-heading"><div><button className="lk-menu" aria-label="Abrir navegação" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>☰</button><h1>Dashboard</h1><p>Visão geral dos processos e contratos</p></div><div className="lk-actions"><button aria-label="Abrir calendário de processos" title="Abrir calendário de processos" onClick={() => go("processos", "calendar")}><IconCalendar /></button><button aria-label={dark ? "Usar tema claro" : "Usar tema escuro"} title={dark ? "Tema claro" : "Tema escuro"} aria-pressed={dark} onClick={() => setDark(!dark)}>{dark ? <IconSun /> : <IconMoon />}</button></div></header>
       {(error || contractError) && <p className="lk-error" role="alert">{error || contractError} Os indicadores afetados estão indisponíveis.</p>}
       <section className="lk-kpis" aria-label="Resumo">
         {[["PROCESSOS", unavailable ? "—" : columns.length, "blue"], ["EM ANDAMENTO", unavailable ? "—" : inProgressCount, "green"], ["CONCLUÍDOS", unavailable ? "—" : archived.length, "blue"], ["ATENÇÃO", unavailable ? "—" : attention.length, "amber"]].map(([label, value, tone]) => <article className={`lk-kpi ${tone}`} key={label}><h2><i aria-hidden="true" />{label}</h2><strong>{value}</strong></article>)}
@@ -98,7 +99,7 @@ export default function DashboardPage({ columns, archived, sortedColumns = [], u
         </section>
       </div>
       <div className="lk-bottom-grid">
-        <section className="lk-panel" id="lk-attention"><div className="lk-panel-heading"><h2>Atenção necessária</h2><span className="lk-pending">{unavailable ? "—" : attention.length} pendências</span></div><div className="lk-attention-list">{attention.map(i => <button key={i.key} onClick={() => go(i.section)}><i style={{ background: i.color }} /><span><strong>{i.label}</strong><small>{i.reason}</small></span></button>)}{!attention.length && <p className="lk-empty">{error ? "Não foi possível verificar os prazos dos processos." : loading ? "Carregando prazos…" : "Nenhum processo vencido ou com vencimento nos próximos 30 dias."}</p>}</div></section>
+        <section className="lk-panel" id="lk-attention"><div className="lk-panel-heading"><h2>Atenção necessária</h2><span className="lk-pending">{unavailable ? "—" : attention.length} pendências</span></div><div className="lk-attention-list">{attention.map(i => <button key={i.key} onClick={() => go(i.section)}><i style={{ background: i.color }} /><span><strong>{i.label}</strong><small>{i.number ? `${i.number} · ` : ""}{i.reason}</small></span></button>)}{!attention.length && <p className="lk-empty">{error ? "Não foi possível verificar os prazos dos processos." : loading ? "Carregando prazos…" : "Nenhum processo vencido ou com vencimento nos próximos 30 dias."}</p>}</div></section>
         <section className="lk-panel"><div className="lk-panel-heading"><h2>Atividade recente</h2>{activity.length > 4 && <button onClick={() => setExpanded(!expanded)}>{expanded ? "Ver menos" : "Ver todas"}</button>}</div><div className={`lk-activity ${expanded ? "expanded" : ""}`}>{activity.slice(0, expanded ? undefined : 4).map(c => <button key={c.id} onClick={() => go("contratos")}><span className="lk-activity-icon">•</span><span><strong>{c.processNumber ? `Contrato ${c.processNumber}` : c.processName} {c.updatedAt && c.updatedAt !== c.createdAt ? "atualizado" : "cadastrado"}</strong><small>{c.date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</small></span></button>)}{!activity.length && <p className="lk-empty">{contracts === null && !contractError ? "Carregando atividades…" : "Nenhuma atividade disponível."}</p>}</div></section>
       </div>
     </main>

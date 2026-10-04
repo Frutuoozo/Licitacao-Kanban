@@ -342,6 +342,16 @@ async function runMigrations() {
       await db.query(`ALTER TABLE templates ADD COLUMN description VARCHAR(255) NULL`);
       console.log('Migration 016: coluna description adicionada em templates.');
     }
+
+    // Migration 017: página inicial preferida de cada usuário (aberta logo após o login).
+    const [startCols] = await db.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'start_page'`
+    );
+    if (startCols.length === 0) {
+      await db.query(`ALTER TABLE users ADD COLUMN start_page VARCHAR(30) NULL`);
+      console.log('Migration 017: coluna start_page adicionada em users.');
+    }
   } catch (err) {
     console.error('Erro ao executar migrations:', err);
   }

@@ -263,9 +263,9 @@ export default function ColaboradoresPage({ isAdmin, onUnauthorized, onOpenMenu 
             <table className="cb-table">
               <thead>
                 <tr>
-                  <th>Nome completo</th>
-                  <th>E-mail</th>
-                  <th>COD</th>
+                  <th className="cb-col-name">Nome completo</th>
+                  <th className="cb-col-email">E-mail</th>
+                  <th className="cb-col-cod">COD</th>
                   <th className="cb-col-status">Status</th>
                   {isAdmin && <th className="cb-col-action">Ações</th>}
                 </tr>
@@ -275,7 +275,7 @@ export default function ColaboradoresPage({ isAdmin, onUnauthorized, onOpenMenu 
                   <tr key={c.id} className={c.ativo === false ? "inactive" : ""}>
                     <td className="cb-col-name"><strong>{c.nome}</strong><small>CPF {c.cpf}</small></td>
                     <td data-label="E-mail" className="cb-col-email">{c.email}</td>
-                    <td data-label="COD"><span className="cb-cod">{c.codigo || "—"}</span></td>
+                    <td data-label="COD" className="cb-col-cod"><span className="cb-cod">{c.codigo || "—"}</span></td>
                     <td data-label="Status" className="cb-col-status">
                       <span className={`ct-badge ${c.ativo === false ? "gray" : "green"} cb-badge`}>{c.ativo === false ? "Inativo" : "Ativo"}</span>
                     </td>

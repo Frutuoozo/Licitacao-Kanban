@@ -71,11 +71,10 @@ function moneyInputToNumber(value) {
 // - Ativo: faltam mais de 3 meses para vencer.
 // - Perto do vencimento: faltam 3 meses ou menos. Entra em renovação se tiver menos de 4 aditivos;
 //   com 4 aditivos, precisa de nova contratação.
-// - Encerrado: passou do vencimento ou foi encerrado manualmente. Até 45 dias após o vencimento
-//   ainda é possível lançar um aditivo.
+// - Encerrado: passou do vencimento ou foi encerrado manualmente. Vencido (sem encerramento manual)
+//   ainda aceita aditivo, para prorrogar ou registrar aditivos de contratos antigos.
 const NEAR_DAYS = 90;
 const MAX_AMENDMENTS = 4;
-const AMENDMENT_GRACE_DAYS = 45;
 
 function daysUntil(value) {
   const dueDate = parseLocalDate(value);
@@ -93,7 +92,7 @@ function getContractStatus(contract) {
     return { key: "closed", manual: true, days, amendments, canAmend: false, label: "Encerrado", tone: "gray", css: "expired" };
   }
   if (days !== null && days < 0) {
-    const canAmend = amendmentsLeft > 0 && -days <= AMENDMENT_GRACE_DAYS;
+    const canAmend = amendmentsLeft > 0;
     return { key: "closed", manual: false, days, amendments, canAmend, label: "Encerrado", tone: "gray", css: "expired" };
   }
   if (days !== null && days <= NEAR_DAYS) {
@@ -109,20 +108,13 @@ function getContractStatus(contract) {
 // Data em que o contrato deixou de vigorar: encerramento manual ou vencimento.
 const endedOn = (contract) => contract.closedAt || contract.dueDate || "";
 
-function addDays(iso, days) {
-  const date = parseLocalDate(iso);
-  if (!date) return null;
-  date.setDate(date.getDate() + days);
-  return date.toLocaleDateString("pt-BR");
-}
-
 function remainingText(status, contract) {
   const { days } = status;
   if (contract.closedAt) return `Encerrado manualmente em ${formatDate(contract.closedAt)}`;
   if (days === null) return "Sem data de vencimento";
   if (days < 0) {
     const ago = `Venceu há ${-days} ${-days === 1 ? "dia" : "dias"}`;
-    return status.canAmend ? `${ago} · aditivo possível até ${addDays(contract.dueDate, AMENDMENT_GRACE_DAYS)}` : ago;
+    return status.canAmend ? `${ago} · ainda é possível lançar aditivo` : ago;
   }
   if (days === 0) return "Vence hoje";
   return `Faltam ${days} ${days === 1 ? "dia" : "dias"}`;
@@ -830,6 +822,11 @@ function AmendmentModal({ contract, saving, error, onClose, onSubmit }) {
         <form className="contract-form" onSubmit={(event) => { event.preventDefault(); onSubmit({ newDueDate, valueVariable, newValue: valueVariable || !newValue.trim() ? null : moneyInputToNumber(newValue), notes, file }); }}>
           <div className="contract-form-body">
             {error && <div className="contract-form-error">{error}</div>}
+            {daysUntil(contract.dueDate) < 0 && (
+              <div className="ct-form-warning">
+                Este contrato está vencido desde {formatDate(contract.dueDate)}. O aditivo vai prorrogar a vigência a partir da nova data de vencimento.
+              </div>
+            )}
             {number === MAX_AMENDMENTS && <div className="ct-form-warning">Este é o último aditivo permitido. Depois dele, será necessária uma nova contratação.</div>}
             <section className="contract-form-section">
               <div className="contract-form-section-title"><div><strong>Vigência atual</strong></div></div>
@@ -1074,6 +1071,196 @@ function ContractFormModal({ editing, form, setForm, modalities, collaborators, 
   );
 }
 
+// Aba "Gestores": quantos contratos cada colaborador tem como gestor principal (fiscal efetivo)
+// e como gestor substituto (fiscal substituto). Barras horizontais agrupadas, mesma escala.
+const MANAGER_SERIES = [
+  { key: "principal", label: "Gestor principal", color: "#2563eb" },
+  { key: "substituto", label: "Gestor substituto", color: "#d97706" },
+];
+
+function ManagersView({ contracts, loading, onOpenContract }) {
+  const [managerScope, setManagerScope] = useState("active");
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState(null);
+  const [hovered, setHovered] = useState(null);
+  const [showTable, setShowTable] = useState(false);
+
+  const rows = useMemo(() => {
+    const map = new Map();
+    const add = (name, field, contract) => {
+      const key = (name || "").trim();
+      if (!key) return;
+      if (!map.has(key)) map.set(key, { name: key, principal: [], substituto: [] });
+      map.get(key)[field].push(contract);
+    };
+    contracts
+      .filter((contract) => managerScope === "all" || (managerScope === "closed") === (getContractStatus(contract).key === "closed"))
+      .forEach((contract) => {
+        add(contract.fiscalEffective, "principal", contract);
+        add(contract.fiscalSubstitute, "substituto", contract);
+      });
+    return [...map.values()]
+      .map((row) => ({ ...row, total: row.principal.length + row.substituto.length }))
+      .sort((a, b) => b.total - a.total || b.principal.length - a.principal.length || a.name.localeCompare(b.name, "pt-BR"));
+  }, [contracts, managerScope]);
+  const scopedCount = contracts.filter((contract) => managerScope === "all" || (managerScope === "closed") === (getContractStatus(contract).key === "closed"));
+  const withoutSubstitute = scopedCount.filter((contract) => !contract.fiscalSubstitute).length;
+  const q = search.trim().toLocaleLowerCase("pt-BR");
+  const visible = rows.filter((row) => !q || row.name.toLocaleLowerCase("pt-BR").includes(q));
+  // Escala do eixo: arredonda o maior total para cima e gera até ~5 marcas inteiras.
+  const maxTotal = Math.max(1, ...rows.map((row) => row.total));
+  const step = Math.max(1, Math.ceil(maxTotal / 5));
+  const axisMax = Math.ceil(maxTotal / step) * step;
+  const ticks = Array.from({ length: axisMax / step + 1 }, (_, i) => i * step);
+  const selectedRow = rows.find((row) => row.name === selected);
+
+  return (
+    <div className="ct-managers">
+      <section className="lk-kpis ct-kpis" aria-label="Resumo dos gestores">
+        {[
+          ["GESTORES COM CONTRATOS", rows.length, "blue", "Colaboradores que são gestores principais ou substitutos"],
+          ["COMO PRINCIPAL", rows.filter((row) => row.principal.length).length, "blue", "Colaboradores que são gestores principais de algum contrato"],
+          ["COMO SUBSTITUTO", rows.filter((row) => row.substituto.length).length, "amber", "Colaboradores que são gestores substitutos de algum contrato"],
+          ["SEM SUBSTITUTO", withoutSubstitute, "gray", "Contratos sem gestor substituto definido"],
+        ].map(([label, value, tone, hint]) => (
+          <article className={`lk-kpi ${tone}`} key={label} title={hint}>
+            <h2><i aria-hidden="true" />{label}</h2>
+            <strong>{loading ? "—" : value}</strong>
+          </article>
+        ))}
+      </section>
+
+      <section className="ct-toolbar ct-managers-toolbar" aria-label="Filtros de gestores">
+        <label className="ct-field">
+          <span>Buscar gestor</span>
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nome do colaborador..." />
+        </label>
+        <div className="ct-toolbar-actions">
+          <div className="ct-view-toggle" role="group" aria-label="Contratos considerados">
+            {[["active", "Vigentes"], ["all", "Todos"], ["closed", "Encerrados"]].map(([value, label]) => (
+              <button type="button" key={value} className={managerScope === value ? "active" : ""} aria-pressed={managerScope === value} onClick={() => { setManagerScope(value); setSelected(null); }}>{label}</button>
+            ))}
+          </div>
+          <div className="ct-view-toggle ct-icon-toggle" role="group" aria-label="Visualização">
+            <button type="button" className={!showTable ? "active" : ""} aria-pressed={!showTable} aria-label="Gráfico" title="Gráfico" onClick={() => setShowTable(false)}><IconGrid /></button>
+            <button type="button" className={showTable ? "active" : ""} aria-pressed={showTable} aria-label="Tabela" title="Tabela" onClick={() => setShowTable(true)}><IconList /></button>
+          </div>
+        </div>
+      </section>
+
+      <section className="ct-managers-card" aria-labelledby="ct-managers-title">
+        <header className="ct-managers-head">
+          <div>
+            <h2 id="ct-managers-title">Contratos por gestor</h2>
+            <p>Quantidade de contratos em que cada colaborador é gestor principal ou substituto. Clique num gestor para ver os contratos.</p>
+          </div>
+          <ul className="ct-managers-legend" aria-label="Legenda">
+            {MANAGER_SERIES.map((serie) => <li key={serie.key}><i style={{ background: serie.color }} aria-hidden="true" />{serie.label}</li>)}
+          </ul>
+        </header>
+
+        {loading ? <p className="ct-managers-empty">Carregando…</p>
+          : visible.length === 0 ? <p className="ct-managers-empty">{rows.length ? "Nenhum gestor encontrado com essa busca." : "Nenhum contrato com gestor definido neste filtro."}</p>
+          : showTable ? (
+            <div className="ct-table-wrap">
+              <table className="ct-table ct-managers-table">
+                <thead><tr><th>Gestor</th><th>Gestor principal</th><th>Gestor substituto</th><th>Total</th></tr></thead>
+                <tbody>
+                  {visible.map((row) => (
+                    <tr key={row.name} className="ct-row-clickable" onClick={() => setSelected(row.name)}>
+                      <td className="ct-col-number">{row.name}</td>
+                      <td data-label="Principal">{row.principal.length}</td>
+                      <td data-label="Substituto">{row.substituto.length}</td>
+                      <td data-label="Total"><strong>{row.total}</strong></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="ct-mchart" role="img" aria-label={`Gráfico de barras empilhadas: contratos por gestor, ${visible.length} gestores`}>
+              {/* Eixo e grade ficam atrás das barras, na mesma escala de todas as linhas. */}
+              <div className="ct-mchart-axis" aria-hidden="true">
+                <span />
+                <div className="ct-mchart-ticks">
+                  {ticks.map((tick) => <span key={tick} style={{ left: `${(tick / axisMax) * 100}%` }}>{tick}</span>)}
+                </div>
+              </div>
+              <ul className="ct-mchart-rows">
+                {visible.map((row) => (
+                  <li key={row.name} className={`${selected === row.name ? "selected" : ""} ${hovered === row.name ? "hovered" : ""}`}>
+                    <button type="button" className="ct-mchart-row" onClick={() => setSelected(selected === row.name ? null : row.name)}
+                      onMouseEnter={() => setHovered(row.name)} onMouseLeave={() => setHovered(null)} onFocus={() => setHovered(row.name)} onBlur={() => setHovered(null)}
+                      aria-pressed={selected === row.name}
+                      aria-label={`${row.name}: ${row.principal.length} como gestor principal, ${row.substituto.length} como substituto, total ${row.total}`}>
+                      <span className="ct-mchart-name" title={row.name}>{row.name}</span>
+                      <span className="ct-mchart-track">
+                        <span className="ct-mchart-grid" aria-hidden="true">
+                          {ticks.slice(1).map((tick) => <i key={tick} style={{ left: `${(tick / axisMax) * 100}%` }} />)}
+                        </span>
+                        <span className="ct-mchart-bar" style={{ width: `${(row.total / axisMax) * 100}%` }}>
+                          {MANAGER_SERIES.map((serie) => row[serie.key].length > 0 && (
+                            <span key={serie.key} className="ct-mchart-seg" style={{ flexGrow: row[serie.key].length, background: serie.color }}>
+                              {row[serie.key].length / axisMax >= 0.06 && <em>{row[serie.key].length}</em>}
+                            </span>
+                          ))}
+                        </span>
+                        <span className="ct-mchart-total" style={{ left: `${(row.total / axisMax) * 100}%` }}>{row.total}</span>
+                      </span>
+                    </button>
+                    {hovered === row.name && (
+                      <span className="ct-managers-tip" role="tooltip">
+                        <strong>{row.name}</strong>
+                        {MANAGER_SERIES.map((serie) => (
+                          <span key={serie.key}><i style={{ background: serie.color }} />{serie.label}<b>{row[serie.key].length}</b></span>
+                        ))}
+                        <small>Total: {row.total} {row.total === 1 ? "contrato" : "contratos"}</small>
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+      </section>
+
+      {selectedRow && (
+        <section className="ct-managers-card" aria-labelledby="ct-managers-detail">
+          <header className="ct-managers-head">
+            <div>
+              <h2 id="ct-managers-detail">{selectedRow.name}</h2>
+              <p>{selectedRow.principal.length} como gestor principal · {selectedRow.substituto.length} como gestor substituto</p>
+            </div>
+            <button type="button" className="ct-header-export" onClick={() => setSelected(null)}>Fechar</button>
+          </header>
+          <div className="ct-managers-lists">
+            {MANAGER_SERIES.map((serie) => (
+              <div key={serie.key}>
+                <h3><i style={{ background: serie.color }} aria-hidden="true" />{serie.label}</h3>
+                {selectedRow[serie.key].length === 0 ? <p className="ct-managers-empty small">Nenhum contrato.</p> : (
+                  <ul>
+                    {selectedRow[serie.key].map((contract) => {
+                      const status = getContractStatus(contract);
+                      return (
+                        <li key={contract.id}>
+                          <button type="button" onClick={() => onOpenContract(contract)}>
+                            <span><strong>{contract.processName}</strong><small>{contract.processNumber} · vence {formatDate(contract.dueDate)}</small></span>
+                            <span className={`ct-badge ${status.tone}`}>{status.label}</span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
 export default function ContratosAtivos({ isViewer, onUnauthorized, onOpenMenu }) {
   const [contracts, setContracts] = useState([]);
   const [modalities, setModalities] = useState([]);
@@ -1085,6 +1272,7 @@ export default function ContratosAtivos({ isViewer, onUnauthorized, onOpenMenu }
   const [modalityFilter, setModalityFilter] = useState("all");
   const [vigenciaFilter, setVigenciaFilter] = useState("all");
   const [scope, setScope] = useState("active");
+  const [pageTab, setPageTab] = useState("contracts");
   const changeScope = (next) => {
     setScope(next);
     // Os filtros de status/vigência mudam de sentido entre as abas.
@@ -1365,6 +1553,11 @@ export default function ContratosAtivos({ isViewer, onUnauthorized, onOpenMenu }
           <h1>Contratos</h1>
           <p>Gerencie vigências, valores, fiscais e prazos dos contratos</p>
         </div>
+        <nav className="process-page-tabs ct-page-tabs" aria-label="Seções de contratos">
+          {[["contracts", "Contratos"], ["managers", "Gestores"]].map(([id, label]) => (
+            <button type="button" key={id} className={pageTab === id ? "active" : ""} aria-current={pageTab === id ? "page" : undefined} onClick={() => setPageTab(id)}>{label}</button>
+          ))}
+        </nav>
         <div className="ct-header-actions">
           <button type="button" className="ct-header-export" onClick={() => exportContractsCsv(filteredContracts)} disabled={filteredContracts.length === 0} title="Exporta os contratos exibidos (com os filtros atuais) em CSV">Exportar</button>
           {canEdit && <button type="button" className="ct-new-button" onClick={openAdd}><IconPlus /> Novo contrato</button>}
@@ -1378,6 +1571,10 @@ export default function ContratosAtivos({ isViewer, onUnauthorized, onOpenMenu }
         </div>
       )}
 
+      {pageTab === "managers" ? (
+        <ManagersView contracts={contracts} loading={loading} onOpenContract={openDetails} />
+      ) : (
+      <>
       <section className="lk-kpis ct-kpis" aria-label="Resumo dos contratos">
         {[
           ["ATIVOS", summary.active, "green", "Regularizados: faltam mais de 3 meses para vencer"],
@@ -1473,6 +1670,9 @@ export default function ContratosAtivos({ isViewer, onUnauthorized, onOpenMenu }
               : `Mostrando ${filteredContracts.length} de ${scopeTotal} contratos${scopeWord(scopeTotal)}`}</span>
           </footer>
         </section>
+      )}
+
+      </>
       )}
 
       {detailContract && !showForm && !deleteTarget && !action && (

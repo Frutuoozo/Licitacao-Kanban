@@ -27,6 +27,10 @@ const passwordLimiter = rateLimit({
   keyGenerator: (req) => req.userId || ipKeyGenerator(req.ip),
 });
 
+// Páginas que o usuário pode escolher para abrir logo após o login ("seção" ou "seção:aba").
+const START_PAGES = ['dashboard', 'processos:board', 'processos:calendar', 'processos:reports', 'contratos', 'colaboradores', 'admin'];
+const startPageFor = (user) => (START_PAGES.includes(user.start_page) && (user.start_page !== 'admin' || user.role === 'admin') ? user.start_page : 'dashboard');
+
 function setAuthCookies(res, token) {
   const csrfToken = generateCsrfToken();
   res.cookie('auth_token', token, buildAuthCookieOptions());
@@ -92,7 +96,7 @@ router.post('/login', authLimiter, async (req, res) => {
 
     const token = jwt.sign({ id: user.id, ver: user.session_version || 0 }, getJwtSecret(), { algorithm: 'HS256', expiresIn: '8h' });
     setAuthCookies(res, token);
-    res.status(200).json({ id: user.id, username: user.username, role: user.role || 'user' });
+    res.status(200).json({ id: user.id, username: user.username, role: user.role || 'user', startPage: startPageFor(user) });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Login falhou' });
@@ -166,7 +170,7 @@ router.post('/first-access', authLimiter, async (req, res) => {
 
     const token = jwt.sign({ id: user.id, ver: user.session_version || 0 }, getJwtSecret(), { algorithm: 'HS256', expiresIn: '8h' });
     setAuthCookies(res, token);
-    res.status(200).json({ id: user.id, username: user.username, role: user.role || 'user' });
+    res.status(200).json({ id: user.id, username: user.username, role: user.role || 'user', startPage: startPageFor(user) });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Erro ao configurar primeiro acesso' });
@@ -176,9 +180,16 @@ router.post('/first-access', authLimiter, async (req, res) => {
 // GET /me — dados do usuário autenticado
 router.get('/me', verifyToken, async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT id, username, role FROM users WHERE id = ?', [req.userId]);
+    const [rows] = await db.query('SELECT id, username, role, created_at, password_changed_at, start_page FROM users WHERE id = ?', [req.userId]);
     if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
-    res.json({ id: rows[0].id, username: rows[0].username, role: rows[0].role || 'user' });
+    res.json({
+      id: rows[0].id,
+      username: rows[0].username,
+      role: rows[0].role || 'user',
+      createdAt: rows[0].created_at,
+      passwordChangedAt: rows[0].password_changed_at,
+      startPage: startPageFor(rows[0]),
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch user' });
@@ -186,6 +197,22 @@ router.get('/me', verifyToken, async (req, res) => {
 });
 
 // PATCH /password
+// PATCH /preferences — preferências do próprio usuário (por enquanto, a página inicial).
+router.patch('/preferences', verifyToken, async (req, res) => {
+  const startPage = req.body?.startPage;
+  if (!START_PAGES.includes(startPage)) return res.status(400).json({ error: 'Página inicial inválida.' });
+  try {
+    const [rows] = await db.query('SELECT role FROM users WHERE id = ?', [req.userId]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Usuário não encontrado' });
+    if (startPage === 'admin' && rows[0].role !== 'admin') return res.status(403).json({ error: 'Somente administradores podem abrir na Administração.' });
+    await db.query('UPDATE users SET start_page = ? WHERE id = ?', [startPage, req.userId]);
+    res.json({ startPage });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Falha ao salvar preferências' });
+  }
+});
+
 router.patch('/password', verifyToken, passwordLimiter, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
   if (!currentPassword || !newPassword) {

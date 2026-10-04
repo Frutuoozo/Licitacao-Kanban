@@ -1,0 +1,73 @@
+/* Meu perfil — no padrão das páginas novas (.lk-contracts, painéis da Administração). */
+.pf-hero { display: flex; align-items: center; gap: 18px; padding: 22px 24px; background: var(--lk-surface); border: 1px solid var(--lk-border); border-radius: 16px; }
+.pf-avatar { display: grid; place-items: center; flex-shrink: 0; width: 64px; height: 64px; border-radius: 50%; background: linear-gradient(135deg, #dbeafe, #eff6ff); color: #2563eb; font: 700 26px 'Manrope', sans-serif; }
+.pf-hero-text { flex: 1; min-width: 0; }
+.pf-hero-text h2 { font: 700 22px/30px 'Manrope', sans-serif; color: var(--lk-text); overflow-wrap: anywhere; }
+.pf-role { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.pf-role svg { width: 13px; height: 13px; }
+.pf-role.admin { background: #ecfdf2; color: #16a34a; }
+.pf-role.editor { background: var(--lk-tint); color: #2563eb; }
+.pf-role.viewer { background: #f3eefe; color: #7c3aed; }
+.lk-dashboard .pf-logout { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.lk-dashboard .pf-logout:hover { border-color: #fca5a5; color: #dc2626; }
+
+.pf-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: stretch; }
+.pf-grid > .adm-panel { display: flex; flex-direction: column; }
+.pf-info { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; margin: 0; }
+.pf-info dt { font-size: 10px; font-weight: 600; color: var(--lk-muted); }
+.pf-info dd { margin: 4px 0 0; font-size: 13px; font-weight: 500; color: var(--lk-text); overflow-wrap: anywhere; }
+.pf-info dd small { color: var(--lk-muted); font-weight: 400; }
+.pf-subtitle { margin: 22px 0 10px; padding-top: 18px; border-top: 1px solid var(--lk-border); font-size: 11px; font-weight: 700; color: var(--lk-muted); text-transform: uppercase; letter-spacing: .04em; }
+.pf-access { list-style: none; margin: 0; padding: 0; }
+.pf-access li { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--lk-border); font-size: 12px; color: var(--lk-text); }
+.pf-access li:last-child { border-bottom: 0; }
+.pf-hint { margin-top: 12px; font-size: 11px; color: var(--lk-muted); }
+
+.pf-security li { gap: 16px; }
+.pf-security { margin-bottom: 16px; }
+.pf-security .mm-btn { flex-shrink: 0; }
+.pf-danger { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: auto; padding: 14px 16px; border: 1px solid #fecaca; border-radius: 12px; background: #fef2f2; }
+.pf-danger strong { display: block; font-size: 12px; font-weight: 600; color: #b91c1c; }
+.pf-danger small { display: block; margin-top: 4px; font-size: 10px; line-height: 1.5; color: #b45353; }
+.lk-dashboard .pf-danger .mm-btn.danger { flex-shrink: 0; background: var(--lk-surface); }
+
+/* Formulário de senha */
+.pf-rules { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.pf-rules li { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--lk-muted); }
+.pf-rules li span { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--lk-soft); font-size: 11px; font-weight: 700; }
+.pf-rules li.ok { color: #15803d; }
+.pf-rules li.ok span { background: #dcfce7; color: #16a34a; }
+.pf-match { font-size: 11px; font-weight: 600; text-transform: none; }
+.pf-match.ok { color: #16a34a; }
+.pf-match.bad { color: #dc2626; }
+.ct-close-fields .contract-field .pf-input { width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--lk-border); border-radius: 10px; background: var(--lk-surface); color: var(--lk-text); font: 500 13px 'Inter', sans-serif; outline: none; }
+.ct-close-fields .contract-field .pf-input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px #2563eb1f; }
+/* Apagar a própria conta é a única ação realmente destrutiva: botão vermelho. */
+.lk-contracts .contract-delete-actions .btn-danger.pf-delete-confirm { border-color: #dc2626; background: #dc2626; }
+.lk-contracts .contract-delete-actions .btn-danger.pf-delete-confirm:hover:not(:disabled) { border-color: #b91c1c; background: #b91c1c; }
+
+/* Página inicial: opções em cartões selecionáveis. */
+.pf-start { grid-column: 1 / -1; }
+.pf-start-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.pf-start-option { position: relative; display: flex; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid var(--lk-border); border-radius: 12px; background: var(--lk-surface); cursor: pointer; transition: border-color .15s, background .15s, box-shadow .15s; }
+.pf-start-option:hover { border-color: #bfdbfe; }
+.pf-start-option.active { border-color: #2563eb; background: var(--lk-tint); box-shadow: 0 0 0 3px #2563eb14; }
+.pf-start-option input { position: absolute; opacity: 0; pointer-events: none; }
+.pf-start-option:has(input:focus-visible) { outline: 2px solid #2563eb; outline-offset: 2px; }
+.pf-start-radio { flex-shrink: 0; width: 16px; height: 16px; margin-top: 1px; border: 1.5px solid #cbd5e1; border-radius: 50%; background: var(--lk-surface); }
+.pf-start-option.active .pf-start-radio { border: 5px solid #2563eb; }
+.pf-start-option strong { display: block; font-size: 13px; font-weight: 600; color: var(--lk-text); }
+.pf-start-option.active strong { color: #2563eb; }
+.pf-start-option small { display: block; margin-top: 3px; font-size: 11px; line-height: 1.4; color: var(--lk-muted); }
+.pf-start-status { flex-shrink: 0; font-size: 11px; font-weight: 600; }
+.pf-start-status.saving { color: var(--lk-muted); }
+.pf-start-status.ok { color: #16a34a; }
+.pf-start-status.error { color: #dc2626; }
+
+@media (max-width: 1024px) { .pf-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) {
+  .pf-hero { flex-wrap: wrap; padding: 18px; }
+  .lk-dashboard .pf-logout { width: 100%; justify-content: center; }
+  .pf-info, .pf-rules { grid-template-columns: minmax(0, 1fr); }
+  .pf-danger, .pf-security li { flex-direction: column; align-items: stretch; }
+}

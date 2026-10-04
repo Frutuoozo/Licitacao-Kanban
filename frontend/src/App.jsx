@@ -21,7 +21,7 @@ import { authFetch } from "./authFetch";
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 
-function Login({ onLogin, notice }) {
+function Login({ onLogin, notice, noticeOk }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -199,7 +199,9 @@ function Login({ onLogin, notice }) {
         <h2 className="ls-title">{isFirstAccess ? "Primeiro Acesso" : "Bem-vindo de volta"}</h2>
         <p className="ls-subtitle">{isFirstAccess ? "Defina sua nova senha para continuar" : "Entre com suas credenciais"}</p>
 
-        {notice && !successMsg && <p className="ls-error">{notice}</p>}
+        {notice && !successMsg && (noticeOk
+          ? <div className="ls-success">{notice}</div>
+          : <p className="ls-error">{notice}</p>)}
         {successMsg && (
           <div className="ls-success">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
@@ -274,12 +276,20 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("board");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("dashboard");
+  // Abre a página inicial escolhida pelo usuário em Configurações ("seção" ou "seção:aba").
+  const openStartPage = useCallback((user) => {
+    const [section, tab] = String(user?.startPage || "dashboard").split(":");
+    const allowed = section === "admin" ? user?.role === "admin" : ["dashboard", "processos", "contratos", "colaboradores"].includes(section);
+    setActiveSection(allowed ? section : "dashboard");
+    if (allowed && section === "processos") setActiveTab(tab || "board");
+  }, []);
   const [sessionUser, setSessionUser] = useState(undefined);
   const [inactivityWarning, setInactivityWarning] = useState(false);
   const [inactivityCountdown, setInactivityCountdown] = useState(60);
 
   const [appSettings, setAppSettings] = useState(DEFAULT_SETTINGS);
   const [logoutNotice, setLogoutNotice] = useState("");
+  const [logoutNoticeOk, setLogoutNoticeOk] = useState(false);
   const handleLogout = useCallback(() => {
     authFetch(`${process.env.REACT_APP_API_URL || "http://localhost:3001"}/api/auth/logout`, { method: "POST" })
       .catch(() => { })
@@ -312,6 +322,7 @@ export default function App() {
       let last = lastLocal;
       try { last = Math.max(last, Number(localStorage.getItem(KEY)) || 0); } catch { /* usa a desta aba */ }
       if (Date.now() - last >= limitMs) {
+        setLogoutNoticeOk(false);
         setLogoutNotice(`Sua sessão foi encerrada após ${appSettings.sessionTimeoutMinutes} minutos sem atividade.`);
         handleLogout();
       }
@@ -340,9 +351,9 @@ export default function App() {
     const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
     authFetch(`${API_URL}/api/auth/me`)
       .then((r) => { if (r.status === 401 || r.status === 403) { setSessionUser(null); throw new Error("auth"); } return r.json(); })
-      .then(setSessionUser)
+      .then((user) => { setSessionUser(user); openStartPage(user); })
       .catch((e) => { if (e.message !== "auth") setSessionUser(null); });
-  }, []);
+  }, [openStartPage]);
 
   useEffect(() => { loadSessionUser(); }, [loadSessionUser]);
 
@@ -1027,6 +1038,23 @@ export default function App() {
           .ls-input { font-size: 0.86rem; }
           .ls-tab { font-size: 0.8rem; }
         }
+        /* Tablet, celular e telas de toque: versão leve do fundo do login.
+           Só a animação de onda do fundo; sem blur pesado (orbs de 110px) e sem vidro fosco,
+           que deixavam a tela lenta nesses aparelhos. O visual (degradês azuis) continua. */
+        @media (max-width: 1024px), (hover: none) {
+          /* Mantém só a "onda" (deslizar do degradê de fundo, barata); o resto fica parado. */
+          .ls-shell::before, .ls-orb, .ls-float-node, .ls-submit { animation: none !important; }
+          .ls-shell::before, .ls-shell::after { filter: none !important; }
+          .ls-float-node, .ls-orb-3, .ls-orb-4 { display: none !important; }
+          .ls-orb { filter: none !important; opacity: .7; will-change: auto; }
+          .ls-orb-1 { width: 360px; height: 360px; }
+          .ls-orb-2 { width: 360px; height: 360px; }
+          .ls-card { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background: rgba(255,255,255,0.97) !important; box-shadow: 0 12px 32px rgba(26,26,110,0.10) !important; }
+          .ls-input, .ls-tabs { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .ls-shell, .ls-shell::before, .ls-shell::after, .ls-orb, .ls-float-node, .ls-submit { animation: none !important; }
+        }
         .ls-brand { text-align: center; margin-bottom: 26px; }
         .ls-logo { font-family: 'Outfit', sans-serif; font-size: 2.55rem; font-weight: 800; color: #1a1a6e; letter-spacing: -1.4px; line-height: 1; }
         .ls-logo span { color: #2563eb; }
@@ -1587,7 +1615,7 @@ export default function App() {
       {sessionUser === undefined ? (
         <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "var(--muted)" }}>Carregando sessão...</div>
       ) : !sessionUser ? (
-        <Login notice={logoutNotice} onLogin={(data) => { setLogoutNotice(""); setActiveSection("dashboard"); setSessionUser(data); }} />
+        <Login notice={logoutNotice} noticeOk={logoutNoticeOk} onLogin={(data) => { setLogoutNotice(""); openStartPage(data); setSessionUser(data); }} />
       ) : activeSection === "dashboard" ? (
         <DashboardPage columns={columns} archived={archived} sortedColumns={sortedColumns} user={sessionUser} loading={processLoading} error={processError} onLogout={handleLogout} onNavigate={(section, tab = "board") => { setActiveSection(section); setActiveTab(tab); }} />
       ) : activeSection === "processos" ? (
@@ -1602,6 +1630,16 @@ export default function App() {
           <AppSidebar user={sessionUser} activeSection="admin" menuOpen={sidebarOpen} onLogout={handleLogout} onNavigate={section => { setActiveSection(section); setSidebarOpen(false); }} />
           <main className="lk-process-main">
             <AdminPage currentUserId={sessionUser?.id} onUnauthorized={handleLogout} onSelfDemoted={handleSelfDemotedFromAdmin} sectors={sectors} onSectorsChange={setSectors} templates={templates} saveTemplates={saveTemplates} onOpenMenu={() => setSidebarOpen(true)} />
+          </main>
+        </div>
+      ) : activeSection === "perfil" ? (
+        <div className="lk-dashboard lk-process-shell">
+          {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
+          <AppSidebar user={sessionUser} activeSection="perfil" menuOpen={sidebarOpen} onLogout={handleLogout} onNavigate={section => { setActiveSection(section); setSidebarOpen(false); }} />
+          <main className="lk-process-main">
+            <PerfilPage onLogout={handleLogout} sessionUser={sessionUser} onOpenMenu={() => setSidebarOpen(true)}
+              onStartPageChange={(startPage) => setSessionUser((user) => (user ? { ...user, startPage } : user))}
+              onPasswordChanged={() => { setLogoutNoticeOk(true); setLogoutNotice("Senha alterada com sucesso. Entre novamente com a nova senha."); handleLogout(); }} />
           </main>
         </div>
       ) : activeSection === "colaboradores" ? (
@@ -1665,9 +1703,7 @@ export default function App() {
               </div>
             </header>
 
-            {activeSection === "perfil" ? (
-              <PerfilPage onLogout={handleLogout} sessionUser={sessionUser} />
-            ) : (
+            {(
               processPage
             )}
           </div>

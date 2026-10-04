@@ -9,9 +9,9 @@ import { isValidDateString, normalizeText, validateContractPayload } from '../va
 const router = express.Router();
 
 // Regras de vigência: além do termo de contrato, até 4 aditivos; depois disso, nova contratação.
-// Um contrato vencido ainda aceita aditivo por até 45 dias após o vencimento.
+// Contratos vencidos também aceitam aditivo (ex.: cadastro de contratos antigos já vencidos),
+// desde que não tenham sido encerrados manualmente.
 const MAX_AMENDMENTS = 4;
-const AMENDMENT_GRACE_DAYS = 45;
 const NOTES_MAX = 500;
 // Anexos: PDF ou imagem, até 15 MB (o PDF é exibido direto no navegador).
 const DOCUMENT_TYPES = ['application/pdf', 'image/png', 'image/jpeg'];
@@ -34,12 +34,6 @@ function formatDate(value) {
 
 function todayIso() {
   return formatDate(new Date());
-}
-
-// Dias de `from` até `to` (datas AAAA-MM-DD), sem influência de fuso/horário.
-function daysBetween(from, to) {
-  const toUtc = (iso) => { const [y, m, d] = iso.split('-').map(Number); return Date.UTC(y, m - 1, d); };
-  return Math.round((toUtc(to) - toUtc(from)) / 86400000);
 }
 
 function serializeContract(row) {
@@ -256,9 +250,6 @@ router.post('/:id/amendments', requireEditorOrAdmin, contractWriteLimiter, (req,
     if (current.closedAt) return { status: 409, error: 'Contrato encerrado manualmente. Reabra o contrato antes de lançar um aditivo.' };
     if (current.amendmentCount >= MAX_AMENDMENTS) {
       return { status: 409, error: `Limite de ${MAX_AMENDMENTS} aditivos atingido. É necessária uma nova contratação.` };
-    }
-    if (daysBetween(current.dueDate, todayIso()) > AMENDMENT_GRACE_DAYS) {
-      return { status: 409, error: `Prazo para aditivo encerrado (${AMENDMENT_GRACE_DAYS} dias após o vencimento). É necessária uma nova contratação.` };
     }
     if (newDueDate <= current.dueDate) return { error: 'A nova data de vencimento precisa ser posterior ao vencimento atual.' };
 

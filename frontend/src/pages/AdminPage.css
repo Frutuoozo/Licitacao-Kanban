@@ -1,11 +1,10 @@
 /* Administração — segue o frame do Figma; base visual compartilhada com Contratos (.lk-contracts). */
-.adm-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+.adm-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
 .adm-card { display: flex; flex-direction: column; min-width: 0; padding: 18px; background: var(--lk-surface); border: 1px solid var(--lk-border); border-radius: 16px; }
 .adm-card-head { display: flex; align-items: center; gap: 12px; }
 .adm-card-head h2 { font: 600 15px/22px 'Manrope', sans-serif; color: var(--lk-text); }
 .adm-card-icon { display: grid; place-items: center; flex-shrink: 0; width: 34px; height: 34px; border-radius: 9px; }
 .adm-card-icon i { width: 10px; height: 10px; border-radius: 50%; background: currentColor; }
-.adm-card-icon .adm-lines { width: 18px; height: 12px; border-radius: 0; background: linear-gradient(currentColor 0 0) 0 0 / 100% 2.5px no-repeat, linear-gradient(currentColor 0 0) 0 50% / 100% 2.5px no-repeat, linear-gradient(currentColor 0 0) 0 100% / 100% 2.5px no-repeat; }
 .adm-card-icon.blue { background: #eff6ff; color: #2563eb; }
 .adm-card-icon.purple { background: #f3eefe; color: #7c3aed; }
 .adm-card-icon.green { background: #ecfdf2; color: #16a34a; }
@@ -65,6 +64,7 @@
 .adm-drawer-body .admin-section-title { display: none; }
 .adm-subtabs { margin-bottom: 18px; }
 
+@media (max-width: 1500px) { .adm-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 1200px) { .adm-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 1024px) { .adm-grid { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 600px) {

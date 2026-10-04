@@ -438,3 +438,87 @@ html.ct-scroll::-webkit-scrollbar-button, html.ct-scroll::-webkit-scrollbar-corn
 /* Indicador de documento anexado */
 .ct-doc-flag { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; vertical-align: middle; color: #2563eb; font-size: 10px; font-weight: 600; letter-spacing: 0; }
 .ct-doc-flag svg { width: 13px; height: 13px; }
+
+/* ── Abas da página (Contratos | Gestores), no estilo das abas de Processos ── */
+.lk-contracts .ct-page-tabs { flex-shrink: 0; }
+@media (max-width: 1100px) { .lk-contracts .ct-header { flex-wrap: wrap; } .lk-contracts .ct-page-tabs { order: 3; width: 100%; } }
+
+/* ── Aba Gestores ── */
+.ct-managers { display: flex; flex-direction: column; gap: 20px; }
+.ct-managers-toolbar { grid-template-columns: minmax(180px, 320px) minmax(max-content, 1fr); }
+.ct-managers-toolbar .ct-toolbar-actions { grid-column: auto; }
+.ct-managers-card { padding: 22px 20px 18px; background: var(--lk-surface); border: 1px solid var(--lk-border); border-radius: 16px; }
+.ct-managers-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.ct-managers-head h2 { font: 600 16px/22px 'Manrope', sans-serif; color: var(--lk-text); }
+.ct-managers-head p { margin-top: 3px; font-size: 11px; color: var(--lk-muted); }
+.ct-managers-legend { list-style: none; display: flex; gap: 16px; margin: 0; padding: 0; flex-shrink: 0; }
+.ct-managers-legend li { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 500; color: var(--lk-text); white-space: nowrap; }
+.ct-managers-legend i, .ct-managers-lists h3 i, .ct-managers-tip i { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.ct-managers-empty { padding: 28px 0; text-align: center; font-size: 12px; color: var(--lk-muted); }
+.ct-managers-empty.small { padding: 10px 0; text-align: left; }
+
+.ct-managers-chart { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.ct-managers-chart li { position: relative; }
+.lk-dashboard .ct-managers-row { display: grid; grid-template-columns: minmax(140px, 240px) minmax(0, 1fr); align-items: center; gap: 16px; width: 100%; padding: 8px 10px; border-radius: 10px; text-align: left; }
+.ct-managers-chart li.hovered .ct-managers-row { background: var(--lk-soft); }
+.ct-managers-chart li.selected .ct-managers-row { background: var(--lk-tint); box-shadow: inset 0 0 0 1px #bfdbfe; }
+.lk-dashboard .ct-managers-row:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
+.ct-managers-name { overflow: hidden; font-size: 12px; font-weight: 600; color: var(--lk-text); text-overflow: ellipsis; white-space: nowrap; }
+.ct-managers-bars { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ct-managers-bar-line { display: flex; align-items: center; gap: 8px; min-width: 0; height: 12px; }
+/* Barras finas, cantos arredondados só na ponta do valor (ancoradas na base à esquerda). */
+.ct-managers-bar { display: block; height: 10px; max-width: calc(100% - 28px); border-radius: 0 4px 4px 0; transition: width .5s cubic-bezier(.4, 0, .2, 1); }
+.ct-managers-value { flex-shrink: 0; min-width: 16px; font-size: 11px; font-weight: 600; color: var(--lk-text); font-variant-numeric: tabular-nums; }
+.ct-managers-tip { position: absolute; z-index: 20; top: 50%; right: 12px; transform: translateY(-50%); display: flex; flex-direction: column; gap: 5px; min-width: 190px; padding: 10px 12px; background: var(--lk-surface); border: 1px solid var(--lk-border); border-radius: 10px; box-shadow: 0 10px 24px #11182724; font-size: 11px; color: var(--lk-muted); pointer-events: none; }
+.ct-managers-tip strong { color: var(--lk-text); font: 600 12px 'Manrope', sans-serif; }
+.ct-managers-tip span { display: flex; align-items: center; gap: 8px; }
+.ct-managers-tip b { margin-left: auto; padding-left: 14px; color: var(--lk-text); font-variant-numeric: tabular-nums; }
+.ct-managers-tip small { padding-top: 6px; border-top: 1px solid var(--lk-border); }
+
+.ct-managers-lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.ct-managers-lists h3 { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 11px; font-weight: 700; color: var(--lk-muted); text-transform: uppercase; letter-spacing: .04em; }
+.ct-managers-lists ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.lk-dashboard .ct-managers-lists li button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 10px 12px; border: 1px solid var(--lk-border); border-radius: 10px; background: var(--lk-soft); text-align: left; }
+.lk-dashboard .ct-managers-lists li button:hover { border-color: #bfdbfe; background: var(--lk-tint); }
+.ct-managers-lists li strong { display: block; font-size: 12px; font-weight: 600; color: var(--lk-text); overflow-wrap: anywhere; }
+.ct-managers-lists li small { display: block; margin-top: 2px; font-size: 10px; color: var(--lk-muted); }
+.ct-managers-lists .ct-badge { min-width: 0; flex-shrink: 0; }
+
+@media (max-width: 700px) {
+  .ct-managers-toolbar { grid-template-columns: minmax(0, 1fr); }
+  .ct-managers-head { flex-direction: column; }
+  .lk-dashboard .ct-managers-row { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .ct-managers-tip { display: none; }
+  .ct-managers-lists { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ── Gráfico de gestores: barras horizontais empilhadas com eixo e grade ── */
+.ct-mchart { --label-col: minmax(150px, 240px); position: relative; }
+.ct-mchart-axis, .lk-dashboard .ct-mchart-row { display: grid; grid-template-columns: var(--label-col) minmax(0, 1fr); gap: 16px; }
+.ct-mchart-axis { padding: 0 10px 8px; }
+.ct-mchart-ticks { position: relative; height: 16px; margin-right: 44px; border-bottom: 1px solid var(--lk-border); }
+.ct-mchart-ticks span { position: absolute; top: 0; transform: translateX(-50%); font-size: 10px; font-weight: 500; color: var(--lk-muted); font-variant-numeric: tabular-nums; }
+.ct-mchart-ticks span:first-child { transform: none; }
+.ct-mchart-rows { list-style: none; margin: 0; padding: 0; }
+.ct-mchart-rows li { position: relative; }
+.lk-dashboard .ct-mchart-row { align-items: center; width: 100%; min-height: 50px; padding: 5px 10px; border-radius: 10px; text-align: left; }
+.ct-mchart-rows li.hovered .ct-mchart-row { background: var(--lk-soft); }
+.ct-mchart-rows li.selected .ct-mchart-row { background: var(--lk-tint); box-shadow: inset 0 0 0 1px #bfdbfe; }
+.lk-dashboard .ct-mchart-row:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
+.ct-mchart-name { overflow: hidden; font-size: 12px; font-weight: 600; color: var(--lk-text); text-overflow: ellipsis; white-space: nowrap; }
+.ct-mchart-track { position: relative; display: block; height: 32px; margin-right: 44px; }
+.ct-mchart-grid i { position: absolute; top: -9px; bottom: -9px; width: 1px; background: color-mix(in srgb, var(--lk-border) 70%, transparent); }
+/* Segmentos separados por 2px; só a ponta final da barra é arredondada. */
+.ct-mchart-bar { position: relative; z-index: 1; display: flex; gap: 2px; height: 100%; min-width: 4px; transition: width .5s cubic-bezier(.4, 0, .2, 1); }
+.ct-mchart-seg { display: flex; align-items: center; justify-content: center; min-width: 3px; height: 100%; flex-basis: 0; }
+.ct-mchart-seg:last-child { border-radius: 0 6px 6px 0; }
+.ct-mchart-seg em { font-size: 12px; font-weight: 700; font-style: normal; color: #fff; font-variant-numeric: tabular-nums; }
+.ct-mchart-total { position: absolute; top: 50%; z-index: 1; transform: translate(10px, -50%); font-size: 13px; font-weight: 700; color: var(--lk-text); font-variant-numeric: tabular-nums; }
+.ct-mchart-rows li.hovered .ct-mchart-seg, .ct-mchart-rows li.selected .ct-mchart-seg { filter: brightness(1.06); }
+
+@media (max-width: 700px) {
+  .ct-mchart { --label-col: minmax(0, 1fr); }
+  .ct-mchart-axis, .lk-dashboard .ct-mchart-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .ct-mchart-axis > span { display: none; }
+  .lk-dashboard .ct-mchart-row { padding: 8px 10px; }
+}

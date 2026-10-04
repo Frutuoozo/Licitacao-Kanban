@@ -649,11 +649,7 @@ export default function AdminPage({ currentUserId, onUnauthorized, onSelfDemoted
 
   if (view === "models") {
     return (
-      <>
-        <ModelsManager templates={templates} onSave={saveTemplates} onBack={() => setView("main")}
-          onOpenModalities={() => setDrawer("modalities")} confirmBeforeDelete={settings.confirmBeforeDelete} />
-        {modalitiesDrawer}
-      </>
+      <ModelsManager templates={templates} onSave={saveTemplates} onBack={() => setView("main")} confirmBeforeDelete={settings.confirmBeforeDelete} />
     );
   }
 
@@ -668,7 +664,8 @@ export default function AdminPage({ currentUserId, onUnauthorized, onSelfDemoted
     { key: "users", tone: "blue", title: "Perfis de acesso", text: "Usuários e o nível de acesso de cada um.", action: "Gerenciar usuários", onClick: () => setDrawer("users") },
     { key: "sectors", tone: "purple", title: "Setores", text: "Organize setores responsáveis.", action: "Gerenciar setores", onClick: () => setDrawer("sectors") },
     { key: "security", tone: "green", title: "Segurança", text: "Senha, sessões, bloqueio e autenticação.", action: "Configurar segurança", onClick: goToSecurity },
-    { key: "models", tone: "lilac", title: "Modelos", text: "Tipos, fases, documentos padrão e modalidades.", action: "Gerenciar modelos", onClick: () => { setView("models"); window.scrollTo({ top: 0 }); } },
+    { key: "models", tone: "lilac", title: "Modelos", text: "Tipos de processo, fases e documentos padrão.", action: "Gerenciar modelos", onClick: () => { setView("models"); window.scrollTo({ top: 0 }); } },
+    { key: "modalities", tone: "amber", title: "Modalidades de contrato", text: "Dispensa, Pregão, Leilão e outras modalidades.", action: "Gerenciar modalidades", onClick: () => setDrawer("modalities") },
   ];
 
   return (
@@ -686,7 +683,7 @@ export default function AdminPage({ currentUserId, onUnauthorized, onSelfDemoted
         {cards.map((card) => (
           <article className="adm-card" key={card.key}>
             <div className="adm-card-head">
-              <span className={`adm-card-icon ${card.tone}`} aria-hidden="true">{card.key === "models" ? <i className="adm-lines" /> : <i />}</span>
+              <span className={`adm-card-icon ${card.tone}`} aria-hidden="true"><i /></span>
               <h2>{card.title}</h2>
             </div>
             <p>{card.text}</p>

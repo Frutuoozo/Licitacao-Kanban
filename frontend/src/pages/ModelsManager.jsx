@@ -32,7 +32,7 @@ function toGroups(items) {
     if (item.type === "phase") groups.push({ phase: { name: item.name, bgColor: item.bgColor || PALETTE_VALUES[0] }, docs: [] });
     else {
       if (!groups.length) groups.push({ phase: null, docs: [] });
-      groups[groups.length - 1].docs.push({ name: item.name, required: item.required !== false });
+      groups[groups.length - 1].docs.push({ name: item.name, required: item.required !== false, bgColor: item.bgColor || null });
     }
   });
   return groups;
@@ -41,7 +41,7 @@ function toGroups(items) {
 function toItems(groups) {
   return groups.flatMap((group) => [
     ...(group.phase ? [{ type: "phase", name: group.phase.name, bgColor: group.phase.bgColor }] : []),
-    ...group.docs.map((doc) => ({ type: "doc", name: doc.name, bgColor: null, required: doc.required })),
+    ...group.docs.map((doc) => ({ type: "doc", name: doc.name, bgColor: doc.bgColor || null, required: doc.required })),
   ]);
 }
 
@@ -86,7 +86,7 @@ function InlineText({ value, onChange, className, placeholder, label }) {
   );
 }
 
-function ColorDot({ color, onChange, label, size = "md" }) {
+function ColorDot({ color, onChange, label, size = "md", allowNone = false, align = "left", variant = "dot", pastel = false }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -102,10 +102,22 @@ function ColorDot({ color, onChange, label, size = "md" }) {
   const legacy = current && !PALETTE_VALUES.includes(current);
   return (
     <span className="mm-color" ref={ref}>
-      <button type="button" className={`mm-color-dot ${size}`} style={{ background: color }} onClick={() => setOpen((o) => !o)} aria-label={label} title={label} aria-expanded={open} />
+      {variant === "button" ? (
+        // Mesmo formato dos botões de ação (lixeira), com a cor atual dentro.
+        <button type="button" className={`mm-icon-btn mm-color-btn ${open ? "open" : ""} ${pastel ? "pastel" : ""}`} onClick={() => setOpen((o) => !o)} aria-label={label} title={label} aria-expanded={open}>
+          <i className={color ? "" : "none"} style={color ? { background: color } : undefined} aria-hidden="true" />
+        </button>
+      ) : (
+        <button type="button" className={`mm-color-dot ${size} ${color ? "" : "none"}`} style={color ? { background: color } : undefined} onClick={() => setOpen((o) => !o)} aria-label={label} title={label} aria-expanded={open} />
+      )}
       {open && (
-        <span className="mm-color-menu" role="listbox" aria-label={label}>
+        <span className={`mm-color-menu ${align === "right" ? "align-right" : ""} ${pastel ? "pastel" : ""}`} role="listbox" aria-label={label}>
           <span className="mm-color-title">{label}</span>
+          {allowNone && (
+            <button type="button" role="option" aria-selected={!current} className={`mm-color-none ${!current ? "active" : ""}`} onClick={() => { onChange(null); setOpen(false); }}>
+              <i aria-hidden="true" /> Sem cor (padrão)
+            </button>
+          )}
           <span className="mm-color-grid">
             {PALETTE.map((c) => (
               <button type="button" key={c.value} role="option" aria-selected={c.value === current} className={c.value === current ? "active" : ""}
@@ -143,7 +155,7 @@ function ConfirmModal({ title, text, confirmLabel, onConfirm, onCancel }) {
 }
 
 
-export default function ModelsManager({ templates, onSave, onBack, onOpenModalities, confirmBeforeDelete }) {
+export default function ModelsManager({ templates, onSave, onBack, confirmBeforeDelete }) {
   const initial = useMemo(() => normalizeTemplatesFromApi(clone(templates)), [templates]);
   const [local, setLocal] = useState(initial);
   const [selected, setSelected] = useState(() => orderedTemplateTypeNames(initial)[0] || "");
@@ -232,7 +244,7 @@ export default function ModelsManager({ templates, onSave, onBack, onOpenModalit
   };
   const commitDoc = () => {
     const name = newDoc.trim();
-    if (name) updateGroups((g) => { g[adding].docs.push({ name, required: true }); return g; });
+    if (name) updateGroups((g) => { g[adding].docs.push({ name, required: true, bgColor: null }); return g; });
     setNewDoc("");
     if (!name) setAdding(null);
   };
@@ -339,7 +351,6 @@ export default function ModelsManager({ templates, onSave, onBack, onOpenModalit
           <p>Defina os tipos de processo e os documentos/fases de cada modelo</p>
         </div>
         <div className="mm-header-actions">
-          <button type="button" className="ct-header-export" onClick={onOpenModalities}>Modalidades de contrato</button>
           <button type="button" className="ct-header-export" onClick={() => docxRef.current?.click()} title="Título 2 vira fase; parágrafos viram documentos"><IconUpload /> Importar .docx</button>
           <button type="button" className="ct-new-button" onClick={addModel}><IconPlus /> Novo modelo</button>
           <input ref={docxRef} type="file" accept=".docx" hidden onChange={importDocx} />
@@ -445,7 +456,8 @@ export default function ModelsManager({ templates, onSave, onBack, onOpenModalit
                           {group.docs.map((doc, docIdx) => {
                             const docTarget = { kind: "doc", group: groupIdx, doc: docIdx };
                             return (
-                              <div key={`${docIdx}-${doc.name}`} className={`mm-doc ${isDrop(docTarget) ? "drop" : ""}`}
+                              <div key={`${docIdx}-${doc.name}`} className={`mm-doc ${isDrop(docTarget) ? "drop" : ""} ${doc.bgColor ? "tinted" : ""}`}
+                                style={doc.bgColor ? { "--doc-color": doc.bgColor } : undefined}
                                 onDragOver={onDragOver(docTarget)} onDrop={onDrop(docTarget)}>
                                 <span className="mm-grip" draggable onDragStart={onDragStart({ kind: "doc", group: groupIdx, doc: docIdx })} title="Arraste para reordenar" aria-hidden="true">⋮⋮</span>
                                 <InlineText value={doc.name} onChange={(name) => name && updateGroups((g) => { g[groupIdx].docs[docIdx].name = name; return g; })} className="mm-doc-name" placeholder="Nome do documento" label="Nome do documento" />
@@ -454,6 +466,8 @@ export default function ModelsManager({ templates, onSave, onBack, onOpenModalit
                                   {doc.required ? "Sim" : "Não"}
                                 </button>
                                 <span className="mm-doc-actions">
+                                  <ColorDot color={doc.bgColor} allowNone variant="button" pastel label="Cor do documento" align="right"
+                                    onChange={(bgColor) => updateGroups((g) => { g[groupIdx].docs[docIdx].bgColor = bgColor; return g; })} />
                                   <button type="button" className="mm-icon-btn danger" aria-label={`Remover ${doc.name}`} title="Remover documento"
                                     onClick={() => updateGroups((g) => { g[groupIdx].docs.splice(docIdx, 1); return g; })}><IconTrash /></button>
                                 </span>

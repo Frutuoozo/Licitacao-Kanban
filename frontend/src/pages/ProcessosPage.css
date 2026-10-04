@@ -207,3 +207,21 @@
   .lk-process-shell .process-scroll { display: none; }
   .lk-process-shell .process-board-wrap:has(> .process-scroll) { padding-bottom: 0; }
 }
+
+/* Documento colorido em tom pastel (mesma cor, bem mais suave). */
+/* Seletor mais específico que as regras antigas de tema ([data-theme] .doc-card:not(.done)),
+   para a cor aparecer sempre — não só no hover — e sem mudar ao passar o mouse. */
+.lk-process-shell .doc-card.doc-pastel:is(:not(.done), .done, :hover) {
+  background: color-mix(in srgb, var(--doc-color) 14%, #fff);
+  border-color: color-mix(in srgb, var(--doc-color) 28%, #fff);
+  box-shadow: none;
+  color: #1f2937;
+}
+.lk-process-shell .doc-card.doc-pastel:not(.done) .card-name { color: #1f2937; }
+/* Caixa de check legível sobre o fundo colorido: branca, com borda num tom escuro da própria cor. */
+.lk-process-shell .doc-card.doc-pastel:not(.done) .check-box {
+  background: color-mix(in srgb, #fff 85%, transparent);
+  border: 1.2px solid color-mix(in srgb, var(--doc-color) 45%, #fff);
+  box-shadow: none;
+}
+.lk-process-shell .doc-card.doc-pastel:not(.done) .check-btn:hover .check-box { border-color: color-mix(in srgb, var(--doc-color) 65%, #fff); }
