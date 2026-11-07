@@ -1,0 +1,162 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Tema escuro do sistema todo.
+   As páginas novas usam variáveis (--lk-*) que já trocam em .lk-dark (DashboardPage.css).
+   Aqui ficam só as correções das cores fixas (brancos, tons pastel claros, textos escuros)
+   que não seguem as variáveis. Seletores começam por .lk-dark para valer só no tema escuro.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.lk-dark { color-scheme: dark; --lk-shadow: 0 14px 32px #00000066; }
+.lk-dark.lk-process-shell { color-scheme: dark; }
+html.lk-theme-dark, html.lk-theme-dark body { background: #111827; }
+
+
+/* ── Selos e destaques: tons pastel claros viram cores translúcidas ── */
+.lk-dark .ct-badge.green, .lk-dark .mm-required.yes, .lk-dark .pf-role.admin { background: #16a34a26; color: #4ade80; }
+.lk-dark .ct-badge.amber { background: #d9770626; color: #fbbf24; }
+.lk-dark .ct-badge.red { background: #dc262626; color: #f87171; }
+.lk-dark .ct-badge.gray, .lk-dark .mm-required.no { background: #ffffff14; color: #a5afbd; }
+.lk-dark .ct-badge.purple, .lk-dark .pf-role.viewer { background: #7c3aed2e; color: #c4b5fd; }
+.lk-dark .pf-role.editor { background: #2563eb2e; color: #93c5fd; }
+.lk-dark .cb-cod { background: #2563eb2e; color: #93c5fd; }
+.lk-dark .lk-contracts .contract-law-badge { background: #2563eb24; border-color: #2563eb55; color: #93c5fd; }
+.lk-dark .lk-contracts .contract-law-old { background: #ca8a0424; border-color: #ca8a0455; color: #fcd34d; }
+.lk-dark .adm-card-icon.blue { background: #2563eb2e; }
+.lk-dark .adm-card-icon.purple, .lk-dark .adm-card-icon.lilac { background: #7c3aed2e; }
+.lk-dark .adm-card-icon.green { background: #16a34a2e; }
+.lk-dark .adm-card-icon.amber { background: #d977062e; }
+.lk-dark .adm-card-icon.red { background: #dc26262e; }
+.lk-dark .adm-access.total { color: #4ade80; }
+.lk-dark .adm-access.edit { color: #93c5fd; }
+.lk-dark .adm-access.read { color: #c4b5fd; }
+
+/* Avisos (sucesso, atenção, erro) */
+.lk-dark .ct-message, .lk-dark .mm-status.error, .lk-dark .contract-form-error { background: #dc26261f; border-color: #dc262666; color: #fca5a5; }
+.lk-dark .mm-status.ok { background: #16a34a1f; border-color: #16a34a66; color: #86efac; }
+.lk-dark .mm-status.dirty, .lk-dark .ct-form-warning { background: #ca8a041f; border-color: #ca8a0466; color: #fcd34d; }
+.lk-dark .ct-detail-closed { background: #ffffff10; color: #cbd5e1; }
+.lk-dark .pf-danger { background: #dc262614; border-color: #dc262655; }
+.lk-dark .pf-danger strong { color: #fca5a5; }
+.lk-dark .pf-danger small { color: #f8b4b4; }
+
+/* Botões que tinham fundo claro fixo */
+.lk-dark .lk-contracts .ct-detail-delete, .lk-dark .mm-btn.danger, .lk-dark .lk-dashboard .pf-danger .mm-btn.danger { background: transparent; border-color: #dc262680; color: #f87171; }
+.lk-dark .ct-detail-delete:hover, .lk-dark .mm-btn.danger:hover, .lk-dark .mm-icon-btn.danger,
+.lk-dark .ct-row-menu-list button.danger:hover, .lk-dark .ct-viewer-actions button.danger:hover:not(:disabled) { background: #dc26261f; border-color: #dc262680; color: #f87171; }
+.lk-dark .mm-btn.outline, .lk-dark .mm-dashed, .lk-dark .ct-file-drop.has-file { border-color: #2563eb66; }
+.lk-dark .lk-sidebar .lk-sidebar-bottom > button.lk-signout:hover, .lk-dark .lk-sidebar .lk-user-logout:hover { background: #dc26261f; color: #f87171; }
+.lk-dark .lk-sidebar .lk-sidebar-bottom > button.lk-signout:hover svg { color: #f87171; }
+.lk-dark .adm-switch { background: #374151; }
+.lk-dark .lk-dashboard .pf-logout:hover { border-color: #dc262680; color: #f87171; }
+
+/* Menus suspensos, dicas e painéis com branco fixo */
+.lk-dark .ct-row-menu-list, .lk-dark .rp-menu, .lk-dark .mm-color-menu, .lk-dark .ct-managers-tip, .lk-dark .rp-tooltip { background: #1f2937; border-color: #374151; box-shadow: var(--lk-shadow); }
+.lk-dark .ct-detail-overlay, .lk-dark .contract-modal-overlay { background: #00000080; }
+.lk-dark .ct-detail, .lk-dark .lk-contracts .ct-form-drawer { box-shadow: -18px 0 48px #00000066; }
+.lk-dark .ct-viewer, .lk-dark .ct-viewer-fullscreen { background: #0f172a; }
+.lk-dark .ct-viewer-image { background: #0f172a; }
+.lk-dark .ct-managers-chart li.selected .ct-managers-row,
+.lk-dark .ct-mchart-rows li.selected .ct-mchart-row,
+.lk-dark .mm-list li.active { box-shadow: inset 0 0 0 1px #2563eb66; border-color: #2563eb66; }
+.lk-dark .rp-track { background: #ffffff14; }
+
+/* ── Processos (quadro): cores antigas por tema e documentos pastel ── */
+.lk-dark.lk-process-shell .doc-card:not(.done):not(.doc-pastel), .lk-dark.lk-process-shell .doc-card.done:not(.doc-pastel) { background: transparent; }
+.lk-dark.lk-process-shell .doc-card:not(.doc-pastel):hover { background: var(--lk-soft); }
+/* Documento colorido no escuro: a mesma cor, misturada à superfície escura (não ao branco). */
+.lk-dark.lk-process-shell .doc-card.doc-pastel:is(:not(.done), .done, :hover) {
+  background: color-mix(in srgb, var(--doc-color) 22%, #1f2937);
+  border-color: color-mix(in srgb, var(--doc-color) 40%, #1f2937);
+  color: #f3f4f6;
+}
+.lk-dark.lk-process-shell .doc-card.doc-pastel:not(.done) .card-name { color: #f3f4f6; }
+.lk-dark.lk-process-shell .doc-card.doc-pastel:not(.done) .check-box { background: #ffffff14; border-color: color-mix(in srgb, var(--doc-color) 60%, #ffffff); }
+.lk-dark .mm-doc.tinted, .lk-dark .mm-doc.tinted:hover { background: color-mix(in srgb, var(--doc-color) 22%, #1f2937); }
+.lk-dark .lk-dashboard .mm-color-menu.pastel .mm-color-grid button { background: color-mix(in srgb, var(--swatch) 45%, #1f2937); }
+
+/* ── Calendário próprio (DatePicker) ── */
+.lk-dark .dp-popover { background: #1f2937; border-color: #374151; color: #f3f4f6; box-shadow: var(--lk-shadow); }
+.lk-dark .dp-popover .dp-nav { background: #1f2937; border-color: #374151; color: #93c5fd; }
+.lk-dark .dp-popover .dp-nav:hover, .lk-dark .dp-popover .dp-day:hover, .lk-dark .dp-title select:hover, .lk-dark .dp-title select:focus { background: #263244; }
+.lk-dark .dp-title select { color: #f3f4f6; }
+.lk-dark .dp-title select option { background: #1f2937; }
+.lk-dark .dp-popover .dp-day { color: #e5e7eb; }
+.lk-dark .dp-popover .dp-day.outside { color: #6b7280; }
+.lk-dark .dp-popover .dp-day.today { color: #93c5fd; box-shadow: inset 0 0 0 1px #2563eb88; }
+.lk-dark .dp-weekday { color: #9ca3af; }
+.lk-dark .dp-shortcuts { border-color: #374151; }
+.lk-dark .dp-popover .dp-shortcuts button { background: #263244; border-color: #374151; color: #e5e7eb; }
+.lk-dark .dp-popover .dp-shortcuts button:hover { background: #2563eb2e; border-color: #2563eb; color: #93c5fd; }
+.lk-dark .dp-popover .dp-link { color: #9ca3af; }
+.lk-dark .dp-popover .dp-link:hover { background: #263244; color: #f3f4f6; }
+.lk-dark .dp-toggle { color: #9ca3af; }
+.lk-dark .dp-toggle:hover, .lk-dark .dp-toggle.active { background: #2563eb2e; color: #93c5fd; }
+
+/* ── Leitor de PDF: barra escura; a página do documento continua branca ── */
+.lk-dark .pdfv { background: #0f172a; }
+.lk-dark .pdfv-toolbar { background: #1f2937; border-color: #374151; }
+.lk-dark .pdfv .pdfv-toolbar button, .lk-dark .pdfv .pdfv-toolbar a { color: #d1d5db; }
+.lk-dark .pdfv .pdfv-toolbar button:hover:not(:disabled), .lk-dark .pdfv .pdfv-toolbar a:hover { background: #263244; color: #93c5fd; }
+.lk-dark .pdfv .pdfv-toolbar button.active { background: #2563eb2e; border-color: #2563eb66; color: #93c5fd; }
+.lk-dark .pdfv-page-form { color: #9ca3af; }
+.lk-dark .pdfv-page-form input { background: #263244; border-color: #374151; color: #f3f4f6; }
+.lk-dark .pdfv-zoom { color: #f3f4f6; }
+.lk-dark .pdfv-state { color: #9ca3af; }
+.lk-dark .pdfv-page { box-shadow: 0 6px 18px #00000080; }
+
+/* ── Calendário de processos ── */
+.lk-dark .process-calendar .urgent { --pc-tint: #dc262626; --pc-color: #f87171; }
+.lk-dark .process-calendar .soon { --pc-tint: #d9770626; --pc-color: #fbbf24; }
+.lk-dark .process-calendar .planned { --pc-tint: #2563eb26; --pc-color: #93c5fd; }
+.lk-dark .process-calendar .completed { --pc-tint: #16a34a26; --pc-color: #4ade80; }
+
+/* ── Campos de formulário nativos (selects/inputs) herdam o esquema escuro ── */
+.lk-dark input, .lk-dark select, .lk-dark textarea { color-scheme: dark; }
+.lk-dark .ct-field select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); }
+
+/* ── Efeitos de botões (hover) no escuro ── */
+/* Botões antigos (Usuários, Setores, Modalidades, modais): sombra e hover sem tons claros */
+.lk-dark.lk-process-shell :is(.btn-primary, .btn-save, .btn-confirm, .btn-add-tpl) { box-shadow: 0 6px 16px #00000059; }
+.lk-dark.lk-process-shell :is(.btn-primary, .btn-save, .btn-confirm, .btn-add-tpl):hover:not(:disabled) { background: #3b82f6; box-shadow: 0 8px 20px #2563eb47; }
+.lk-dark.lk-process-shell :is(.btn-cancel, .btn-cancel-lg, .btn-outline):hover:not(:disabled) { background: #2f3b4f; color: #f3f4f6; }
+.lk-dark .icon-btn:hover { background: #ffffff12; color: #f3f4f6; box-shadow: 0 4px 10px #00000040; }
+.lk-dark .icon-btn.danger:hover, .lk-dark.lk-process-shell .column .icon-btn.danger:hover { background: #dc26261f; color: #f87171; }
+.lk-dark.lk-process-shell .column .icon-btn:hover { background: #2563eb2e; color: #93c5fd; box-shadow: none; }
+/* Fases do quadro: cabeçalho misturado ao fundo escuro; ações em branco translúcido */
+.lk-dark.lk-process-shell .phase-header { background: color-mix(in srgb, var(--phase-color) 20%, #1f2937) !important; color: color-mix(in srgb, var(--phase-color) 55%, #ffffff); }
+.lk-dark.lk-process-shell .phase-header :is(.phase-name, .phase-input, .phase-count) { color: inherit; }
+.lk-dark .phase-actions .icon-btn:hover, .lk-dark .phase-actions .icon-btn.danger:hover { background: #ffffff1f; border-color: transparent; color: #fff; box-shadow: none; }
+/* Bordas de hover azul-claro ficam fortes demais no escuro */
+.lk-dark .adm-card-action:hover, .lk-dark .ct-managers-lists li button:hover { border-color: #2563eb88; }
+.lk-dark .dp-popover .dp-link.strong:hover { background: #2563eb2e; color: #93c5fd; }
+.lk-dark .pf-logout:hover, .lk-dark .ct-viewer-actions button.danger:hover:not(:disabled) { border-color: #dc262680; color: #f87171; }
+/* Campos dos modais antigos estavam presos ao esquema claro */
+.lk-dark.lk-process-shell :is(.doc-input, .select-field) { color-scheme: dark !important; }
+
+/* ── Meu perfil: capa, níveis de acesso e botão de sair ── */
+.lk-dark .pf-cover { --pf-c0: #1e3a8a; --pf-c1: #93c5fd; --pf-c2: #1d4ed8; --pf-c3: #1e40af; background: linear-gradient(135deg, #172554 0%, #1e3a8a 55%, #1e40af 100%); }
+.lk-dark .pf-cover-1 { opacity: .18; }
+.lk-dark .pf-cover-2 { opacity: .55; }
+.lk-dark .pf-cover-3 { opacity: .7; }
+.lk-dark .pf-cover-dot { opacity: .14; }
+.lk-dark .pf-avatar { box-shadow: 0 0 0 1px var(--lk-border), 0 10px 24px #00000066; }
+.lk-dark .pf-level.total { background: #16a34a26; color: #4ade80; }
+.lk-dark .pf-level.read { background: #7c3aed2e; color: #c4b5fd; }
+.lk-dark .pf-about li > span { color: #93c5fd; }
+.lk-dark .lk-dashboard .pf-tabs button.active, .lk-dark.lk-dashboard .pf-tabs button.active { color: #93c5fd; }
+.lk-dark .lk-dashboard .pf-tabs button.active::after, .lk-dark.lk-dashboard .pf-tabs button.active::after { background: #60a5fa; }
+.lk-dark.lk-dashboard .pf-round:hover { border-color: #dc262680; background: #dc26261f; color: #f87171; }
+.lk-dark .pf-start-option { --pf-page-text: color-mix(in srgb, var(--pf-page) 55%, #ffffff); }
+.lk-dark .pf-start-icon { background: color-mix(in srgb, var(--pf-page) 22%, var(--lk-surface)); color: var(--pf-page-text); }
+.lk-dark .pf-start-option.active { background: color-mix(in srgb, var(--pf-page) 12%, var(--lk-surface)); }
+.lk-dark .pf-start-option:hover { box-shadow: 0 6px 16px #00000040; }
+.lk-dark.lk-dashboard .pf-seg button.active { color: #93c5fd; box-shadow: 0 1px 2px #00000066; }
+.lk-dark .pf-toast { box-shadow: 0 14px 34px #00000080, 0 0 0 1px #ffffff0f; }
+.lk-dark .pf-toast-icon { background: #263244; box-shadow: 0 2px 8px #00000059; }
+.lk-dark .pf-toast.ok { --pf-toast-color: #4ade80; --pf-toast-glow: #22c55e26; }
+.lk-dark .pf-toast.error { --pf-toast-color: #f87171; --pf-toast-glow: #ef444426; }
+.lk-dark .pf-toast.warning { --pf-toast-color: #fbbf24; --pf-toast-glow: #f59e0b26; }
+.lk-dark .pf-toast.info { --pf-toast-color: #38bdf8; --pf-toast-glow: #0ea5e926; }
+.lk-dark .pf-history-alert, .lk-dark .pf-history-badge.bad, .lk-dark .pf-history-icon.bad { background: #dc26261f; color: #f87171; }
+.lk-dark .pf-history-badge.ok { background: #16a34a26; color: #4ade80; }
+.lk-dark .pf-history-badge.info, .lk-dark .pf-history-icon { color: #93c5fd; }
+.lk-dark .lk-contracts .pf-revoke-modal .contract-delete-icon { background: #2563eb2e; color: #93c5fd; }

@@ -7,7 +7,7 @@
 .cb-card-head h2 { font: 600 17px/24px 'Manrope', sans-serif; color: var(--lk-text); }
 .cb-card-head p { margin-top: 2px; font-size: 11px; color: var(--lk-muted); }
 
-.cb-table-wrap { overflow-x: auto; scrollbar-width: thin; scrollbar-color: #1118271a transparent; }
+.cb-table-wrap { overflow-x: auto; }
 .cb-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
 /* Cabeçalho em "pílula": fundo suave com borda arredondada. */
 .cb-table thead th { height: 44px; padding: 0 16px; background: var(--lk-soft); border-top: 1px solid var(--lk-border); border-bottom: 1px solid var(--lk-border); font-size: 10px; font-weight: 600; color: var(--lk-muted); text-align: left; text-transform: uppercase; white-space: nowrap; }

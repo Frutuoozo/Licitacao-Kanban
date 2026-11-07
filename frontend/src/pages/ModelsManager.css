@@ -16,7 +16,7 @@
 .mm-list { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 10px; padding: 14px; background: var(--lk-surface); border: 1px solid var(--lk-border); border-radius: 16px; }
 .mm-search { height: 36px; padding: 0 12px; border: 1px solid var(--lk-border); border-radius: 9px; background: var(--lk-soft); color: var(--lk-text); font: 400 12px 'Inter', sans-serif; outline: none; }
 .mm-search:focus { border-color: #2563eb; box-shadow: 0 0 0 3px #2563eb1f; }
-.mm-list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: calc(100dvh - 330px); min-height: 120px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #1118271a transparent; }
+.mm-list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: calc(100dvh - 330px); min-height: 120px; overflow-y: auto; }
 .mm-list li { display: flex; align-items: center; gap: 4px; padding-right: 6px; border: 1px solid transparent; border-radius: 10px; }
 .mm-list li:hover { background: var(--lk-soft); }
 .mm-list li.active { background: var(--lk-tint); border-color: #dbeafe; }

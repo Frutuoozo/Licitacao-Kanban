@@ -38,3 +38,12 @@ export function initSocket(httpServer) {
 export function getIO() {
   return io;
 }
+
+// Chamar depois de invalidar as sessões do usuário ou excluí-lo. Fecha só o transporte (e não socket.disconnect):
+// o cliente tenta reconectar, então quem tem sessão válida volta e quem foi revogado é barrado na entrada.
+export function closeUserSockets(userId) {
+  if (!io) return;
+  for (const socket of io.of('/').sockets.values()) {
+    if (socket.userId === userId) socket.conn.close();
+  }
+}

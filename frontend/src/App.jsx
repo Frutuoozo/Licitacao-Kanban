@@ -1,266 +1,55 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
 import { io } from "socket.io-client";
 import {
-  IconClose, IconPlus, IconUser, IconShield,
-  IconEye, IconEyeOff, IconClipboard, IconFileText, IconUsers,
+  IconClose, IconUser, IconShield,
+  IconClipboard, IconFileText, IconUsers,
 } from "./icons";
 import {
   DEFAULT_TEMPLATES, normalizeTemplatesFromApi,
   orderedTemplateTypeNames, normalizeDocs,
 } from "./utils";
-import ProcessosPage from "./pages/ProcessosPage";
-import DashboardPage from "./pages/DashboardPage";
 import AppSidebar from "./components/AppSidebar";
-import "./pages/ProcessosPage.css";
-import ContratosAtivos from "./pages/ContratosPage";
-import AdminPage from "./pages/AdminPage";
-import ColaboradoresPage from "./pages/ColaboradoresPage";
 import { AppSettingsContext, DEFAULT_SETTINGS } from "./appSettings";
-import PerfilPage from "./pages/PerfilPage";
-import { authFetch } from "./authFetch";
+// Estilos de todas as páginas carregam já no início, nesta ordem (a mesma de quando as páginas eram
+// importadas aqui): DashboardPage.css define as cores de todas as telas logadas e o darkTheme.css,
+// lá embaixo, precisa vir depois de todos. Só o JavaScript das páginas é baixado sob demanda.
+import "./components/ProcessCalendar.css";
+import "./pages/ProcessReports.css";
+import "./pages/DashboardPage.css";
+import "./components/Toast.css";
+import "./pages/ProcessosPage.css";
+import "./components/DatePicker.css";
+import "./pages/ContratosPage.css";
+import "./pages/AdminPage.css";
+import "./pages/ModelsManager.css";
+import "./pages/ColaboradoresPage.css";
+import "./pages/PerfilPage.css";
+import "./pages/DemandasPage.css";
+import LoginPage from "./pages/LoginPage";
+import { DEFAULT_PREFERENCES, FONT_ZOOM, PreferencesContext, cachePreferences, readCachedPreferences, setDateFormat } from "./preferences";
+import { authFetch, API_URL } from "./authFetch";
+// Por último: as correções do tema escuro precisam vir depois dos estilos das páginas.
+import "./darkTheme.css";
+import "./scrollbar.css";
 
-// ── Login ─────────────────────────────────────────────────────────────────────
-
-function Login({ onLogin, notice, noticeOk }) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  // Estados de primeiro acesso
-  const [isFirstAccess, setIsFirstAccess] = useState(false);
-  const [temporaryPassword, setTemporaryPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-
-  const handleSubmit = async (e) => {
-    e.preventDefault(); setLoading(true); setError(""); setSuccessMsg("");
-    const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
-
-    try {
-      if (isFirstAccess) {
-        // Validações locais da senha
-        if (newPassword.length < 8) {
-          setError("A nova senha deve ter no mínimo 8 caracteres");
-          setLoading(false);
-          return;
-        }
-        // Mesma política do backend: maiúscula, número e caractere especial.
-        if (!/[A-Z]/.test(newPassword)) {
-          setError("A nova senha deve conter pelo menos uma letra maiúscula");
-          setLoading(false);
-          return;
-        }
-        if (!/[0-9]/.test(newPassword)) {
-          setError("A nova senha deve conter pelo menos um número");
-          setLoading(false);
-          return;
-        }
-        const specialCharRegex = /[^a-zA-Z0-9]/;
-        if (!specialCharRegex.test(newPassword)) {
-          setError("A nova senha deve conter pelo menos um caractere especial");
-          setLoading(false);
-          return;
-        }
-        if (newPassword !== confirmPassword) {
-          setError("As senhas não coincidem");
-          setLoading(false);
-          return;
-        }
-
-        const res = await authFetch(`${API_URL}/api/auth/first-access`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, currentPassword: temporaryPassword, password: newPassword })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          onLogin(data);
-        } else {
-          setError(data.error || "Erro ao configurar primeiro acesso");
-        }
-      } else {
-        const res = await authFetch(`${API_URL}/api/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, password })
-        });
-        const data = await res.json();
-        if (res.ok) {
-          if (data.firstAccess) {
-            setIsFirstAccess(true);
-            setTemporaryPassword(password);
-            setPassword("");
-            setSuccessMsg(data.passwordExpired
-              ? "Sua senha expirou pela política de segurança. Defina uma nova senha para continuar."
-              : "Primeiro acesso detectado! Por favor, configure sua nova senha.");
-          } else {
-            onLogin(data);
-          }
-        } else {
-          setError(data.error || "Login falhou");
-        }
-      }
-    } catch {
-      setError("Erro ao conectar no servidor");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="ls-shell">
-      <div className="ls-orb ls-orb-1" aria-hidden="true" />
-      <div className="ls-orb ls-orb-2" aria-hidden="true" />
-      <div className="ls-orb ls-orb-3" aria-hidden="true" />
-      <div className="ls-orb ls-orb-4" aria-hidden="true" />
-      <div className="ls-float-node ls-float-node-1" aria-hidden="true">
-        <span className="ls-float-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-            <path d="M4 6h5" />
-            <path d="M4 12h3" />
-          </svg>
-        </span>
-        <span className="ls-float-text">
-          <strong>Fluxo em andamento</strong>
-          <small>etapa validada</small>
-        </span>
-      </div>
-      <div className="ls-float-node ls-float-node-2" aria-hidden="true">
-        <span className="ls-float-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="4" y="5" width="16" height="14" rx="2" />
-            <path d="M8 9h8" />
-            <path d="M8 13h5" />
-          </svg>
-        </span>
-        <span className="ls-float-text">
-          <strong>Fila organizada</strong>
-          <small>etapas sincronizadas</small>
-        </span>
-      </div>
-      <div className="ls-float-node ls-float-node-3" aria-hidden="true">
-        <span className="ls-float-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 3v18" />
-            <path d="M5 8h14" />
-            <path d="M7 16h10" />
-          </svg>
-        </span>
-        <span className="ls-float-text">
-          <strong>Controle ativo</strong>
-          <small>status em tempo real</small>
-        </span>
-      </div>
-      <div className="ls-float-node ls-float-node-4" aria-hidden="true">
-        <span className="ls-float-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20 6L9 17l-5-5" />
-          </svg>
-        </span>
-        <span className="ls-float-text">
-          <strong>Etapa validada</strong>
-          <small>checklist concluído</small>
-        </span>
-      </div>
-      <div className="ls-float-node ls-float-node-5" aria-hidden="true">
-        <span className="ls-float-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="4" y="4" width="16" height="16" rx="3" />
-            <path d="M4 10h16" />
-            <path d="M10 20V10" />
-          </svg>
-        </span>
-        <span className="ls-float-text">
-          <strong>Painel sincronizado</strong>
-          <small>visão centralizada</small>
-        </span>
-      </div>
-      <div className="ls-float-node ls-float-node-6" aria-hidden="true">
-        <span className="ls-float-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 12a9 9 0 1 1-3-6.7" />
-            <path d="M21 3v6h-6" />
-          </svg>
-        </span>
-        <span className="ls-float-text">
-          <strong>Fluxo monitorado</strong>
-          <small>movimento contínuo</small>
-        </span>
-      </div>
-      <div className="ls-card">
-        <div className="ls-brand">
-          <div className="ls-logo">Licit<span>Kanban</span></div>
-          <p className="ls-tagline">Gestão inteligente de licitações</p>
-        </div>
-        <h2 className="ls-title">{isFirstAccess ? "Primeiro Acesso" : "Bem-vindo de volta"}</h2>
-        <p className="ls-subtitle">{isFirstAccess ? "Defina sua nova senha para continuar" : "Entre com suas credenciais"}</p>
-
-        {notice && !successMsg && (noticeOk
-          ? <div className="ls-success">{notice}</div>
-          : <p className="ls-error">{notice}</p>)}
-        {successMsg && (
-          <div className="ls-success">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-            {successMsg}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="ls-form">
-          {isFirstAccess ? (
-            <>
-              <div className="ls-field-wrap">
-                <span className="ls-field-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg></span>
-                <input className="ls-input" style={{ paddingRight: 42 }} type={showPassword ? "text" : "password"} placeholder="Nova Senha" value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password" autoCapitalize="off" autoCorrect="off" spellCheck={false} required />
-                <button type="button" className="ls-eye-btn" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}>
-                  {showPassword ? <IconEyeOff /> : <IconEye />}
-                </button>
-              </div>
-              <div className="ls-field-wrap">
-                <span className="ls-field-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg></span>
-                <input className="ls-input" style={{ paddingRight: 42 }} type={showPassword ? "text" : "password"} placeholder="Confirmar Nova Senha" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} autoComplete="new-password" autoCapitalize="off" autoCorrect="off" spellCheck={false} required />
-              </div>
-              <p style={{ fontSize: "0.75rem", color: "var(--muted)", margin: "0 0 6px", lineHeight: "1.4" }}>
-                Requisitos da senha:<br />
-                • Mínimo de 8 caracteres<br />
-                • Pelo menos uma letra maiúscula e um número<br />
-                • Pelo menos um caractere especial (ex: !, @, #, $, etc)
-              </p>
-              <p className="ls-requirements">
-                Use uma senha que combine letras, números e símbolo para ficar fácil de lembrar e mais difícil de adivinhar.
-              </p>
-            </>
-          ) : (
-            <>
-              <div className="ls-field-wrap">
-                <span className="ls-field-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg></span>
-                <input className="ls-input" type="text" placeholder="Usuário" value={username} onChange={e => setUsername(e.target.value)} required autoComplete="username" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
-              </div>
-              <div className="ls-field-wrap">
-                <span className="ls-field-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg></span>
-                <input className="ls-input" style={{ paddingRight: 42 }} type={showPassword ? "text" : "password"} placeholder="Senha" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
-                <button type="button" className="ls-eye-btn" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}>
-                  {showPassword ? <IconEyeOff /> : <IconEye />}
-                </button>
-              </div>
-              <p className="ls-requirements">
-                Se for seu primeiro acesso, use a senha temporária recebida e siga para a definição da nova senha.
-              </p>
-            </>
-          )}
-          {error && <p className="ls-error">{error}</p>}
-          <button type="submit" className="ls-submit" disabled={loading}>
-            {loading ? "Aguarde..." : (isFirstAccess ? "Definir Senha e Entrar" : "Entrar")}
-            {!loading && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
+// Páginas baixadas sob demanda: a tela de login não carrega o app inteiro (leitor de .docx, gráficos...).
+const PAGE_LOADERS = {
+  processos: () => import("./pages/ProcessosPage"),
+  dashboard: () => import("./pages/DashboardPage"),
+  demandas: () => import("./pages/DemandasPage"),
+  contratos: () => import("./pages/ContratosPage"),
+  admin: () => import("./pages/AdminPage"),
+  colaboradores: () => import("./pages/ColaboradoresPage"),
+  perfil: () => import("./pages/PerfilPage"),
+};
+const ProcessosPage = lazy(PAGE_LOADERS.processos);
+const DashboardPage = lazy(PAGE_LOADERS.dashboard);
+const DemandasPage = lazy(PAGE_LOADERS.demandas);
+const ContratosAtivos = lazy(PAGE_LOADERS.contratos);
+const AdminPage = lazy(PAGE_LOADERS.admin);
+const ColaboradoresPage = lazy(PAGE_LOADERS.colaboradores);
+const PerfilPage = lazy(PAGE_LOADERS.perfil);
+const pageLoading = <div className="lk-page-loading" role="status">Carregando…</div>;
 
 // ── App ───────────────────────────────────────────────────────────────────────
 
@@ -269,10 +58,11 @@ export default function App() {
   const [processLoading, setProcessLoading] = useState(true);
   const [processError, setProcessError] = useState("");
   const [archived, setArchived] = useState([]);
+  // Demandas ainda não iniciadas: fora do quadro, do calendário, dos relatórios e dos indicadores.
+  const [pendingDemands, setPendingDemands] = useState([]);
   const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
   const [sectors, setSectors] = useState([]);
   const [collaborators, setCollaborators] = useState([]);
-  const [showNewProcess, setShowNewProcess] = useState(false);
   const [activeTab, setActiveTab] = useState("board");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -288,18 +78,71 @@ export default function App() {
   const [inactivityCountdown, setInactivityCountdown] = useState(60);
 
   const [appSettings, setAppSettings] = useState(DEFAULT_SETTINGS);
-  const [logoutNotice, setLogoutNotice] = useState("");
-  const [logoutNoticeOk, setLogoutNoticeOk] = useState(false);
+  // Preferências pessoais (tema, letra, alertas, exportação, datas): servidor + cópia no navegador.
+  const [preferences, setPreferences] = useState(readCachedPreferences);
+  const preferencesRef = useRef(preferences);
+  const sessionExpiredRef = useRef(null);
+  preferencesRef.current = preferences;
+  setDateFormat(preferences.dateFormat);
+  const applyPreferences = useCallback((next) => { preferencesRef.current = next; setPreferences(next); cachePreferences(next); }, []);
+  // Salva na hora (otimista); se o servidor recusar, volta ao valor anterior e repassa o erro.
+  const updatePreferences = useCallback(async (changes) => {
+    const previous = preferencesRef.current;
+    applyPreferences({ ...previous, ...changes });
+    try {
+      const res = await authFetch(`${API_URL}/api/auth/preferences`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preferences: changes }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        // Sessão expirada (ou backend reiniciado sem JWT_SECRET fixo): volta ao login com aviso.
+        sessionExpiredRef.current?.();
+        throw new Error("Sua sessão expirou. Entre novamente.");
+      }
+      if (!res.ok) throw new Error(data.error || "Não foi possível salvar.");
+    } catch (error) {
+      applyPreferences(previous);
+      throw error;
+    }
+  }, [applyPreferences]);
+  const [systemDark, setSystemDark] = useState(() => window.matchMedia?.("(prefers-color-scheme: dark)").matches || false);
+  useEffect(() => {
+    const media = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!media) return undefined;
+    const onChange = (event) => setSystemDark(event.matches);
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+  const darkMode = preferences.theme === "auto" ? systemDark : preferences.theme === "dark";
+  const toggleDarkMode = useCallback(() => { updatePreferences({ theme: darkMode ? "light" : "dark" }).catch(() => {}); }, [darkMode, updatePreferences]);
+  useEffect(() => { document.documentElement.classList.toggle("lk-theme-dark", darkMode); }, [darkMode]);
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--lk-zoom", String(FONT_ZOOM[preferences.fontSize] || 1));
+    if (preferences.fontSize === "normal") root.removeAttribute("data-lk-font"); else root.setAttribute("data-lk-font", preferences.fontSize);
+  }, [preferences.fontSize]);
+  // Ao entrar, as preferências salvas do usuário substituem as do navegador (tema e letra ficam se ele nunca escolheu).
+  const sessionPreferences = sessionUser?.preferences;
+  useEffect(() => {
+    if (!sessionPreferences) return;
+    const current = preferencesRef.current;
+    applyPreferences({ ...DEFAULT_PREFERENCES, theme: current.theme, fontSize: current.fontSize, ...sessionPreferences });
+  }, [sessionPreferences, applyPreferences]);
+  // Aviso mostrado como notificação na tela de login depois de sair: { type, title, text } ou null.
+  const [logoutNotice, setLogoutNotice] = useState(null);
   const handleLogout = useCallback(() => {
-    authFetch(`${process.env.REACT_APP_API_URL || "http://localhost:3001"}/api/auth/logout`, { method: "POST" })
+    authFetch(`${API_URL}/api/auth/logout`, { method: "POST" })
       .catch(() => { })
       .finally(() => setSessionUser(null));
   }, []);
+  sessionExpiredRef.current = () => { setLogoutNotice({ type: "warning", title: "Sessão expirada", text: "Entre novamente para continuar." }); setSessionUser(null); };
 
   // Configurações administrativas (sessão automática, confirmação ao excluir...).
   useEffect(() => {
     if (!sessionUser) return;
-    authFetch(`${process.env.REACT_APP_API_URL || "http://localhost:3001"}/api/settings`)
+    authFetch(`${API_URL}/api/settings`)
       .then(res => (res.ok ? res.json() : null))
       .then(data => { if (data) setAppSettings({ ...DEFAULT_SETTINGS, ...data }); })
       .catch(() => { });
@@ -322,8 +165,7 @@ export default function App() {
       let last = lastLocal;
       try { last = Math.max(last, Number(localStorage.getItem(KEY)) || 0); } catch { /* usa a desta aba */ }
       if (Date.now() - last >= limitMs) {
-        setLogoutNoticeOk(false);
-        setLogoutNotice(`Sua sessão foi encerrada após ${appSettings.sessionTimeoutMinutes} minutos sem atividade.`);
+        setLogoutNotice({ type: "warning", title: "Sessão encerrada por inatividade", text: `Você ficou ${appSettings.sessionTimeoutMinutes} minutos sem usar o sistema. Entre novamente para continuar.` });
         handleLogout();
       }
     }, 30000);
@@ -348,7 +190,6 @@ export default function App() {
   }, [sessionUser, handleLogout]);
 
   const loadSessionUser = useCallback(() => {
-    const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
     authFetch(`${API_URL}/api/auth/me`)
       .then((r) => { if (r.status === 401 || r.status === 403) { setSessionUser(null); throw new Error("auth"); } return r.json(); })
       .then((user) => { setSessionUser(user); openStartPage(user); })
@@ -372,15 +213,40 @@ export default function App() {
     loadSessionUser(); setActiveSection("processos");
   }, [loadSessionUser]);
 
+  // Depois de entrar, baixa as demais páginas em segundo plano: trocar de seção não espera download.
+  useEffect(() => {
+    if (!sessionUser) return undefined;
+    const timer = setTimeout(() => Object.values(PAGE_LOADERS).forEach((load) => load().catch(() => {})), 1500);
+    return () => clearTimeout(timer);
+  }, [sessionUser]);
+
+  // Separa a lista do servidor pelas três situações.
+  const applyProcessList = useCallback((data) => {
+    setColumns(data.filter(p => p.status === 'active'));
+    setArchived(data.filter(p => p.status === 'archived'));
+    setPendingDemands(data.filter(p => p.status === 'pending'));
+  }, []);
+  const addProcessLocally = useCallback((process) => {
+    const add = (list) => (list.find(c => c.id === process.id) ? list : [...list, process]);
+    if (process.status === 'pending') setPendingDemands(add); else setColumns(add);
+  }, []);
+  // Demanda iniciada: sai das pendentes e entra em Processos.
+  const moveToStarted = useCallback((id, setor, startedAt) => {
+    setPendingDemands((pending) => {
+      const demand = pending.find(c => c.id === id);
+      if (demand) setColumns(list => (list.find(c => c.id === id) ? list : [...list, { ...demand, status: 'active', setor, startedAt }]));
+      return pending.filter(c => c.id !== id);
+    });
+  }, []);
+
   // Carregar dados iniciais
   useEffect(() => {
     if (!sessionUser) return;
-    const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
     setProcessLoading(true);
     setProcessError("");
     authFetch(`${API_URL}/api/processes`)
       .then(res => { if (!res.ok && res.status !== 401 && res.status !== 403) throw new Error("load"); if (res.status === 401 || res.status === 403) throw new Error('Unauthorized'); return res.json(); })
-      .then(data => { setColumns(data.filter(p => p.status === 'active')); setArchived(data.filter(p => p.status === 'archived')); })
+      .then(applyProcessList)
       .catch(err => { if (err.message === 'Unauthorized') handleLogout(); else setProcessError("Não foi possível carregar os processos."); })
       .finally(() => setProcessLoading(false));
     authFetch(`${API_URL}/api/templates`)
@@ -391,12 +257,11 @@ export default function App() {
       .then(res => res.json())
       .then(data => { if (Array.isArray(data)) setSectors(data); })
       .catch(console.error);
-  }, [sessionUser, handleLogout]);
+  }, [sessionUser, handleLogout, applyProcessList]);
 
-  // Colaboradores: recarrega ao abrir Processos para refletir cadastros recentes.
+  // Colaboradores: recarrega ao abrir Processos ou Demandas para refletir cadastros recentes.
   useEffect(() => {
-    if (!sessionUser || activeSection !== "processos") return;
-    const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
+    if (!sessionUser || (activeSection !== "processos" && activeSection !== "demandas")) return;
     authFetch(`${API_URL}/api/collaborators`)
       .then(res => res.json())
       .then(data => { if (Array.isArray(data)) setCollaborators(data.filter(c => c.ativo !== false)); })
@@ -406,29 +271,30 @@ export default function App() {
   // Socket.IO
   useEffect(() => {
     if (!sessionUser) return;
-    const socket = io(process.env.REACT_APP_API_URL || "http://localhost:3001", { withCredentials: true });
-    socket.on('process:added', (p) => { if (p.status === 'active') setColumns(prev => prev.find(c => c.id === p.id) ? prev : [...prev, p]); else setArchived(prev => prev.find(c => c.id === p.id) ? prev : [...prev, p]); });
-    socket.on('process:updated', ({ id, title, processNumber, setor, dueDate, type, typeColor, docs }) => {
-      const next = { title, processNumber, setor, dueDate, type: type ?? null, typeColor: typeColor ?? null, docs: docs || [] };
+    const socket = io(API_URL, { withCredentials: true });
+    socket.on('process:added', addProcessLocally);
+    socket.on('process:updated', ({ id, title, processNumber, setor, dueDate, type, typeColor, docs, notes, priority }) => {
+      const next = { title, processNumber, setor, dueDate, type: type ?? null, typeColor: typeColor ?? null, docs: docs || [], notes: notes ?? null, priority };
       setColumns(p => p.map(c => c.id === id ? { ...c, ...next } : c));
       setArchived(p => p.map(c => c.id === id ? { ...c, ...next } : c));
+      setPendingDemands(p => p.map(c => c.id === id ? { ...c, ...next } : c));
     });
-    socket.on('process:deleted', ({ id }) => { setColumns(p => p.filter(c => c.id !== id)); setArchived(p => p.filter(c => c.id !== id)); });
-    socket.on('process:items_updated', ({ id, docs }) => { setColumns(p => p.map(c => c.id === id ? { ...c, docs } : c)); setArchived(p => p.map(c => c.id === id ? { ...c, docs } : c)); });
+    socket.on('process:started', ({ id, setor, startedAt }) => moveToStarted(id, setor, startedAt));
+    socket.on('process:deleted', ({ id }) => { setColumns(p => p.filter(c => c.id !== id)); setArchived(p => p.filter(c => c.id !== id)); setPendingDemands(p => p.filter(c => c.id !== id)); });
+    socket.on('process:items_updated', ({ id, docs }) => { setColumns(p => p.map(c => c.id === id ? { ...c, docs } : c)); setArchived(p => p.map(c => c.id === id ? { ...c, docs } : c)); setPendingDemands(p => p.map(c => c.id === id ? { ...c, docs } : c)); });
     socket.on('process:status_changed', ({ id, status }) => {
       if (status === 'archived') setColumns(p => { const col = p.find(c => c.id === id); if (col) setArchived(a => a.find(c => c.id === id) ? a : [...a, { ...col, archivedAt: new Date().toISOString() }]); return p.filter(c => c.id !== id); });
       else setArchived(p => { const col = p.find(c => c.id === id); if (col) setColumns(a => a.find(c => c.id === id) ? a : [...a, col]); return p.filter(c => c.id !== id); });
     });
     socket.on('templates:updated', (data) => {
       setTemplates(normalizeTemplatesFromApi(data));
-      const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
       authFetch(`${API_URL}/api/processes`)
         .then(res => { if (res.status === 401 || res.status === 403) throw new Error('Unauthorized'); return res.json(); })
-        .then(data => { setColumns(data.filter(p => p.status === 'active')); setArchived(data.filter(p => p.status === 'archived')); })
+        .then(applyProcessList)
         .catch(err => { if (err.message === 'Unauthorized') handleLogout(); });
     });
     return () => socket.disconnect();
-  }, [sessionUser, handleLogout]);
+  }, [sessionUser, handleLogout, applyProcessList, addProcessLocally, moveToStarted]);
 
   // Seções da sidebar
   const SECTIONS = useMemo(() => {
@@ -445,14 +311,40 @@ export default function App() {
 
   // API helper
   const apiFetch = useCallback((url, method, body) => {
-    const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
     authFetch(`${API_URL}${url}`, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
       .then(res => { if (res.status === 401 || res.status === 403) setSessionUser(null); })
       .catch(console.error);
   }, []);
 
+  // Operações de demandas: esperam o servidor, para a tela mostrar o erro e manter o formulário aberto.
+  const demandRequest = async (url, method, body) => {
+    const res = await authFetch(`${API_URL}${url}`, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) { setSessionUser(null); throw new Error('Sessão expirada. Entre novamente.'); }
+    if (!res.ok) throw new Error(data.error || 'Tente de novo em instantes.');
+    return data;
+  };
+  const createDemand = async (demand) => {
+    const { createdAt, startedAt } = await demandRequest('/api/processes', 'POST', demand);
+    addProcessLocally({ ...demand, setor: demand.setor || null, notes: demand.notes || null, createdAt, startedAt });
+  };
+  const updateDemand = async (id, data) => {
+    await demandRequest(`/api/processes/${id}`, 'PUT', data);
+    const next = { ...data, setor: data.setor || null, notes: data.notes || null };
+    setColumns(p => p.map(c => c.id === id ? { ...c, ...next } : c));
+    setPendingDemands(p => p.map(c => c.id === id ? { ...c, ...next } : c));
+  };
+  const startDemand = async (id, setor) => {
+    const started = await demandRequest(`/api/processes/${id}/start`, 'PUT', setor ? { setor } : {});
+    moveToStarted(id, started.setor, started.startedAt);
+  };
+  const deleteDemand = async (id) => {
+    await demandRequest(`/api/processes/${id}`, 'DELETE');
+    setColumns(p => p.filter(c => c.id !== id));
+    setPendingDemands(p => p.filter(c => c.id !== id));
+  };
+
   // Operações de processos
-  const addColumn = (col) => { setColumns(p => [...p, col]); apiFetch('/api/processes', 'POST', col); };
   const deleteColumn = (id) => { setColumns(p => p.filter(c => c.id !== id)); apiFetch(`/api/processes/${id}`, 'DELETE'); };
   const renameColumn = (id, dataOrTitle) => {
     const payload = typeof dataOrTitle === 'string' ? { title: dataOrTitle } : (dataOrTitle || {});
@@ -497,7 +389,6 @@ export default function App() {
 
   // Retorna uma promessa: a tela de modelos mostra sucesso ou o erro do servidor.
   const saveTemplates = async (newTemplates) => {
-    const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
     const res = await authFetch(`${API_URL}/api/templates`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newTemplates) });
     if (res.status === 401) { setSessionUser(null); throw new Error('Sessão expirada.'); }
     const data = await res.json().catch(() => ({}));
@@ -521,8 +412,8 @@ export default function App() {
                 loading={processLoading} error={processError}
                 columns={columns} archived={archived} templates={templates} sortedColumns={sortedColumns}
                 activeTab={activeTab} setActiveTab={setActiveTab}
-                showNewProcess={showNewProcess} setShowNewProcess={setShowNewProcess}
-                addColumn={addColumn} updateDocs={updateDocs}
+                onOpenDemands={() => setActiveSection("demandas")}
+                updateDocs={updateDocs}
                 deleteColumn={deleteColumn} renameColumn={renameColumn} archiveColumn={archiveColumn}
                 unarchiveColumn={unarchiveColumn} deleteArchived={deleteArchived}
                 collaborators={collaborators}
@@ -531,6 +422,7 @@ export default function App() {
 
   return (
     <AppSettingsContext.Provider value={{ settings: appSettings, setSettings: setAppSettings }}>
+    <PreferencesContext.Provider value={{ preferences, updatePreferences }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Nunito+Sans:wght@300;400;500;600;700&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -817,7 +709,6 @@ export default function App() {
         .btn-confirm,
         .btn-add-tpl,
         .type-toggle,
-        .ls-eye-btn,
         .btn-chip,
         .sidebar-item {
           min-height: 40px;
@@ -899,7 +790,6 @@ export default function App() {
         .btn-confirm:focus-visible,
         .btn-add-tpl:focus-visible,
         .type-toggle:focus-visible,
-        .ls-eye-btn:focus-visible,
         .sidebar-item:focus-visible,
         .icon-btn:focus-visible {
           outline: 2px solid rgba(59,130,246,.5);
@@ -914,191 +804,10 @@ export default function App() {
           transform: none;
           box-shadow: none;
         }
-        /* === Login === */
-        @keyframes royalDrift {
-          0% { transform: translate3d(-3%, -1.5%, 0) scale(1); }
-          25% { transform: translate3d(3%, 1.5%, 0) scale(1.03); }
-          50% { transform: translate3d(1.5%, 3%, 0) scale(1.015); }
-          75% { transform: translate3d(-1.5%, 1.5%, 0) scale(1.035); }
-          100% { transform: translate3d(-3%, -1.5%, 0) scale(1); }
-        }
-        @keyframes royalWave {
-          0% { background-position: 0% 0%; }
-          25% { background-position: 35% 18%; }
-          50% { background-position: 100% 100%; }
-          75% { background-position: 62% 78%; }
-          100% { background-position: 0% 0%; }
-        }
-        .ls-shell {
-          min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background:
-            linear-gradient(180deg, #f8fafc 0%, #f3f7fc 14%, #ecf2f9 24%, #e2eaf5 36%, #d4e1f1 52%, #bfd3ea 64%, #8fb6df 78%, #4f84cf 90%, #1a1a6e 100%);
-          background-size: 200% 200%;
-          position: relative;
-          overflow: hidden;
-          padding: 24px;
-          animation: royalWave 14s ease-in-out infinite;
-        }
-        .ls-shell::before {
-          content: '';
-          position: absolute;
-          inset: -18%;
-          background:
-            radial-gradient(circle at 18% 16%, rgba(255,255,255,0.82) 0%, rgba(255,255,255,0.35) 16%, transparent 42%),
-            radial-gradient(circle at 84% 18%, rgba(191,219,254,0.28) 0%, rgba(191,219,254,0.12) 18%, transparent 44%),
-            radial-gradient(circle at 52% 80%, rgba(26,26,110,0.18) 0%, rgba(26,26,110,0.08) 16%, transparent 48%);
-          pointer-events: none;
-          z-index: 0;
-          filter: blur(2px);
-          opacity: 0.95;
-          animation: royalDrift 16s ease-in-out infinite;
-        }
-        .ls-shell::after {
-          content: '';
-          position: absolute;
-          inset: -10%;
-          background:
-            linear-gradient(135deg, rgba(248,250,252,0.0) 0%, rgba(248,250,252,0.18) 18%, rgba(248,250,252,0.06) 34%, rgba(255,255,255,0.0) 52%),
-            radial-gradient(circle at 14% 12%, rgba(255,255,255,0.4) 0%, transparent 28%),
-            radial-gradient(circle at 86% 88%, rgba(255,255,255,0.22) 0%, transparent 30%);
-          background-size: 100% 100%, 100% 100%, 100% 100%;
-          background-position: 0 0, 0 0, 0 0;
-          pointer-events: none;
-          z-index: 0;
-          opacity: 0.35;
-          filter: blur(0.4px);
-          animation: royalWave 18s ease-in-out infinite reverse;
-        }
-        .ls-orb { position: absolute; border-radius: 50%; pointer-events: none; filter: blur(110px); animation: royalDrift 14s ease-in-out infinite; }
-        .ls-orb-1 { width: 520px; height: 520px; top: -12%; left: -14%; background: radial-gradient(circle, rgba(168,197,232,0.38) 0%, rgba(168,197,232,0.16) 32%, transparent 72%); }
-        .ls-orb-2 { width: 520px; height: 520px; bottom: -14%; right: -12%; background: radial-gradient(circle, rgba(26,26,110,0.30) 0%, rgba(37,99,235,0.12) 30%, transparent 72%); animation-duration: 18s; animation-direction: reverse; }
-        .ls-orb-3, .ls-orb-4 { display: block; }
-        .ls-orb-3 { width: 280px; height: 280px; top: 20%; right: 12%; background: radial-gradient(circle, rgba(255,255,255,0.75) 0%, rgba(168,197,232,0.16) 34%, transparent 70%); animation-duration: 16s; }
-        .ls-orb-4 { width: 220px; height: 220px; bottom: 20%; left: 14%; background: radial-gradient(circle, rgba(37,99,235,0.18) 0%, transparent 72%); animation-duration: 17s; }
-        .ls-float-node { position: absolute; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 18px; background: rgba(255,255,255,0.48); border: 1px solid rgba(37,99,235,0.18); box-shadow: 0 14px 40px rgba(37,99,235,0.08); backdrop-filter: blur(10px); color: #1a1a6e; animation: royalDrift 12s ease-in-out infinite; }
-        .ls-float-node-1 { left: 12%; top: 28%; transform: scale(0.94); }
-        .ls-float-node::before { content: ''; position: absolute; inset: -8px -12px -8px -12px; border-radius: 22px; background: radial-gradient(circle, rgba(255,255,255,0.72) 0%, transparent 68%); z-index: -1; filter: blur(12px); opacity: 0.85; }
-        .ls-float-icon { width: 28px; height: 28px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: linear-gradient(135deg, rgba(37,99,235,0.22), rgba(168,197,232,0.24)); color: #1e3a8a; flex-shrink: 0; }
-        .ls-float-text { display: flex; flex-direction: column; line-height: 1.1; }
-        .ls-float-text strong { font-family: 'Nunito Sans', sans-serif; font-size: 0.78rem; font-weight: 700; color: #1a1a6e; }
-        .ls-float-text small { font-family: 'Nunito Sans', sans-serif; font-size: 0.66rem; color: rgba(26,26,110,0.58); margin-top: 3px; }
-        .ls-float-node-2 { left: 80%; top: 28%; transform: scale(0.94); animation-duration: 14s; }
-        .ls-float-node-3 { left: 84%; top: 44%; transform: scale(0.82); animation-duration: 15s; animation-direction: reverse; }
-        .ls-float-node-4 { left: 8%; top: 44%; transform: scale(0.82); animation-duration: 13s; animation-direction: reverse; }
-        .ls-float-node-5 { left: 80%; top: 60%; transform: scale(0.86); animation-duration: 16s; }
-        .ls-float-node-6 { left: 12%; top: 60%; transform: scale(0.86); animation-duration: 14s; animation-direction: reverse; }
-        .ls-card { position: relative; z-index: 1; width: 100%; max-width: 460px; padding: 40px 38px 36px; border-radius: 24px; border: 1px solid rgba(37,99,235,0.16); background: linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(248,250,252,0.92) 100%); box-shadow: 0 24px 80px rgba(37,99,235,0.12), 0 1px 0 rgba(255,255,255,0.95) inset; backdrop-filter: blur(16px); }
-        @media (max-width: 768px) {
-          .ls-shell { padding: 16px; }
-          .ls-card {
-            width: min(100%, 420px);
-            max-width: none;
-            padding: 30px 20px 24px;
-            border-radius: 20px;
-          }
-          .ls-logo { font-size: 2.15rem; }
-          .ls-title { font-size: 1.35rem; }
-          .ls-subtitle { font-size: 0.86rem; }
-          .ls-tab { padding: 9px 6px; font-size: 0.84rem; }
-          .ls-input { font-size: 0.9rem; padding: 12px 12px 12px 40px; }
-          .ls-btn { padding: 12px 14px; }
-        }
-        @media (max-width: 600px) {
-          .ls-orb-3, .ls-orb-4,
-          .ls-float-node-1, .ls-float-node-2, .ls-float-node-3, .ls-float-node-4, .ls-float-node-5, .ls-float-node-6 {
-            display: none;
-          }
-          .ls-shell {
-            padding: 14px;
-            align-items: stretch;
-          }
-          .ls-card {
-            width: 100%;
-            margin: auto 0;
-            padding: 26px 18px 22px;
-            border-radius: 18px;
-          }
-          .ls-brand { margin-bottom: 22px; }
-          .ls-logo { font-size: 1.95rem; letter-spacing: -1px; }
-          .ls-tagline { font-size: 0.82rem; }
-          .ls-title { font-size: 1.22rem; }
-          .ls-subtitle { font-size: 0.82rem; margin-bottom: 16px; }
-          .ls-tabs { margin-bottom: 18px; }
-          .ls-form { gap: 10px; }
-          .ls-btn { margin-top: 2px; }
-        }
-        @media (max-width: 400px) {
-          .ls-shell { padding: 10px; }
-          .ls-card { padding: 22px 14px 18px; border-radius: 16px; }
-          .ls-logo { font-size: 1.72rem; }
-          .ls-title { font-size: 1.12rem; }
-          .ls-input { font-size: 0.86rem; }
-          .ls-tab { font-size: 0.8rem; }
-        }
-        /* Tablet, celular e telas de toque: versão leve do fundo do login.
-           Só a animação de onda do fundo; sem blur pesado (orbs de 110px) e sem vidro fosco,
-           que deixavam a tela lenta nesses aparelhos. O visual (degradês azuis) continua. */
-        @media (max-width: 1024px), (hover: none) {
-          /* Mantém só a "onda" (deslizar do degradê de fundo, barata); o resto fica parado. */
-          .ls-shell::before, .ls-orb, .ls-float-node, .ls-submit { animation: none !important; }
-          .ls-shell::before, .ls-shell::after { filter: none !important; }
-          .ls-float-node, .ls-orb-3, .ls-orb-4 { display: none !important; }
-          .ls-orb { filter: none !important; opacity: .7; will-change: auto; }
-          .ls-orb-1 { width: 360px; height: 360px; }
-          .ls-orb-2 { width: 360px; height: 360px; }
-          .ls-card { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; background: rgba(255,255,255,0.97) !important; box-shadow: 0 12px 32px rgba(26,26,110,0.10) !important; }
-          .ls-input, .ls-tabs { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .ls-shell, .ls-shell::before, .ls-shell::after, .ls-orb, .ls-float-node, .ls-submit { animation: none !important; }
-        }
-        .ls-brand { text-align: center; margin-bottom: 26px; }
-        .ls-logo { font-family: 'Outfit', sans-serif; font-size: 2.55rem; font-weight: 800; color: #1a1a6e; letter-spacing: -1.4px; line-height: 1; }
-        .ls-logo span { color: #2563eb; }
-        .ls-tagline { margin-top: 10px; font-size: 0.86rem; color: rgba(26,26,110,0.64); font-family: 'Nunito Sans', sans-serif; line-height: 1.45; }
-        .ls-title { font-family: 'Outfit', sans-serif; font-size: 1.55rem; font-weight: 700; color: #1a1a6e; letter-spacing: -0.35px; margin-bottom: 6px; }
-        .ls-subtitle { font-size: 0.9rem; color: rgba(26,26,110,0.64); margin-bottom: 18px; font-family: 'Nunito Sans', sans-serif; line-height: 1.45; }
-        .ls-tabs { display: flex; background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.14); border-radius: 14px; padding: 4px; gap: 4px; margin: 6px 0 22px; }
-        .ls-tab { flex: 1; padding: 10px 8px; border: none; background: transparent; border-radius: 10px; font-family: 'Nunito Sans', sans-serif; font-size: 0.875rem; font-weight: 600; color: rgba(26,26,110,0.62); cursor: pointer; transition: color .2s, background .2s, transform .15s, box-shadow .2s; }
-        .ls-tab:hover:not(.ls-tab-active) { color: rgba(26,26,110,0.9); background: rgba(37,99,235,0.06); transform: translateY(-1px); }
-        .ls-tab-active { background: rgba(255,255,255,0.9); color: #2563eb; font-weight: 700; box-shadow: 0 1px 6px rgba(37,99,235,0.12); transform: translateY(-1px); }
-        .ls-form { display: flex; flex-direction: column; gap: 12px; }
-        .ls-field-wrap { position: relative; display: flex; align-items: center; }
-        .ls-field-icon { position: absolute; left: 13px; color: rgba(37,99,235,0.62); display: flex; align-items: center; pointer-events: none; z-index: 1; }
-        .ls-input { width: 100%; padding: 13px 14px 13px 42px; border: 1.5px solid rgba(37,99,235,0.16); border-radius: 12px; font-family: 'Nunito Sans', sans-serif; font-size: 0.92rem; color: #1a1a6e; background: rgba(255,255,255,0.88); outline: none; transition: border-color .2s, box-shadow .2s, background .2s, transform .15s, color .2s; box-sizing: border-box; letter-spacing: 0.01em; }
-        .ls-input:hover { background: rgba(255,255,255,0.98); }
-        .ls-input:focus { border-color: rgba(37,99,235,0.5); background: rgba(255,255,255,0.98); box-shadow: 0 0 0 3px rgba(37,99,235,0.12); transform: translateY(-1px); color: #1a1a6e; }
-        .ls-input::placeholder { color: rgba(26,26,110,0.42); }
-        .ls-input:-webkit-autofill,
-        .ls-input:-webkit-autofill:hover,
-        .ls-input:-webkit-autofill:focus,
-        .ls-input:-webkit-autofill:active {
-          -webkit-text-fill-color: #1a1a6e;
-          -webkit-box-shadow: 0 0 0px 1000px rgba(255,255,255,0.98) inset;
-          box-shadow: 0 0 0px 1000px rgba(255,255,255,0.98) inset;
-          border-color: rgba(37,99,235,0.18);
-          caret-color: #1a1a6e;
-          transition: background-color 9999s ease-in-out 0s;
-        }
-        .ls-eye-btn { position: absolute; right: 10px; background: none; border: none; cursor: pointer; color: rgba(37,99,235,0.48); display: flex; align-items: center; padding: 4px; border-radius: 8px; transition: color .15s, background .15s; }
-        .ls-eye-btn:hover { color: rgba(37,99,235,0.9); background: rgba(37,99,235,0.08); }
-        .ls-requirements { font-size: 0.74rem; color: rgba(26,26,110,0.64); line-height: 1.45; margin: 2px 0 0; padding-left: 2px; }
-        .ls-success { display: flex; align-items: center; gap: 8px; background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.28); color: #0f766e; padding: 10px 13px; border-radius: 14px; font-size: 0.84rem; font-family: 'Nunito Sans', sans-serif; margin-bottom: 4px; }
-        .ls-error { color: #b91c1c; font-size: 0.84rem; font-family: 'Nunito Sans', sans-serif; margin: -2px 0 0; line-height: 1.35; }
-        .ls-submit { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 13px; background: linear-gradient(90deg, #1e3a8a 0%, #2563eb 55%, #7c3aed 100%); background-size: 200% 100%; background-position: right center; color: #fff; border: 1.5px solid rgba(37,99,235,0.18); border-radius: 12px; font-family: 'Nunito Sans', sans-serif; font-size: 0.92rem; font-weight: 700; cursor: pointer; transition: background-position 0.4s ease, box-shadow 0.25s, transform .15s, border-color .2s; margin-top: 8px; box-shadow: 0 10px 24px rgba(37,99,235,0.18); }
-        .ls-submit:hover:not(:disabled) { background-position: left center; transform: translateY(-1px); box-shadow: 0 12px 30px rgba(37,99,235,0.24); border-color: rgba(37,99,235,0.28); }
-        .ls-submit:active:not(:disabled) { transform: translateY(0); }
-        .ls-submit:disabled { opacity: 0.45; cursor: not-allowed; }
+        .lk-page-loading { min-height: 60vh; display: grid; place-items: center; font: 500 0.9rem 'Inter', sans-serif; color: var(--lk-muted, #6b7280); }
 
         /* === Board === */
         .board { flex: 1; overflow-x: auto; padding: 24px 28px; display: flex; gap: 18px; align-items: flex-start; }
-        .board::-webkit-scrollbar { height: 4px; }
-        .board::-webkit-scrollbar-track { background: transparent; }
-        .board::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
-        .board::-webkit-scrollbar-thumb:hover { background: var(--muted); }
         @media (max-width: 480px) { .board { scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding: 10px; gap: 10px; } .column { scroll-snap-align: center; scroll-snap-stop: always; } }
 
         .column { min-width: 290px; max-width: 290px; background: var(--surface); border: 2px solid var(--border); border-radius: 14px; display: flex; flex-direction: column; max-height: calc(100vh - 230px); overflow: hidden; transition: border-color .25s, box-shadow .25s, transform .2s; animation: scaleIn .35s cubic-bezier(.4,0,.2,1); position: relative; }
@@ -1122,8 +831,6 @@ export default function App() {
         .progress-label { font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
         .complete-badge { margin-top: 6px; font-size: 0.72rem; color: var(--green); font-weight: 700; animation: slideInUp .35s cubic-bezier(.34,1.56,.64,1); }
         .docs-list { padding: 8px; display: flex; flex-direction: column; gap: 5px; overflow-y: auto; overflow-x: hidden; flex: 1; min-height: 0; }
-        .docs-list::-webkit-scrollbar { width: 4px; }
-        .docs-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
         .phase-group { border-radius: 10px; overflow: hidden; border: 1px solid var(--border); flex-shrink: 0; animation: slideInUp .3s cubic-bezier(.4,0,.2,1); }
         .phase-header { display: flex; align-items: center; gap: 7px; padding: 8px 10px; cursor: default; transition: filter .2s; }
         .phase-header:hover { filter: brightness(1.15); }
@@ -1249,10 +956,6 @@ export default function App() {
         .dash-title { font-family: 'Outfit', sans-serif; font-size: 0.95rem; font-weight: 700; margin-bottom: 16px; color: var(--text); }
         .dash-pie-wrap { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; min-width: 0; }
         .dash-pie-chart { width: 180px; height: auto; max-width: 100%; flex: 0 1 180px; align-self: center; }
-        .calendar-info-scroll::-webkit-scrollbar { width: 8px; }
-        .calendar-info-scroll::-webkit-scrollbar-track { background: transparent; }
-        .calendar-info-scroll::-webkit-scrollbar-thumb { background: #30363d; border-radius: 999px; }
-        .calendar-info-scroll::-webkit-scrollbar-thumb:hover { background: #3f4b5a; }
         .dash-pie-legend { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 8px; }
         .dash-pie-legend-item { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 5px 8px; border-radius: 8px; cursor: default; transition: background .15s; }
         .dash-pie-legend-item.hovered { background: var(--surface2); }
@@ -1276,14 +979,6 @@ export default function App() {
         .modal-body { display: flex; flex: 1; overflow: hidden; min-height: 0; }
         .modal-body.col { flex-direction: column; padding: 24px; gap: 12px; overflow-y: auto; }
         .modal-footer { display: flex; justify-content: flex-end; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--border); flex-shrink: 0; }
-        .tpl-scroll-list::-webkit-scrollbar,
-        .tpl-manager-sidebar::-webkit-scrollbar { width: 3px; }
-        .tpl-scroll-list::-webkit-scrollbar-track,
-        .tpl-manager-sidebar::-webkit-scrollbar-track { background: transparent; }
-        .tpl-scroll-list::-webkit-scrollbar-thumb,
-        .tpl-manager-sidebar::-webkit-scrollbar-thumb { background: #30363d; border-radius: 99px; }
-        .tpl-scroll-list::-webkit-scrollbar-thumb:hover,
-        .tpl-manager-sidebar::-webkit-scrollbar-thumb:hover { background: #484f58; }
         .tpl-input { flex: 1; min-width: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; color: var(--text); font-family: 'Nunito Sans', sans-serif; font-size: 0.82rem; outline: none; transition: border-color .15s; }
         .tpl-input:focus { border-color: var(--accent2); }
         .btn-add-tpl { border-radius: 12px; padding: 9px 12px; font-size: 0.95rem; min-width: 40px; min-height: 40px; }
@@ -1382,8 +1077,6 @@ export default function App() {
         .cdm-close { position: absolute; top: 18px; right: 18px; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 5px; cursor: pointer; display: flex; align-items: center; transition: color .15s, background .15s; }
         .cdm-close:hover { color: var(--text); background: var(--border); }
         .cdm-body { flex: 1; overflow-y: auto; padding: 4px 0; }
-        .cdm-body::-webkit-scrollbar { width: 4px; }
-        .cdm-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
         .cdm-section { padding: 16px 24px; border-bottom: 1px solid var(--border); }
         .cdm-section:last-child { border-bottom: none; }
         .cdm-section-title { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; color: var(--muted); margin-bottom: 14px; }
@@ -1612,51 +1305,61 @@ export default function App() {
         }
       `}</style>
 
+      <Suspense fallback={pageLoading}>
       {sessionUser === undefined ? (
         <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "var(--muted)" }}>Carregando sessão...</div>
       ) : !sessionUser ? (
-        <Login notice={logoutNotice} noticeOk={logoutNoticeOk} onLogin={(data) => { setLogoutNotice(""); openStartPage(data); setSessionUser(data); }} />
+        <LoginPage notice={logoutNotice} onLogin={(data) => { setLogoutNotice(null); openStartPage(data); setSessionUser(data); }} />
       ) : activeSection === "dashboard" ? (
-        <DashboardPage columns={columns} archived={archived} sortedColumns={sortedColumns} user={sessionUser} loading={processLoading} error={processError} onLogout={handleLogout} onNavigate={(section, tab = "board") => { setActiveSection(section); setActiveTab(tab); }} />
-      ) : activeSection === "processos" ? (
-        <div className="lk-dashboard lk-process-shell">
+        <DashboardPage darkMode={darkMode} onToggleDarkMode={toggleDarkMode} columns={columns} archived={archived} pending={pendingDemands} sortedColumns={sortedColumns} user={sessionUser} loading={processLoading} error={processError} onLogout={handleLogout} onNavigate={(section, tab = "board") => { setActiveSection(section); setActiveTab(tab); }} />
+      ) : activeSection === "demandas" ? (
+        <div className={`lk-dashboard lk-process-shell ${darkMode ? "lk-dark" : ""}`}>
           {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
-          <AppSidebar user={sessionUser} activeSection="processos" menuOpen={sidebarOpen} onLogout={handleLogout} onNavigate={section => { setActiveSection(section); setSidebarOpen(false); }} />
-          <main className="lk-process-main">{processPage}</main>
+          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="demandas" menuOpen={sidebarOpen} onLogout={handleLogout} onNavigate={section => { setActiveSection(section); setSidebarOpen(false); }} />
+          <main className="lk-process-main"><Suspense fallback={pageLoading}>
+            <DemandasPage demands={[...pendingDemands, ...columns]} templates={templates} collaborators={collaborators} loading={processLoading} error={processError}
+              isViewer={sessionUser?.role === "viewer"} onCreate={createDemand} onUpdate={updateDemand} onStart={startDemand} onDelete={deleteDemand} onOpenMenu={() => setSidebarOpen(true)} />
+          </Suspense></main>
+        </div>
+      ) : activeSection === "processos" ? (
+        <div className={`lk-dashboard lk-process-shell ${darkMode ? "lk-dark" : ""}`}>
+          {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
+          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="processos" menuOpen={sidebarOpen} onLogout={handleLogout} onNavigate={section => { setActiveSection(section); setSidebarOpen(false); }} />
+          <main className="lk-process-main"><Suspense fallback={pageLoading}>{processPage}</Suspense></main>
         </div>
       ) : activeSection === "admin" && sessionUser?.role === "admin" ? (
-        <div className="lk-dashboard lk-process-shell">
+        <div className={`lk-dashboard lk-process-shell ${darkMode ? "lk-dark" : ""}`}>
           {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
-          <AppSidebar user={sessionUser} activeSection="admin" menuOpen={sidebarOpen} onLogout={handleLogout} onNavigate={section => { setActiveSection(section); setSidebarOpen(false); }} />
-          <main className="lk-process-main">
+          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="admin" menuOpen={sidebarOpen} onLogout={handleLogout} onNavigate={section => { setActiveSection(section); setSidebarOpen(false); }} />
+          <main className="lk-process-main"><Suspense fallback={pageLoading}>
             <AdminPage currentUserId={sessionUser?.id} onUnauthorized={handleLogout} onSelfDemoted={handleSelfDemotedFromAdmin} sectors={sectors} onSectorsChange={setSectors} templates={templates} saveTemplates={saveTemplates} onOpenMenu={() => setSidebarOpen(true)} />
-          </main>
+          </Suspense></main>
         </div>
       ) : activeSection === "perfil" ? (
-        <div className="lk-dashboard lk-process-shell">
+        <div className={`lk-dashboard lk-process-shell ${darkMode ? "lk-dark" : ""}`}>
           {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
-          <AppSidebar user={sessionUser} activeSection="perfil" menuOpen={sidebarOpen} onLogout={handleLogout} onNavigate={section => { setActiveSection(section); setSidebarOpen(false); }} />
-          <main className="lk-process-main">
+          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="perfil" menuOpen={sidebarOpen} onLogout={handleLogout} onNavigate={section => { setActiveSection(section); setSidebarOpen(false); }} />
+          <main className="lk-process-main"><Suspense fallback={pageLoading}>
             <PerfilPage onLogout={handleLogout} sessionUser={sessionUser} onOpenMenu={() => setSidebarOpen(true)}
               onStartPageChange={(startPage) => setSessionUser((user) => (user ? { ...user, startPage } : user))}
-              onPasswordChanged={() => { setLogoutNoticeOk(true); setLogoutNotice("Senha alterada com sucesso. Entre novamente com a nova senha."); handleLogout(); }} />
-          </main>
+              onPasswordChanged={() => { setLogoutNotice({ type: "ok", title: "Senha alterada", text: "Entre novamente com a nova senha." }); handleLogout(); }} />
+          </Suspense></main>
         </div>
       ) : activeSection === "colaboradores" ? (
-        <div className="lk-dashboard lk-process-shell">
+        <div className={`lk-dashboard lk-process-shell ${darkMode ? "lk-dark" : ""}`}>
           {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
-          <AppSidebar user={sessionUser} activeSection="colaboradores" menuOpen={sidebarOpen} onLogout={handleLogout} onNavigate={section => { setActiveSection(section); setSidebarOpen(false); }} />
-          <main className="lk-process-main">
+          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="colaboradores" menuOpen={sidebarOpen} onLogout={handleLogout} onNavigate={section => { setActiveSection(section); setSidebarOpen(false); }} />
+          <main className="lk-process-main"><Suspense fallback={pageLoading}>
             <ColaboradoresPage isAdmin={sessionUser?.role === "admin"} onUnauthorized={handleLogout} onOpenMenu={() => setSidebarOpen(true)} />
-          </main>
+          </Suspense></main>
         </div>
       ) : activeSection === "contratos" ? (
-        <div className="lk-dashboard lk-process-shell">
+        <div className={`lk-dashboard lk-process-shell ${darkMode ? "lk-dark" : ""}`}>
           {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
-          <AppSidebar user={sessionUser} activeSection="contratos" menuOpen={sidebarOpen} onLogout={handleLogout} onNavigate={section => { setActiveSection(section); setSidebarOpen(false); }} />
-          <main className="lk-process-main">
+          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="contratos" menuOpen={sidebarOpen} onLogout={handleLogout} onNavigate={section => { setActiveSection(section); setSidebarOpen(false); }} />
+          <main className="lk-process-main"><Suspense fallback={pageLoading}>
             <ContratosAtivos isViewer={sessionUser?.role === "viewer"} onUnauthorized={handleLogout} onOpenMenu={() => setSidebarOpen(true)} />
-          </main>
+          </Suspense></main>
         </div>
       ) : (
         <>
@@ -1697,9 +1400,6 @@ export default function App() {
               <button className="hamburger" onClick={() => setSidebarOpen(true)}><span /><span /><span /></button>
               <div className="logo">Licit<span>Kanban</span></div>
               <div className="header-actions">
-                {activeSection === "processos" && sessionUser?.role !== "viewer" && (
-                  <button className="btn-primary" onClick={() => setShowNewProcess(true)}><IconPlus /><span className="btn-label"> Novo Processo</span></button>
-                )}
               </div>
             </header>
 
@@ -1711,6 +1411,7 @@ export default function App() {
 
         </>
       )}
+      </Suspense>
           {inactivityWarning && (
             <div className="inactivity-toast">
               <div className="inactivity-toast-icon">
@@ -1725,6 +1426,7 @@ export default function App() {
               <button className="inactivity-toast-btn">Continuar</button>
             </div>
           )}
+    </PreferencesContext.Provider>
     </AppSettingsContext.Provider>
   );
 }

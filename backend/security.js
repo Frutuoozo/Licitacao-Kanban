@@ -8,7 +8,7 @@ export function buildAuthCookieOptions() {
   return {
     httpOnly: true,
     secure: isProduction,
-    sameSite: isProduction ? 'none' : 'lax',
+    sameSite: 'lax',
     path: '/',
     maxAge: 8 * 60 * 60 * 1000,
   };
@@ -18,7 +18,7 @@ export function buildCsrfCookieOptions() {
   return {
     httpOnly: false,
     secure: isProduction,
-    sameSite: isProduction ? 'none' : 'lax',
+    sameSite: 'lax',
     path: '/',
     maxAge: 8 * 60 * 60 * 1000,
   };

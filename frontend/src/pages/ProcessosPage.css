@@ -1,15 +1,22 @@
 .lk-process-shell { --accent2: #2563eb; --red: #dc2626; --btn-text: #fff; color-scheme: light; }
 .lk-process-main { margin-left: 236px; padding: 24px 20px 36px 28px; min-width: 0; }
-.process-page-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 60px; margin-bottom: 24px; }
-.process-page-heading { min-width: 0; }
-.process-page-heading h1 { font: 700 28px/38px 'Manrope', sans-serif; }
-.process-page-heading p { font-size: 12px; line-height: 18px; color: var(--lk-muted); }
+.process-page-header { display: flex; align-items: center; gap: 24px; margin-bottom: 24px; }
+.process-page-heading { display: none; }
 .process-page-tabs { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; flex-shrink: 0; }
 .process-page-tabs button { min-height: 38px; padding: 9px 16px; border: 1px solid var(--lk-border); border-radius: 10px; background: var(--lk-surface); font-size: 12px; }
 .process-page-tabs button.active { color: var(--lk-blue); border-color: var(--lk-blue); background: var(--lk-tint); font-weight: 600; }
-.process-page-tabs .process-new-button { display: inline-flex; align-items: center; gap: 4px; background: #2563eb; color: #fff; border-color: #2563eb; padding: 9px 8px; font-weight: 600; }
+.process-page-tabs .process-fullscreen-button { display: inline-grid; place-items: center; width: 38px; padding: 0; color: var(--lk-muted); }
+.process-page-tabs .process-fullscreen-button:hover { color: var(--lk-blue); border-color: var(--lk-blue); background: var(--lk-tint); }
+/* Tela cheia: some a barra lateral e o cabeçalho; o quadro ocupa a tela toda. */
+html.lk-board-fullscreen .lk-process-shell .lk-sidebar,
+html.lk-board-fullscreen .lk-process-shell .lk-backdrop,
+html.lk-board-fullscreen .lk-process-main > .process-page-header { display: none; }
+html.lk-board-fullscreen .lk-process-main { margin-left: 0; padding: 20px 28px 12px; }
+.lk-process-shell .process-fullscreen-exit { position: fixed; top: 14px; right: 18px; z-index: 30; display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 12px; border: 1px solid var(--lk-border); border-radius: 10px; background: color-mix(in srgb, var(--lk-surface) 88%, transparent); color: var(--lk-muted); font-size: 12px; font-weight: 600; box-shadow: 0 4px 12px #11182714; backdrop-filter: blur(6px); opacity: .55; transition: opacity .18s, color .18s, border-color .18s; }
+.lk-process-shell .process-fullscreen-exit:hover, .lk-process-shell .process-fullscreen-exit:focus-visible { opacity: 1; color: var(--lk-blue); border-color: var(--lk-blue); }
+html.lk-board-fullscreen .lk-process-main:has(> .process-board-wrap) { padding-top: 56px; }
 .process-board-wrap { position: relative; min-width: 0; }
-.lk-process-shell .board { display: flex; gap: 14px; padding: 0 0 16px; align-items: stretch; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--lk-muted) 25%, transparent) transparent; }
+.lk-process-shell .board { display: flex; gap: 14px; padding: 0 0 16px; align-items: stretch; overflow-x: auto; scroll-snap-type: x proximity; }
 .lk-process-shell .column { position: relative; flex: 0 0 354px; width: 354px; min-width: 0; max-width: none; min-height: 0; max-height: none; height: auto; background: var(--lk-surface); border: 1px solid var(--lk-border)!important; border-radius: 16px; box-shadow: none; overflow: hidden; display: flex; flex-direction: column; scroll-snap-align: start; }
 .lk-process-shell .column::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--process-color); z-index: 1; }
 .lk-process-shell .column .col-type-stripe { display: none; }
@@ -23,7 +30,7 @@
 .lk-process-shell .progress-row { gap: 12px; }
 .lk-process-shell .progress-bar { height: 8px; background: var(--lk-soft); }
 .lk-process-shell .progress-label { font-size: 11px; font-weight: 600; color: var(--process-color); }
-.lk-process-shell .docs-list { flex: 1; min-height: 0; padding: 0 19px 16px; gap: 12px; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--lk-muted) 25%, transparent) transparent; }
+.lk-process-shell .docs-list { flex: 1; min-height: 0; padding: 0 19px 16px; gap: 12px; overflow-y: auto; overflow-x: hidden; }
 .lk-process-shell .phase-group { border: 0; border-radius: 0; overflow: visible; }
 .lk-process-shell .phase-header { min-height: 38px; border-radius: 10px; padding: 9px 10px; background: color-mix(in srgb, var(--phase-color) 10%, white)!important; color: var(--phase-color); }
 .lk-process-shell .phase-name, .lk-process-shell .phase-input { font: 600 11px/16px 'Inter', sans-serif; color: var(--phase-color); }
@@ -47,7 +54,9 @@
 .lk-process-shell .add-phase-btn { color: var(--lk-muted); }
 .lk-process-shell .add-doc-form { margin: 0 19px 19px; }
 .lk-process-shell .doc-input, .lk-process-shell .select-field { background: var(--lk-surface); color: var(--lk-text); border-color: var(--lk-border); color-scheme: light!important; }
-.lk-process-shell .btn-primary, .lk-process-shell .btn-save, .lk-process-shell .btn-confirm { background: #2563eb; color: #fff; }
+.lk-process-shell .btn-primary, .lk-process-shell .btn-save, .lk-process-shell .btn-confirm { background: #2563eb; color: #fff; box-shadow: 0 6px 16px #2563eb2e; }
+.lk-process-shell :is(.btn-primary, .btn-save, .btn-confirm, .btn-add-tpl):hover:not(:disabled) { background: #1d4ed8; opacity: 1; box-shadow: 0 8px 18px #2563eb40; }
+.lk-process-shell :is(.btn-cancel, .btn-cancel-lg, .btn-outline):hover:not(:disabled) { background: var(--lk-tint); color: var(--lk-text); }
 .lk-process-shell .btn-cancel, .lk-process-shell .btn-cancel-lg { background: var(--lk-soft); color: var(--lk-muted); }
 .lk-process-shell .modal { background: var(--lk-surface); color: var(--lk-text); }
 .lk-process-shell .process-scroll { position: absolute; top: calc(50% - 6px); transform: translateY(-50%); width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--lk-border); border-radius: 10px; box-shadow: 0 4px 10px #11182712; background: var(--lk-surface); color: var(--lk-blue); z-index: 5; }
@@ -58,9 +67,9 @@
 @media (max-width: 1350px) { .process-page-header { align-items: flex-start; flex-wrap: wrap; gap: 16px; } .process-page-tabs { justify-content: flex-start; } }
 @media (max-width: 1100px) { .lk-process-main { margin-left: 210px; padding: 24px; } }
 /* Mesmo ponto do Dashboard: até 1024px a barra lateral é gaveta. */
-@media (max-width: 1024px) { .lk-process-main { margin-left: 0; padding: 20px 24px 32px; } .process-page-heading { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; align-items: center; } .process-page-heading > :not(.lk-menu) { grid-column: 2; } }
-@media (max-width: 800px) { .lk-process-main { margin-left: 0; padding: 20px; } .process-page-heading h1 { font-size: 24px; } .process-page-tabs { flex-shrink: 1; gap: 8px; } .process-page-tabs button { padding: 9px 12px; } .lk-process-shell .column { flex-basis: min(354px, calc(100vw - 40px)); width: min(354px, calc(100vw - 40px)); } .lk-process-shell .card-actions { opacity: 1; } .lk-process-shell .board { padding-bottom: 12px; } }
-@media (max-width: 420px) { .lk-process-main { padding: 16px 12px; } .process-page-heading h1 { font-size: 22px; } .process-page-heading p { font-size: 11px; } .lk-process-shell .column { flex-basis: calc(100vw - 24px); width: calc(100vw - 24px); } .process-scroll-left { left: -6px; } .process-scroll-right { right: -6px; } }
+@media (max-width: 1024px) { .lk-process-main { margin-left: 0; padding: 20px 24px 32px; } .process-page-heading { display: block; } }
+@media (max-width: 800px) { .lk-process-main { margin-left: 0; padding: 20px; } .process-page-tabs { flex-shrink: 1; gap: 8px; } .process-page-tabs button { padding: 9px 12px; } .lk-process-shell .column { flex-basis: min(354px, calc(100vw - 40px)); width: min(354px, calc(100vw - 40px)); } .lk-process-shell .card-actions { opacity: 1; } .lk-process-shell .board { padding-bottom: 12px; } }
+@media (max-width: 420px) { .lk-process-main { padding: 16px 12px; } .lk-process-shell .column { flex-basis: calc(100vw - 24px); width: calc(100vw - 24px); } .process-scroll-left { left: -6px; } .process-scroll-right { right: -6px; } }
 .process-actions-menu { position: relative; flex-shrink: 0; }
 .process-actions-menu summary { list-style: none; display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid var(--lk-border); border-radius: 7px; background: var(--lk-soft); color: var(--lk-muted); cursor: pointer; font-size: 12px; }
 .process-actions-menu summary::-webkit-details-marker { display: none; }
@@ -82,28 +91,13 @@
 
 .lk-process-shell .docs-list > .doc-card { flex-shrink: 0; }
 
-/* Mesmo acabamento das barras de rolagem do dashboard. */
 .lk-process-shell .board,
 .lk-process-shell .docs-list {
   color-scheme: light;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--lk-muted) 25%, transparent) transparent;
   scrollbar-gutter: stable;
 }
 .lk-process-shell.lk-dark .board,
 .lk-process-shell.lk-dark .docs-list { color-scheme: dark; }
-.lk-process-shell .board::-webkit-scrollbar,
-.lk-process-shell .docs-list::-webkit-scrollbar { width: 6px; height: 6px; }
-.lk-process-shell .board::-webkit-scrollbar-track,
-.lk-process-shell .docs-list::-webkit-scrollbar-track { background: transparent; }
-.lk-process-shell .board::-webkit-scrollbar-thumb,
-.lk-process-shell .docs-list::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--lk-muted) 25%, transparent); border-radius: 999px; }
-.lk-process-shell .board::-webkit-scrollbar-thumb:hover,
-.lk-process-shell .docs-list::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--lk-blue) 50%, transparent); }
-.lk-process-shell .board::-webkit-scrollbar-button,
-.lk-process-shell .docs-list::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
-.lk-process-shell .board::-webkit-scrollbar-corner,
-.lk-process-shell .docs-list::-webkit-scrollbar-corner { background: transparent; }
 
 /* Navegação horizontal pelas setas, sem barra inferior. */
 .lk-process-shell .board { scrollbar-width: none; scrollbar-gutter: auto; }
@@ -115,7 +109,7 @@
 .process-edit-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 14px 14px 12px; border-bottom: 1px solid var(--lk-border); flex-shrink: 0; }
 .process-edit-heading h4 { font: 600 14px/20px 'Manrope', sans-serif; color: var(--lk-text); }
 .process-edit-heading p { font: 400 11px/16px 'Inter', sans-serif; color: var(--lk-muted); margin-top: 3px; }
-.process-edit-fields { display: flex; flex-direction: column; gap: 14px; padding: 14px; overflow-y: auto; min-height: 0; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--lk-muted) 25%, transparent) transparent; }
+.process-edit-fields { display: flex; flex-direction: column; gap: 14px; padding: 14px; overflow-y: auto; min-height: 0; }
 .process-edit-field { display: flex; flex-direction: column; gap: 6px; font: 500 11px/16px 'Inter', sans-serif; color: var(--lk-muted); }
 .lk-process-shell .process-edit-field .doc-input { width: 100%; min-width: 0; min-height: 40px; padding: 10px 12px; border: 1px solid var(--lk-border); border-radius: 8px; background: var(--lk-surface); font: 400 12px/18px 'Inter', sans-serif; color: var(--lk-text); box-shadow: none; }
 .lk-process-shell .process-edit-field .doc-input:focus { outline: none; border-color: var(--lk-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lk-blue) 12%, transparent); }
@@ -157,13 +151,10 @@
     padding-bottom: max(12px, env(safe-area-inset-bottom));
   }
   .lk-process-shell .process-page-header { display: block; margin-bottom: 12px; min-height: 0; }
-  .lk-process-shell .process-page-heading { display: grid; grid-template-columns: 40px minmax(0, 1fr); column-gap: 8px; align-items: center; margin-bottom: 12px; }
-  .lk-process-shell .process-page-heading .lk-menu { display: grid; place-items: center; float: none; margin: 0; width: 40px; height: 44px; grid-row: 1 / 3; border: 1px solid var(--lk-border); border-radius: 10px; background: var(--lk-surface); }
-  .lk-process-shell .process-page-heading h1 { font-size: clamp(18px, 5vw, 24px); line-height: 1.3; overflow-wrap: anywhere; }
-  .lk-process-shell .process-page-heading p { font-size: 11px; line-height: 16px; margin-top: 3px; }
+  .lk-process-shell .process-page-heading { margin-bottom: 12px; }
+  .lk-process-shell .process-page-heading .lk-menu { display: grid; place-items: center; float: none; margin: 0; width: 40px; height: 44px; border: 1px solid var(--lk-border); border-radius: 10px; background: var(--lk-surface); }
   .lk-process-shell .process-page-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; width: 100%; }
   .lk-process-shell .process-page-tabs button { min-width: 0; min-height: 44px; padding: 8px 3px; font-size: 11px; }
-  .lk-process-shell .process-page-tabs .process-new-button { grid-column: 1 / -1; min-height: 40px; font-size: 12px; }
   .lk-process-shell .process-board-wrap { min-width: 0; }
   .lk-process-shell .process-board-wrap:has(> .process-scroll) { padding-bottom: 52px; }
   .lk-process-shell .process-board-wrap > .board { gap: 12px; padding: 0; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; }
@@ -225,3 +216,5 @@
   box-shadow: none;
 }
 .lk-process-shell .doc-card.doc-pastel:not(.done) .check-btn:hover .check-box { border-color: color-mix(in srgb, var(--doc-color) 65%, #fff); }
+/* Preferência "esconder concluídos": aviso discreto no lugar dos documentos marcados. */
+.lk-process-shell .docs-hidden-done { margin: 6px 0 2px; padding: 6px 10px; border: 1px dashed var(--lk-border); border-radius: 8px; color: var(--lk-muted); font-size: 10px; font-weight: 600; }

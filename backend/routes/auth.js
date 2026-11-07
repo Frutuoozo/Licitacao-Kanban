@@ -1,12 +1,15 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { randomUUID } from 'crypto';
+import { randomBytes } from 'crypto';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
-import db from '../db.js';
+import db, { withTransaction } from '../db.js';
 import { verifyToken } from '../middleware/auth.js';
+import { requireCsrf } from '../middleware/csrf.js';
 import { buildAuthCookieOptions, buildCsrfCookieOptions, generateCsrfToken, getJwtSecret, validatePassword } from '../security.js';
-import { isNonEmptyString, MAX_LENGTHS } from '../validation.js';
+import { isNonEmptyString, MAX_LENGTHS, normalizeText } from '../validation.js';
+import { closeUserSockets } from '../socket.js';
+import { deleteUser } from '../users.js';
 import { readSettings } from './settings.js';
 
 const router = express.Router();
@@ -17,6 +20,17 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Muitas tentativas. Aguarde 15 minutos e tente novamente.' },
   keyGenerator: (req) => `${ipKeyGenerator(req.ip)}:${String(req.body?.username || '').toLowerCase()}`,
+});
+// Trocar de nome a cada tentativa escapa do limite acima. Este conta só por IP e só as falhas, para não
+// atrapalhar várias pessoas entrando pelo mesmo IP do escritório. Vem antes do bcrypt e do banco.
+const authIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  skipSuccessfulRequests: true,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Muitas tentativas. Aguarde 15 minutos e tente novamente.' },
+  keyGenerator: (req) => ipKeyGenerator(req.ip),
 });
 const passwordLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -30,6 +44,133 @@ const passwordLimiter = rateLimit({
 // Páginas que o usuário pode escolher para abrir logo após o login ("seção" ou "seção:aba").
 const START_PAGES = ['dashboard', 'processos:board', 'processos:calendar', 'processos:reports', 'contratos', 'colaboradores', 'admin'];
 const startPageFor = (user) => (START_PAGES.includes(user.start_page) && (user.start_page !== 'admin' || user.role === 'admin') ? user.start_page : 'dashboard');
+
+// Histórico de acessos (aba Segurança do perfil). Registro sem bloquear a resposta: falha ao gravar não impede o login.
+// Tipos: success, first_access (entrou definindo a senha), wrong_password, locked, password_changed, sessions_revoked.
+const LOGIN_HISTORY_DAYS = 180;
+function logLoginEvent(req, userId, event) {
+  const userAgent = String(req.get('user-agent') || '').slice(0, 255);
+  const ip = String(req.ip || '').replace(/^::ffff:/, '').slice(0, 64);
+  db.query('INSERT INTO login_events (user_id, event, ip, user_agent) VALUES (?, ?, ?, ?)', [userId, event, ip, userAgent])
+    .then(() => (event === 'success' ? db.query('DELETE FROM login_events WHERE user_id = ? AND created_at < DATE_SUB(NOW(), INTERVAL ? DAY)', [userId, LOGIN_HISTORY_DAYS]) : null))
+    .catch((error) => console.error('Falha ao registrar acesso:', error.message));
+}
+
+// Preferências pessoais (aba Preferências do perfil). Só entram chaves e valores conhecidos.
+const PREFERENCE_OPTIONS = {
+  theme: ['light', 'dark', 'auto'],
+  fontSize: ['normal', 'large', 'xlarge'],
+  hideDoneDocs: [true, false],
+  exportFormat: ['csv', 'pdf'],
+  dateFormat: ['short', 'long'],
+};
+const cleanPreferences = (input) => {
+  const out = {};
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return out;
+  for (const [key, allowed] of Object.entries(PREFERENCE_OPTIONS)) {
+    if (allowed.includes(input[key])) out[key] = input[key];
+  }
+  return out;
+};
+const preferencesFor = (user) => {
+  try { return cleanPreferences(typeof user.preferences === 'string' ? JSON.parse(user.preferences) : user.preferences); }
+  catch { return {}; }
+};
+
+// Colunas lidas no login e no primeiro acesso (inclui as de startPageFor e preferencesFor).
+const LOGIN_USER_COLUMNS = `id, username, password_hash, role, first_access, session_version,
+  failed_attempts, locked_until, password_changed_at, start_page, preferences`;
+
+// ── Proteção contra descoberta de usuários ──
+// Quem tenta entrar não pode distinguir "usuário não existe" de "senha errada": nem pela mensagem,
+// nem pelo tempo de resposta, nem pelo bloqueio após tentativas inválidas.
+
+// Hash de uma senha aleatória (mesmo custo das senhas reais). Quando o usuário não existe, a senha
+// digitada é comparada com ele: a resposta leva o mesmo tempo que uma senha errada de verdade.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync(randomBytes(32).toString('hex'), 10);
+
+// Bloqueio simulado para nomes que não existem: conta as tentativas na memória e "bloqueia" com as
+// mesmas regras e mensagens dos usuários reais. Limitado a PHANTOM_MAX_ENTRIES nomes (os mais antigos
+// saem primeiro) para não crescer sem fim; zera se o servidor reiniciar.
+const PHANTOM_MAX_ENTRIES = 5000;
+const phantomAttempts = new Map();
+
+const phantomKey = (username) => normalizeText(username).toLowerCase();
+
+// Minutos que faltam para o fim de um bloqueio (0 = não está bloqueado).
+function minutesUntil(date) {
+  const remaining = date ? new Date(date).getTime() - Date.now() : 0;
+  return remaining > 0 ? Math.max(1, Math.ceil(remaining / 60000)) : 0;
+}
+
+// Minutos de bloqueio que ainda restam para `username` (real ou inexistente), lido antes de conferir a senha.
+const lockedMinutesFor = (user, username) => minutesUntil(user ? user.locked_until : phantomAttempts.get(phantomKey(username))?.lockedUntil);
+
+// Mesma regra de contagem para os dois casos: soma 1; ao atingir o limite, zera e bloqueia.
+// Devolve 'failed' (senha errada), 'locking' (esta tentativa bloqueou) ou 'locked' (já estava bloqueado).
+function countFailure(current, settings) {
+  if (minutesUntil(current.lockedUntil)) return { outcome: 'locked' };
+  const attempts = current.attempts + 1;
+  if (settings.lockoutEnabled && attempts >= settings.lockoutAttempts) {
+    return { outcome: 'locking', attempts: 0, lockedUntil: new Date(Date.now() + settings.lockoutMinutes * 60000) };
+  }
+  return { outcome: 'failed', attempts, lockedUntil: current.lockedUntil };
+}
+
+function phantomFailure(username, settings) {
+  const key = phantomKey(username);
+  const entry = phantomAttempts.get(key) || { attempts: 0, lockedUntil: null };
+  const next = countFailure(entry, settings);
+  if (next.outcome === 'locked') return next;
+  phantomAttempts.delete(key); // reinserir move o nome para o fim da fila de descarte
+  phantomAttempts.set(key, { attempts: next.attempts, lockedUntil: next.lockedUntil });
+  if (phantomAttempts.size > PHANTOM_MAX_ENTRIES) phantomAttempts.delete(phantomAttempts.keys().next().value);
+  return next;
+}
+
+// Registra uma senha errada (login ou primeiro acesso). A linha do usuário fica travada (FOR UPDATE)
+// durante a contagem: pedidos simultâneos esperam a vez e nenhuma tentativa se perde.
+// Nome inexistente faz as mesmas consultas (que não encontram nenhuma linha) e conta na memória:
+// mesmo trabalho no banco, mesmo tempo de resposta.
+async function registerFailedAttempt(username, settings) {
+  return withTransaction(async (conn) => {
+    const [rows] = await conn.query('SELECT failed_attempts, locked_until FROM users WHERE username = ? FOR UPDATE', [username]);
+    const user = rows[0];
+    const next = user
+      ? countFailure({ attempts: user.failed_attempts || 0, lockedUntil: user.locked_until }, settings)
+      : phantomFailure(username, settings);
+    // O fim do bloqueio é calculado pelo relógio do MySQL (como antes), não pelo do Node: evita erro se os fusos diferirem.
+    if (next.outcome === 'locking') {
+      await conn.query('UPDATE users SET failed_attempts = 0, locked_until = DATE_ADD(NOW(), INTERVAL ? MINUTE) WHERE username = ?', [settings.lockoutMinutes, username]);
+    } else if (next.outcome === 'failed') {
+      await conn.query('UPDATE users SET failed_attempts = ? WHERE username = ?', [next.attempts, username]);
+    }
+    return next.outcome;
+  });
+}
+
+// Piso de tempo para senha errada: a resposta nunca sai antes disso, contado desde a chegada do pedido.
+// Usuário real e inexistente passam a levar exatamente o mesmo tempo (a diferença natural, ~2 ms, vem
+// da gravação do contador no disco). Fica bem acima do tempo normal (~100 ms) para cobrir a variação.
+const FAILED_AUTH_MIN_MS = 300;
+const waitUntil = (timestamp) => new Promise((resolve) => setTimeout(resolve, Math.max(0, timestamp - Date.now())));
+
+// Resposta para uma senha errada, igual para usuário real e inexistente.
+async function sendFailure(res, outcome, settings, invalidMessage, startedAt) {
+  await waitUntil(startedAt + FAILED_AUTH_MIN_MS);
+  if (outcome === 'locking') return res.status(423).json({ error: lockingMessage(settings.lockoutMinutes) });
+  if (outcome === 'locked') return res.status(423).json({ error: lockedMessage(settings.lockoutMinutes) });
+  return res.status(401).json({ error: invalidMessage });
+}
+
+function logFailure(req, user, outcome) {
+  if (!user) return;
+  if (outcome !== 'locked') logLoginEvent(req, user.id, 'wrong_password');
+  if (outcome !== 'failed') logLoginEvent(req, user.id, 'locked');
+}
+
+const lockedMessage = (minutes) => `Conta bloqueada temporariamente por tentativas inválidas. Tente novamente em ${minutes} min.`;
+const lockingMessage = (minutes) => `Muitas tentativas inválidas. Conta bloqueada por ${minutes} minutos.`;
 
 function setAuthCookies(res, token) {
   const csrfToken = generateCsrfToken();
@@ -48,7 +189,8 @@ function clearAuthCookies(res) {
 }
 
 // POST /login
-router.post('/login', authLimiter, async (req, res) => {
+router.post('/login', authIpLimiter, authLimiter, async (req, res) => {
+  const startedAt = Date.now();
   const { username, password } = req.body;
 
   if (!isNonEmptyString(username, MAX_LENGTHS.username) || typeof password !== 'string') {
@@ -56,28 +198,23 @@ router.post('/login', authLimiter, async (req, res) => {
   }
 
   try {
-    const [users] = await db.query('SELECT * FROM users WHERE username = ?', [username]);
-    
-    if (users.length === 0) return res.status(401).json({ error: 'Usuário ou senha inválidos' });
-
+    const [users] = await db.query(`SELECT ${LOGIN_USER_COLUMNS} FROM users WHERE username = ?`, [username]);
     const user = users[0];
     const settings = await readSettings();
 
     // Bloqueio temporário após tentativas inválidas (configurável em Administração → Segurança).
-    if (user.locked_until && new Date(user.locked_until) > new Date()) {
-      const minutes = Math.max(1, Math.ceil((new Date(user.locked_until) - new Date()) / 60000));
-      return res.status(423).json({ error: `Conta bloqueada temporariamente por tentativas inválidas. Tente novamente em ${minutes} min.` });
+    // Usuário inexistente segue o mesmo caminho, com o mesmo tempo e as mesmas respostas.
+    const lockedMinutes = lockedMinutesFor(user, username);
+    if (lockedMinutes) {
+      if (user) logLoginEvent(req, user.id, 'locked');
+      return res.status(423).json({ error: lockedMessage(lockedMinutes) });
     }
 
-    const passwordIsValid = await bcrypt.compare(password, user.password_hash);
-    if (!passwordIsValid) {
-      const attempts = (user.failed_attempts || 0) + 1;
-      if (settings.lockoutEnabled && attempts >= settings.lockoutAttempts) {
-        await db.query('UPDATE users SET failed_attempts = 0, locked_until = DATE_ADD(NOW(), INTERVAL ? MINUTE) WHERE id = ?', [settings.lockoutMinutes, user.id]);
-        return res.status(423).json({ error: `Muitas tentativas inválidas. Conta bloqueada por ${settings.lockoutMinutes} minutos.` });
-      }
-      await db.query('UPDATE users SET failed_attempts = ? WHERE id = ?', [attempts, user.id]);
-      return res.status(401).json({ error: 'Usuário ou senha inválidos' });
+    const passwordIsValid = await bcrypt.compare(password, user ? user.password_hash : DUMMY_PASSWORD_HASH);
+    if (!passwordIsValid || !user) {
+      const outcome = await registerFailedAttempt(username, settings);
+      logFailure(req, user, outcome);
+      return sendFailure(res, outcome, settings, 'Usuário ou senha inválidos', startedAt);
     }
     if (user.failed_attempts || user.locked_until) {
       await db.query('UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?', [user.id]);
@@ -96,46 +233,17 @@ router.post('/login', authLimiter, async (req, res) => {
 
     const token = jwt.sign({ id: user.id, ver: user.session_version || 0 }, getJwtSecret(), { algorithm: 'HS256', expiresIn: '8h' });
     setAuthCookies(res, token);
-    res.status(200).json({ id: user.id, username: user.username, role: user.role || 'user', startPage: startPageFor(user) });
+    logLoginEvent(req, user.id, 'success');
+    res.status(200).json({ id: user.id, username: user.username, role: user.role || 'user', startPage: startPageFor(user), preferences: preferencesFor(user) });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Login falhou' });
   }
 });
 
-// Helper endpoint just to create the very first admin user
-router.post('/setup-admin', authLimiter, async (req, res) => {
-  const { username, password } = req.body;
-  
-  if (!isNonEmptyString(username, MAX_LENGTHS.username) || typeof password !== 'string') {
-    return res.status(400).json({ error: 'Provide username and password' });
-  }
-  const passwordError = validatePassword(password);
-  if (passwordError) return res.status(400).json({ error: passwordError });
-
-  try {
-    const [existing] = await db.query('SELECT id FROM users LIMIT 1');
-    if (existing.length > 0) {
-      return res.status(403).json({ error: 'An admin user already exists. Setup blocked.' });
-    }
-
-    const hash = await bcrypt.hash(password, 10);
-    const id = randomUUID();
-
-    await db.query(
-      'INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)',
-      [id, username, hash, 'admin']
-    );
-
-    res.status(201).json({ message: 'Admin user created successfully!' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Failed to create admin' });
-  }
-});
-
 // POST /first-access - Configurar senha no primeiro login
-router.post('/first-access', authLimiter, async (req, res) => {
+router.post('/first-access', authIpLimiter, authLimiter, async (req, res) => {
+  const startedAt = Date.now();
   const { username, currentPassword, password } = req.body;
 
   if (!isNonEmptyString(username, MAX_LENGTHS.username) || typeof currentPassword !== 'string' || typeof password !== 'string') {
@@ -145,17 +253,24 @@ router.post('/first-access', authLimiter, async (req, res) => {
   if (passwordError) return res.status(400).json({ error: passwordError });
 
   try {
-    const [users] = await db.query('SELECT * FROM users WHERE username = ?', [username]);
-    if (users.length === 0) {
-      return res.status(404).json({ error: 'Usuário não encontrado' });
-    }
-
+    // Usuário inexistente e senha temporária errada têm a mesma resposta e o mesmo tempo, e as
+    // tentativas erradas contam para o mesmo bloqueio do login.
+    // A senha é conferida antes do estado do primeiro acesso: sem a senha certa, nada revela se o usuário existe.
+    const [users] = await db.query(`SELECT ${LOGIN_USER_COLUMNS} FROM users WHERE username = ?`, [username]);
     const user = users[0];
+    const settings = await readSettings();
+    const lockedMinutes = lockedMinutesFor(user, username);
+    if (lockedMinutes) {
+      if (user) logLoginEvent(req, user.id, 'locked');
+      return res.status(423).json({ error: lockedMessage(lockedMinutes) });
+    }
+    if (!await bcrypt.compare(currentPassword, user ? user.password_hash : DUMMY_PASSWORD_HASH) || !user) {
+      const outcome = await registerFailedAttempt(username, settings);
+      logFailure(req, user, outcome);
+      return sendFailure(res, outcome, settings, 'Usuário ou senha temporária inválidos', startedAt);
+    }
     if (!user.first_access) {
       return res.status(400).json({ error: 'Primeiro acesso já realizado para este usuário' });
-    }
-    if (!await bcrypt.compare(currentPassword, user.password_hash)) {
-      return res.status(401).json({ error: 'Senha temporária inválida' });
     }
     if (await bcrypt.compare(password, user.password_hash)) {
       return res.status(400).json({ error: 'A nova senha precisa ser diferente da atual' });
@@ -163,14 +278,17 @@ router.post('/first-access', authLimiter, async (req, res) => {
 
     const hash = await bcrypt.hash(password, 10);
 
+    // Sobe a versão da sessão: quem estava logado com a senha antiga sai, e só este aparelho recebe o token novo.
     await db.query(
-      'UPDATE users SET password_hash = ?, first_access = FALSE, password_changed_at = NOW() WHERE id = ?',
+      'UPDATE users SET password_hash = ?, first_access = FALSE, password_changed_at = NOW(), failed_attempts = 0, locked_until = NULL, session_version = session_version + 1 WHERE id = ?',
       [hash, user.id]
     );
+    closeUserSockets(user.id);
 
-    const token = jwt.sign({ id: user.id, ver: user.session_version || 0 }, getJwtSecret(), { algorithm: 'HS256', expiresIn: '8h' });
+    const token = jwt.sign({ id: user.id, ver: (user.session_version || 0) + 1 }, getJwtSecret(), { algorithm: 'HS256', expiresIn: '8h' });
     setAuthCookies(res, token);
-    res.status(200).json({ id: user.id, username: user.username, role: user.role || 'user', startPage: startPageFor(user) });
+    logLoginEvent(req, user.id, 'first_access');
+    res.status(200).json({ id: user.id, username: user.username, role: user.role || 'user', startPage: startPageFor(user), preferences: preferencesFor(user) });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Erro ao configurar primeiro acesso' });
@@ -180,7 +298,7 @@ router.post('/first-access', authLimiter, async (req, res) => {
 // GET /me — dados do usuário autenticado
 router.get('/me', verifyToken, async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT id, username, role, created_at, password_changed_at, start_page FROM users WHERE id = ?', [req.userId]);
+    const [rows] = await db.query('SELECT id, username, role, created_at, password_changed_at, start_page, preferences FROM users WHERE id = ?', [req.userId]);
     if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
     res.json({
       id: rows[0].id,
@@ -189,6 +307,7 @@ router.get('/me', verifyToken, async (req, res) => {
       createdAt: rows[0].created_at,
       passwordChangedAt: rows[0].password_changed_at,
       startPage: startPageFor(rows[0]),
+      preferences: preferencesFor(rows[0]),
     });
   } catch (error) {
     console.error(error);
@@ -196,24 +315,32 @@ router.get('/me', verifyToken, async (req, res) => {
   }
 });
 
-// PATCH /password
-// PATCH /preferences — preferências do próprio usuário (por enquanto, a página inicial).
-router.patch('/preferences', verifyToken, async (req, res) => {
-  const startPage = req.body?.startPage;
-  if (!START_PAGES.includes(startPage)) return res.status(400).json({ error: 'Página inicial inválida.' });
+// PATCH /preferences — preferências do próprio usuário: página inicial e/ou as opções da aba Preferências.
+// As opções chegam parciais e são mescladas às já salvas.
+router.patch('/preferences', verifyToken, requireCsrf, async (req, res) => {
+  const { startPage, preferences } = req.body || {};
+  const hasStart = startPage !== undefined;
+  const changes = cleanPreferences(preferences);
+  if (hasStart && !START_PAGES.includes(startPage)) return res.status(400).json({ error: 'Página inicial inválida.' });
+  if (preferences !== undefined && Object.keys(changes).length !== Object.keys(preferences || {}).length) {
+    return res.status(400).json({ error: 'Preferência inválida.' });
+  }
+  if (!hasStart && Object.keys(changes).length === 0) return res.status(400).json({ error: 'Nada para salvar.' });
   try {
-    const [rows] = await db.query('SELECT role FROM users WHERE id = ?', [req.userId]);
+    const [rows] = await db.query('SELECT role, start_page, preferences FROM users WHERE id = ?', [req.userId]);
     if (rows.length === 0) return res.status(404).json({ error: 'Usuário não encontrado' });
     if (startPage === 'admin' && rows[0].role !== 'admin') return res.status(403).json({ error: 'Somente administradores podem abrir na Administração.' });
-    await db.query('UPDATE users SET start_page = ? WHERE id = ?', [startPage, req.userId]);
-    res.json({ startPage });
+    const merged = { ...preferencesFor(rows[0]), ...changes };
+    await db.query('UPDATE users SET start_page = ?, preferences = ? WHERE id = ?', [hasStart ? startPage : rows[0].start_page, JSON.stringify(merged), req.userId]);
+    res.json({ startPage: hasStart ? startPage : startPageFor(rows[0]), preferences: merged });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Falha ao salvar preferências' });
   }
 });
 
-router.patch('/password', verifyToken, passwordLimiter, async (req, res) => {
+// PATCH /password
+router.patch('/password', verifyToken, requireCsrf, passwordLimiter, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
   if (!currentPassword || !newPassword) {
     return res.status(400).json({ error: 'Informe senha atual e nova senha' });
@@ -221,7 +348,7 @@ router.patch('/password', verifyToken, passwordLimiter, async (req, res) => {
   const passwordError = validatePassword(newPassword);
   if (passwordError) return res.status(400).json({ error: passwordError });
   try {
-    const [users] = await db.query('SELECT * FROM users WHERE id = ?', [req.userId]);
+    const [users] = await db.query('SELECT password_hash FROM users WHERE id = ?', [req.userId]);
     if (users.length === 0) return res.status(404).json({ error: 'User not found' });
     const user = users[0];
     if (!await bcrypt.compare(currentPassword, user.password_hash)) {
@@ -229,11 +356,42 @@ router.patch('/password', verifyToken, passwordLimiter, async (req, res) => {
     }
     const hash = await bcrypt.hash(newPassword, 10);
     await db.query('UPDATE users SET password_hash = ?, password_changed_at = NOW(), session_version = session_version + 1 WHERE id = ?', [hash, req.userId]);
+    closeUserSockets(req.userId);
+    logLoginEvent(req, req.userId, 'password_changed');
     clearAuthCookies(res);
     res.json({ ok: true });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Falha ao atualizar senha' });
+  }
+});
+
+// POST /sessions/revoke-others — encerra o login em todos os outros aparelhos e mantém este:
+// sobe a versão da sessão (invalida os tokens antigos) e emite um token novo só para quem pediu.
+router.post('/sessions/revoke-others', verifyToken, requireCsrf, passwordLimiter, async (req, res) => {
+  try {
+    await db.query('UPDATE users SET session_version = COALESCE(session_version, 0) + 1 WHERE id = ?', [req.userId]);
+    const [rows] = await db.query('SELECT session_version FROM users WHERE id = ?', [req.userId]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Usuário não encontrado' });
+    const token = jwt.sign({ id: req.userId, ver: rows[0].session_version || 0 }, getJwtSecret(), { algorithm: 'HS256', expiresIn: '8h' });
+    setAuthCookies(res, token);
+    closeUserSockets(req.userId);
+    logLoginEvent(req, req.userId, 'sessions_revoked');
+    res.json({ ok: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Não foi possível encerrar as outras sessões.' });
+  }
+});
+
+// GET /login-history — últimos acessos do próprio usuário (máx. 30).
+router.get('/login-history', verifyToken, async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT id, event, ip, user_agent, created_at FROM login_events WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 30', [req.userId]);
+    res.json(rows.map((row) => ({ id: row.id, event: row.event, ip: row.ip, userAgent: row.user_agent, createdAt: row.created_at })));
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Não foi possível carregar o histórico de acessos.' });
   }
 });
 
@@ -243,13 +401,13 @@ router.post('/logout', (req, res) => {
 });
 
 // DELETE /account — remove o usuário (confirmação por senha)
-router.delete('/account', verifyToken, passwordLimiter, async (req, res) => {
+router.delete('/account', verifyToken, requireCsrf, passwordLimiter, async (req, res) => {
   const { password } = req.body;
   if (!password) {
     return res.status(400).json({ error: 'Informe sua senha para confirmar' });
   }
   try {
-    const [users] = await db.query('SELECT * FROM users WHERE id = ?', [req.userId]);
+    const [users] = await db.query('SELECT password_hash, role FROM users WHERE id = ?', [req.userId]);
     if (users.length === 0) return res.status(404).json({ error: 'User not found' });
     const user = users[0];
     if (!await bcrypt.compare(password, user.password_hash)) {
@@ -261,7 +419,8 @@ router.delete('/account', verifyToken, passwordLimiter, async (req, res) => {
         return res.status(400).json({ error: 'Não é possível excluir o último administrador' });
       }
     }
-    await db.query('DELETE FROM users WHERE id = ?', [req.userId]);
+    await deleteUser(req.userId);
+    closeUserSockets(req.userId);
     clearAuthCookies(res);
     res.json({ ok: true });
   } catch (error) {

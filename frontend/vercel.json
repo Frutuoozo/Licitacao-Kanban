@@ -1,9 +1,47 @@
 {
   "version": 2,
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "https://backend-o3tj.onrender.com/api/$1",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-origin-secret" },
+          "args": "$ORIGIN_SECRET",
+          "env": ["ORIGIN_SECRET"]
+        }
+      ]
+    },
+    {
+      "src": "/socket.io/(.*)",
+      "dest": "https://backend-o3tj.onrender.com/socket.io/$1",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-origin-secret" },
+          "args": "$ORIGIN_SECRET",
+          "env": ["ORIGIN_SECRET"]
+        }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/(.*)",
       "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/:path*",
+      "headers": [{ "key": "x-vercel-enable-rewrite-caching", "value": "0" }]
+    },
+    {
+      "source": "/socket.io/:path*",
+      "headers": [{ "key": "x-vercel-enable-rewrite-caching", "value": "0" }]
     }
   ]
 }

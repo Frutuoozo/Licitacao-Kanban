@@ -20,7 +20,7 @@
 .adm-panel-head p { margin-top: 3px; font-size: 11px; color: var(--lk-muted); }
 .lk-dashboard .adm-panel-btn { min-height: 36px; padding: 0 16px; gap: 6px; }
 
-.adm-table-wrap { overflow-x: auto; scrollbar-width: thin; }
+.adm-table-wrap { overflow-x: auto; }
 .adm-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .adm-table thead tr { background: var(--lk-soft); }
 .adm-table th { height: 40px; padding: 0 12px; font-size: 9px; font-weight: 600; color: var(--lk-muted); text-align: left; text-transform: uppercase; letter-spacing: .02em; white-space: nowrap; }

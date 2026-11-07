@@ -1,9 +1,12 @@
 import ProcessCalendar from "../components/ProcessCalendar";
 import "./ProcessReports.css";
-import { useState, useEffect, useRef, useMemo } from "react";
+import { formatDate, usePreferences } from "../preferences";
+import { downloadCsv } from "../exportTable";
+import { Fragment, useState, useEffect, useRef, useMemo } from "react";
 import {
   IconPlus, IconTrash, IconEdit, IconClose, IconCheck,
   IconUnarchive, IconChevron, IconCalendar, IconFlag,
+  IconMaximize, IconMinimize,
 } from "../icons";
 import {
   PHASE_COLORS, orderedTemplateTypeNames,
@@ -32,7 +35,10 @@ function DocCard({ doc, onToggle, onDelete, isViewer }) {
 
 // ── PhaseCard ─────────────────────────────────────────────────────────────────
 
-function PhaseCard({ phase, docs, onToggleDoc, onDeleteDoc, onDeletePhase, onRenamePhase, isViewer }) {
+// Preferência "esconder concluídos": some com os documentos marcados e deixa só um aviso discreto.
+const HiddenDone = ({ count }) => count > 0 ? <p className="docs-hidden-done">✓ {count} {count === 1 ? "concluído oculto" : "concluídos ocultos"}</p> : null;
+
+function PhaseCard({ phase, docs, onToggleDoc, onDeleteDoc, onDeletePhase, onRenamePhase, isViewer, hideDone }) {
   const allDone   = docs.length > 0 && docs.every(d => d.done);
   const doneCnt   = docs.filter(d => d.done).length;
   const [collapsed, setCollapsed] = useState(false);
@@ -70,10 +76,11 @@ function PhaseCard({ phase, docs, onToggleDoc, onDeleteDoc, onDeletePhase, onRen
       </div>
       {!collapsed && (
         <div className="phase-docs">
-          {docs.map(doc => (
+          {(hideDone ? docs.filter(doc => !doc.done) : docs).map(doc => (
             <DocCard key={doc.id} doc={doc} onToggle={onToggleDoc} onDelete={onDeleteDoc} isViewer={isViewer} />
           ))}
           {docs.length === 0 && <p className="phase-empty">Nenhum documento nesta fase.</p>}
+          {hideDone && <HiddenDone count={doneCnt} />}
         </div>
       )}
     </div>
@@ -83,6 +90,7 @@ function PhaseCard({ phase, docs, onToggleDoc, onDeleteDoc, onDeletePhase, onRen
 // ── ProcessColumn ─────────────────────────────────────────────────────────────
 
 function ProcessColumn({ column, onUpdateDocs, onDeleteColumn, onRenameColumn, onArchive, isViewer, templates = {}, collaborators = [] }) {
+  const hideDone = usePreferences().preferences.hideDoneDocs;
   const [addingItem, setAddingItem]     = useState(null);
   const [newName, setNewName]           = useState("");
   const [phaseColorIdx, setPhaseColorIdx] = useState(0);
@@ -240,10 +248,10 @@ function ProcessColumn({ column, onUpdateDocs, onDeleteColumn, onRenameColumn, o
             <label className="process-edit-field">Número do processo
               <input className="doc-input" value={editProcessNumber} onChange={e => setEditProcessNumber(e.target.value)} placeholder="Ex.: 001/2026" />
             </label>
-            <label className="process-edit-field">Colaborador
+            <label className="process-edit-field">Gestor Principal
               <span className="process-edit-control">
                 <select className="doc-input process-edit-select" value={editSetor} onChange={e => setEditSetor(e.target.value)}>
-                  <option value="">Selecione o colaborador...</option>
+                  <option value="">Selecione o gestor principal...</option>
                   {collaboratorNames.map(name => <option key={name} value={name}>{name}</option>)}
                 </select>
                 <span className="process-edit-control-icon" aria-hidden="true"><IconChevron down /></span>
@@ -278,11 +286,14 @@ function ProcessColumn({ column, onUpdateDocs, onDeleteColumn, onRenameColumn, o
             <PhaseCard key={group.phase.id} phase={group.phase} docs={group.docs}
               onToggleDoc={toggleDoc} onDeleteDoc={deleteDoc}
               onRenameDoc={renameDoc} onChangeDocColor={() => {}}
-              onDeletePhase={deletePhase} onRenamePhase={renamePhase} isViewer={isViewer} />
+              onDeletePhase={deletePhase} onRenamePhase={renamePhase} isViewer={isViewer} hideDone={hideDone} />
           ) : (
-            group.docs.map(doc => (
-              <DocCard key={doc.id} doc={doc} onToggle={toggleDoc} onDelete={deleteDoc} isViewer={isViewer} />
-            ))
+            <Fragment key={`loose-${gi}`}>
+              {(hideDone ? group.docs.filter(doc => !doc.done) : group.docs).map(doc => (
+                <DocCard key={doc.id} doc={doc} onToggle={toggleDoc} onDelete={deleteDoc} isViewer={isViewer} />
+              ))}
+              {hideDone && <HiddenDone count={group.docs.filter(doc => doc.done).length} />}
+            </Fragment>
           )
         ))}
       </div>
@@ -384,7 +395,7 @@ export function SetorPieChart({ data }) {
   if (data.length === 0) {
     return (
       <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:"32px 0", color:"var(--muted)", fontSize:"0.85rem" }}>
-        Nenhum processo ativo com colaborador definido.
+        Nenhum processo ativo com gestor principal definido.
       </div>
     );
   }
@@ -515,6 +526,7 @@ const toDate = value => {
 const formatPercent = (part, total) => `${(total ? (part / total) * 100 : 0).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 
 function ProcessReports({ columns, archived }) {
+  const exportFormat = usePreferences().preferences.exportFormat === "pdf" ? "pdf" : "csv";
   const allProcesses = useMemo(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     return [...columns, ...archived].map(c => {
@@ -534,7 +546,8 @@ function ProcessReports({ columns, archived }) {
         situation,
         overdue,
         dueStatus,
-        createdDate: toDate(c.createdAt),
+        // "Criado" nos relatórios é quando o trabalho começou: a data de início da demanda.
+        createdDate: toDate(c.startedAt || c.createdAt),
         archivedDate: c.status === "archived" ? toDate(c.archivedAt) : null,
       };
     });
@@ -547,17 +560,11 @@ function ProcessReports({ columns, archived }) {
   const [situationFilter, setSituationFilter] = useState("all");
   const [hoveredMonth, setHoveredMonth] = useState(null);
 
-  // A página rola pelo documento: a classe aplica a barra de rolagem fina só enquanto Relatórios está aberto.
-  useEffect(() => {
-    const root = document.documentElement;
-    root.classList.add("rp-scroll");
-    return () => root.classList.remove("rp-scroll");
-  }, []);
 
   const uniqueSectors = useMemo(() => [...new Set(allProcesses.map(p => p.setor).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR")), [allProcesses]);
   const uniqueTypes = useMemo(() => [...new Set(allProcesses.map(p => p.type).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR")), [allProcesses]);
 
-  // Colaborador, tipo, vencimento e situação valem para tudo; o período recorta pela data de criação.
+  // Gestor principal, tipo, vencimento e situação valem para tudo; o período recorta pela data de criação.
   const scoped = useMemo(() => allProcesses.filter(p =>
     (setorFilter === "all" || p.setor === setorFilter) &&
     (typeFilter === "all" || p.type === typeFilter) &&
@@ -572,6 +579,13 @@ function ProcessReports({ columns, archived }) {
     // Processos sem data de criação (recém-criados nesta sessão) contam como atuais.
     return scoped.filter(p => !p.createdDate || p.createdDate >= start);
   }, [scoped, periodFilter]);
+  // PDF: impressão do próprio relatório (com cabeçalho e resumo); CSV: a tabela detalhada.
+  const exportReport = () => {
+    if (exportFormat === "pdf") { window.print(); return; }
+    downloadCsv(`relatorio-processos-${new Date().toISOString().slice(0, 10)}.csv`,
+      ["Nº do processo", "Processo", "Gestor Principal", "Tipo", "Vencimento", "Situação", "Itens concluídos", "Checklist (%)"],
+      filteredProcesses.map(p => [p.processNumber || "", p.title || "", p.setor || "", p.type || "", p.dueDate ? new Date(`${String(p.dueDate).slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR") : "", SITUATIONS[p.situation]?.label || "", `${p.doneDocs}/${p.totalDocs}`, p.progress]));
+  };
 
   const counts = { done: 0, progress: 0, pending: 0 };
   filteredProcesses.forEach(p => { counts[p.situation]++; });
@@ -581,7 +595,7 @@ function ProcessReports({ columns, archived }) {
     const now = new Date();
     const months = Array.from({ length: CHART_MONTHS }, (_, i) => {
       const date = new Date(now.getFullYear(), now.getMonth() - (CHART_MONTHS - 1 - i), 1);
-      return { key: `${date.getFullYear()}-${date.getMonth()}`, label: MONTH_ABBR[date.getMonth()], month: date.getMonth(), year: date.getFullYear(), created: 0, completed: 0 };
+      return { key: `${date.getFullYear()}-${date.getMonth()}`, label: MONTH_ABBR[date.getMonth()], month: date.getMonth(), year: date.getFullYear(), start: date, end: new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59), active: 0, created: 0, completed: 0 };
     });
     const byKey = new Map(months.map(m => [m.key, m]));
     const monthOf = date => date && byKey.get(`${date.getFullYear()}-${date.getMonth()}`);
@@ -590,14 +604,16 @@ function ProcessReports({ columns, archived }) {
       if (created) created.created++;
       const completed = monthOf(p.archivedDate);
       if (completed) completed.completed++;
+      // Ativo no mês: já existia (criado até o fim do mês) e não estava concluído antes do começo dele.
+      if (p.createdDate) months.forEach(m => { if (p.createdDate <= m.end && (!p.archivedDate || p.archivedDate >= m.start)) m.active++; });
     });
-    const max = Math.max(1, ...months.flatMap(m => [m.created, m.completed]));
+    const max = Math.max(1, ...months.flatMap(m => [m.active, m.created, m.completed]));
     return { months, max };
   }, [scoped]);
 
   const printFilterSummary = [
     periodFilter !== "all" && `Período: ${PERIODS.find(p => p.value === periodFilter)?.label}`,
-    setorFilter !== "all" && `Colaborador: ${setorFilter}`,
+    setorFilter !== "all" && `Gestor Principal: ${setorFilter}`,
     typeFilter !== "all" && `Tipo: ${typeFilter}`,
     dueFilter !== "all" && `Vencimento: ${DUE_FILTERS.find(d => d.value === dueFilter)?.label}`,
     situationFilter !== "all" && `Situação: ${SITUATIONS[situationFilter].label}`,
@@ -630,11 +646,11 @@ function ProcessReports({ columns, archived }) {
 
       <section className="rp-card rp-filters" aria-label="Filtros do relatório">
         <Select label="Período" value={periodFilter} onChange={setPeriodFilter} options={PERIODS} />
-        <Select label="Colaborador" value={setorFilter} onChange={setSetorFilter} options={[{ value: "all", label: "Todos os colaboradores" }, ...uniqueSectors.map(s => ({ value: s, label: s }))]} />
+        <Select label="Gestor Principal" value={setorFilter} onChange={setSetorFilter} options={[{ value: "all", label: "Todos os gestores" }, ...uniqueSectors.map(s => ({ value: s, label: s }))]} />
         <Select label="Tipo" value={typeFilter} onChange={setTypeFilter} options={[{ value: "all", label: "Todos os tipos" }, ...uniqueTypes.map(t => ({ value: t, label: t }))]} />
         <Select label="Vencimento" value={dueFilter} onChange={setDueFilter} options={DUE_FILTERS} />
         <Select label="Situação" value={situationFilter} onChange={setSituationFilter} options={[{ value: "all", label: "Todas as situações" }, ...Object.entries(SITUATIONS).map(([value, s]) => ({ value, label: s.label }))]} />
-        <button type="button" className="rp-export" onClick={() => window.print()}>Exportar relatório</button>
+        <button type="button" className="rp-export" onClick={exportReport} title={`Formato ${exportFormat.toUpperCase()}. Muda em Meu perfil › Preferências.`}>Exportar {exportFormat.toUpperCase()}</button>
       </section>
 
       <section className="lk-kpis rp-kpis" aria-label="Resumo">
@@ -649,8 +665,8 @@ function ProcessReports({ columns, archived }) {
       <div className="rp-charts">
         <section className="rp-card rp-panel rp-evolution">
           <header className="rp-panel-heading">
-            <div><h2>Evolução dos processos</h2><p>Processos criados e concluídos por período</p></div>
-            <div className="rp-legend" aria-hidden="true"><span><i className="created" />Criados</span><span><i className="completed" />Concluídos</span></div>
+            <div><h2>Evolução dos processos</h2><p>Processos ativos, criados e concluídos em cada mês</p></div>
+            <div className="rp-legend" aria-hidden="true"><span><i className="active" />Ativos no mês</span><span><i className="created" />Criados</span><span><i className="completed" />Concluídos</span></div>
           </header>
           <div className="rp-bars" onMouseLeave={() => setHoveredMonth(null)}>
             {chart.months.map((m, i) => (
@@ -658,7 +674,7 @@ function ProcessReports({ columns, archived }) {
                 type="button"
                 className={`rp-bar-group ${hoveredMonth === i ? "active" : ""} ${hoveredMonth !== null && hoveredMonth !== i ? "dimmed" : ""}`}
                 key={m.key}
-                aria-label={`${MONTH_NAMES[m.month]} de ${m.year}: ${m.created} criados, ${m.completed} concluídos`}
+                aria-label={`${MONTH_NAMES[m.month]} de ${m.year}: ${m.active} ${m.active === 1 ? "ativo" : "ativos"}, ${m.created} ${m.created === 1 ? "criado" : "criados"}, ${m.completed} ${m.completed === 1 ? "concluído" : "concluídos"}`}
                 onMouseEnter={() => setHoveredMonth(i)}
                 onFocus={() => setHoveredMonth(i)}
                 onBlur={() => setHoveredMonth(null)}
@@ -667,12 +683,14 @@ function ProcessReports({ columns, archived }) {
                 {hoveredMonth === i && (
                   <span className={`rp-tooltip ${i === 0 ? "start" : i === chart.months.length - 1 ? "end" : ""}`} role="tooltip">
                     <strong>{MONTH_NAMES[m.month]} de {m.year}</strong>
+                    <span><i className="active" />Ativos no mês<b>{m.active}</b></span>
                     <span><i className="created" />Criados<b>{m.created}</b></span>
                     <span><i className="completed" />Concluídos<b>{m.completed}</b></span>
                     {m.created > 0 && <small>{formatPercent(m.completed, m.created)} de conclusão no mês</small>}
                   </span>
                 )}
                 <span className="rp-bar-pair">
+                  <span className="rp-bar active" style={{ height: `${(m.active / chart.max) * 100}%` }}>{m.active > 0 && <em>{m.active}</em>}</span>
                   <span className="rp-bar created" style={{ height: `${(m.created / chart.max) * 100}%` }}>{m.created > 0 && <em>{m.created}</em>}</span>
                   <span className="rp-bar completed" style={{ height: `${(m.completed / chart.max) * 100}%` }}>{m.completed > 0 && <em>{m.completed}</em>}</span>
                 </span>
@@ -703,7 +721,7 @@ function ProcessReports({ columns, archived }) {
         <div className="report-table-wrap">
           <table className="report-table">
             <thead>
-              <tr><th>Processo</th><th>Colaborador</th><th>Tipo</th><th>Vencimento</th><th>Situação</th><th>Checklist</th></tr>
+              <tr><th>Processo</th><th>Gestor Principal</th><th>Tipo</th><th>Vencimento</th><th>Situação</th><th>Checklist</th></tr>
             </thead>
             <tbody>
               {filteredProcesses.map(p => {
@@ -711,9 +729,9 @@ function ProcessReports({ columns, archived }) {
                 return (
                   <tr key={p.id}>
                     <td className="rp-process"><strong>{p.processNumber || p.title}</strong>{p.processNumber && <small>{p.title}</small>}</td>
-                    <td data-label="Colaborador">{p.setor || "—"}</td>
+                    <td data-label="Gestor Principal">{p.setor || "—"}</td>
                     <td data-label="Tipo">{p.type || "—"}</td>
-                    <td data-label="Vencimento" className={p.situation !== "done" && p.overdue ? "rp-overdue" : ""}>{p.dueDate ? <time dateTime={p.dueDate}>{p.dueDate.split("-").reverse().join("/")}</time> : "—"}</td>
+                    <td data-label="Vencimento" className={p.situation !== "done" && p.overdue ? "rp-overdue" : ""}>{p.dueDate ? <time dateTime={p.dueDate}>{formatDate(p.dueDate)}</time> : "—"}</td>
                     <td data-label="Situação" className="rp-status">{s.label}</td>
                     <td data-label="Checklist">
                       <div className="rp-checklist">
@@ -759,16 +777,16 @@ export function ActiveProcessProgress({ columns, sortedColumns = [] }) {
                 const color = p === 100 ? "var(--green)" : c.typeColor || "var(--accent)";
                 const dueLabel = formatDayMonth(c.dueDate);
                 return (
-                  <div key={c.id} className="dash-process-progress-item">
+                  <div key={c.id} className="dash-process-progress-item" style={{ "--bar": color, "--type": c.typeColor || "var(--accent)" }}>
                     <div className="dash-process-progress-header">
                       <span className="dash-process-progress-name">{c.title}</span>
                       <div className="dash-process-progress-meta">
-                        <span className="dash-process-progress-pct" style={{ color }}>{p}%</span>
+                        <span className="dash-process-progress-pct">{p}%</span>
                         <span className="dash-process-due">{dueLabel}</span>
                       </div>
                     </div>
                     <div className="dash-process-progress-bar">
-                      <div style={{ height:"100%", width:`${p}%`, background: color, borderRadius:99, transition:"width 1s cubic-bezier(.4,0,.2,1)" }} />
+                      <div className={`dash-process-progress-fill${p === 0 ? " is-zero" : ""}`} style={{ width: `${p}%` }} />
                     </div>
                   </div>
                 );
@@ -784,7 +802,7 @@ export function DashboardDetails({ columns, archived, sortedColumns = [] }) {
 
   const bySetor = {};
   columns.forEach(c => {
-    const setor = c.setor?.trim() || "Sem colaborador";
+    const setor = c.setor?.trim() || "Sem gestor principal";
     if (!bySetor[setor]) bySetor[setor] = { setor, count: 0 };
     bySetor[setor].count++;
   });
@@ -813,100 +831,13 @@ export function DashboardDetails({ columns, archived, sortedColumns = [] }) {
           <ActiveProcessProgress columns={columns} sortedColumns={sortedColumns} />
         </div>
 
-        {/* Pizza por colaborador */}
+        {/* Pizza por gestor principal */}
         <div className="dash-section">
-          <h3 className="dash-title">Processos por Colaborador</h3>
+          <h3 className="dash-title">Processos por Gestor Principal</h3>
           <SetorPieChart data={setorData} />
         </div>
       </div>
 
-    </div>
-  );
-}
-
-// ── NewProcessModal ───────────────────────────────────────────────────────────
-
-function NewProcessModal({ templates, onAdd, onClose, collaborators = [] }) {
-  const orderedTypes = useMemo(() => orderedTemplateTypeNames(templates), [templates]);
-  const [selectedType, setSelectedType] = useState("");
-  const [customTitle, setCustomTitle]   = useState("");
-  const [processNumber, setProcessNumber] = useState("");
-  const [setor, setSetor]               = useState("");
-  const [dueDate, setDueDate]           = useState("");
-
-  useEffect(() => {
-    const first = orderedTypes[0] || "";
-    if (!orderedTypes.includes(selectedType)) setSelectedType(first);
-  }, [orderedTypes, selectedType]);
-
-  const title = customTitle.trim() || selectedType;
-  const canSubmit = title && processNumber.trim() && setor.trim() && dueDate;
-
-  const handleAdd = () => {
-    if (!canSubmit) return;
-    const tpl     = selectedType ? templates[selectedType] : null;
-    const rawItems = tpl ? tmplItems(tpl) : [];
-    const docs = rawItems.map(item => {
-      if (typeof item === "string") return { id: generateId(), type: "doc", name: item, done: false, bgColor: null };
-      if (item.type === "phase")   return { id: generateId(), type: "phase", name: item.name, bgColor: item.bgColor || PHASE_COLORS[0] };
-      return { id: generateId(), type: "doc", name: item.name, done: false, bgColor: item.bgColor || null };
-    });
-    const typeColor = selectedType ? tmplColor(selectedType, templates[selectedType]) : "#30363d";
-    onAdd({ id: generateId(), title, processNumber: processNumber.trim(), setor: setor.trim(), type: selectedType || null, typeColor, dueDate, docs });
-    onClose();
-  };
-
-  const previewColor = selectedType ? tmplColor(selectedType, templates[selectedType]) : "#30363d";
-  const required = <span style={{ color: "#f85149", marginLeft: 2 }}>*</span>;
-
-  return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal sm-modal">
-        <div className="modal-header">
-          <h2>Novo Processo</h2>
-          <button className="icon-btn" onClick={onClose}><IconClose /></button>
-        </div>
-        <div className="modal-body col">
-          <label className="field-label">Tipo de processo (modelo){required}</label>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 12, height: 12, borderRadius: "50%", background: previewColor, flexShrink: 0 }} />
-            <select className="select-field" value={selectedType} onChange={e => setSelectedType(e.target.value)}>
-              {orderedTypes.map(k => <option key={k} value={k}>{k}</option>)}
-              <option value="">— Sem modelo —</option>
-            </select>
-          </div>
-          <label className="field-label mt">Número do processo{required}</label>
-          <input className="doc-input" placeholder="Ex: 001/2026" value={processNumber}
-            onChange={e => setProcessNumber(e.target.value.replace(/[^0-9./-]/g, ""))}
-            onKeyDown={e => e.key === "Enter" && handleAdd()} />
-          <label className="field-label mt">Colaborador{required}</label>
-          {collaborators.length > 0 ? (
-            <select className="select-field" value={setor} onChange={e => setSetor(e.target.value)} required>
-              <option value="">Selecione o colaborador...</option>
-              {collaborators.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
-            </select>
-          ) : (
-            <p style={{ fontSize: "0.78rem", color: "#8b949e", padding: "8px 0" }}>
-              Nenhum colaborador cadastrado. Cadastre-os na seção Colaboradores.
-            </p>
-          )}
-          <label className="field-label mt">Data de Vencimento{required}</label>
-          <input
-            className="doc-input"
-            type="date"
-            value={dueDate}
-            onChange={e => setDueDate(e.target.value)}
-            style={{ colorScheme: "dark" }}
-          />
-          <label className="field-label mt">Título personalizado{required}</label>
-          <input className="doc-input" placeholder={selectedType || "Ex: Pregão 001-2026"} value={customTitle} onChange={e => setCustomTitle(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAdd()} />
-          <p className="hint">Título final: <strong>{title || "—"}</strong></p>
-        </div>
-        <div className="modal-footer">
-          <button className="btn-cancel-lg" onClick={onClose}>Cancelar</button>
-          <button className="btn-save" onClick={handleAdd} disabled={!canSubmit}>Criar Processo</button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -916,8 +847,7 @@ function NewProcessModal({ templates, onAdd, onClose, collaborators = [] }) {
 export default function ProcessosPage({
   columns, archived, templates, sortedColumns, onDashboard, onOpenMenu, loading, error,
   activeTab, setActiveTab,
-  showNewProcess, setShowNewProcess,
-  addColumn, updateDocs,
+  onOpenDemands, updateDocs,
   deleteColumn, renameColumn, archiveColumn,
   unarchiveColumn, deleteArchived,
   collaborators = [],
@@ -946,6 +876,28 @@ export default function ProcessosPage({
     const gap = parseFloat(getComputedStyle(board).columnGap) || 14;
     board.scrollBy({ left: direction * (cardWidth + gap), behavior: "smooth" });
   };
+  // Tela cheia (como um vídeo): só o quadro de processos ocupa a tela. Esc ou o botão saem.
+  const canFullscreen = typeof document !== "undefined" && document.fullscreenEnabled;
+  const [fullscreen, setFullscreen] = useState(false);
+  useEffect(() => {
+    const sync = () => setFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+  const boardFullscreen = fullscreen && activeTab === "board";
+  useEffect(() => {
+    document.documentElement.classList.toggle("lk-board-fullscreen", boardFullscreen);
+    return () => document.documentElement.classList.remove("lk-board-fullscreen");
+  }, [boardFullscreen]);
+  // Sai da tela cheia ao trocar de aba ou sair da página.
+  useEffect(() => {
+    if (activeTab !== "board" && document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  }, [activeTab]);
+  useEffect(() => () => { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); }, []);
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else document.documentElement.requestFullscreen().catch(() => {});
+  };
   const TABS = [
     { id: "board", label: "Processos" },
     { id: "calendar", label: "Calendário" },
@@ -955,15 +907,14 @@ export default function ProcessosPage({
 
   return (
     <>
+      <h1 className="lk-sr">{activeTab === "calendar" ? "Calendário de Processos" : activeTab === "reports" ? "Relatórios" : "Acompanhar Processos"}</h1>
       <header className="process-page-header">
         <div className="process-page-heading">
           <button className="lk-menu" aria-label="Abrir navegação" onClick={onOpenMenu}>☰</button>
-          <h1>{activeTab === "calendar" ? "Calendário de Processos" : activeTab === "reports" ? "Relatórios" : "Acompanhar Processos"}</h1>
-          <p>{activeTab === "calendar" ? "Visualize os prazos de vencimento das licitações" : activeTab === "reports" ? "Visão consolidada dos processos acompanhados" : "Gerencie os processos e acompanhe o checklist de cada licitação"}</p>
         </div>
         <nav className="process-page-tabs" aria-label="Visualização dos processos">
           {TABS.map(t => <button key={t.id} className={activeTab === t.id ? "active" : ""} aria-current={activeTab === t.id ? "page" : undefined} onClick={() => setActiveTab(t.id)}>{t.label}</button>)}
-          {!isViewer && <button className="process-new-button" onClick={() => setShowNewProcess(true)}><IconPlus /> Novo processo</button>}
+          {canFullscreen && activeTab === "board" && columns.length > 0 && <button className="process-fullscreen-button" aria-label="Ver processos em tela cheia" title="Tela cheia" onClick={toggleFullscreen}><IconMaximize /></button>}
         </nav>
       </header>
       {error && <p className="lk-error" role="alert">{error}</p>}
@@ -972,8 +923,8 @@ export default function ProcessosPage({
         loading ? <p className="lk-empty">Carregando processos…</p> : error ? null : columns.length === 0 ? (
           <div className="empty-board">
             <h2>Nenhum processo ainda</h2>
-            <p>{isViewer ? "Nenhum processo ativo no momento." : "Clique em Novo Processo para começar."}</p>
-            {!isViewer && <button className="btn-primary" onClick={() => setShowNewProcess(true)}><IconPlus /> Criar primeiro processo</button>}
+            <p>{isViewer ? "Nenhum processo ativo no momento." : "Os processos nascem em Demandas e aparecem aqui depois de iniciados."}</p>
+            {!isViewer && <button className="btn-primary" onClick={onOpenDemands}>Ir para Demandas</button>}
           </div>
         ) : (
           <div className="process-board-wrap">
@@ -985,6 +936,7 @@ export default function ProcessosPage({
                 isViewer={isViewer} templates={templates} collaborators={collaborators} />
             ))}
           </div>
+          {boardFullscreen && <button className="process-fullscreen-exit" aria-label="Sair da tela cheia" title="Sair da tela cheia (Esc)" onClick={toggleFullscreen}><IconMinimize /> Sair</button>}
           {(canScrollLeft || canScrollRight) && <button disabled={!canScrollLeft} className="process-scroll process-scroll-left" aria-label="Processos anteriores" onClick={() => scrollBoard(-1)}><IconChevron /></button>}
           {(canScrollLeft || canScrollRight) && <button disabled={!canScrollRight} className="process-scroll process-scroll-right" aria-label="Próximos processos" onClick={() => scrollBoard(1)}><IconChevron /></button>}
           </div>
@@ -1014,7 +966,6 @@ export default function ProcessosPage({
         loading ? <p className="lk-empty">Carregando calendário…</p> : !error && <ProcessCalendar columns={columns} />
       )}
 
-      {showNewProcess && <NewProcessModal templates={templates} onAdd={addColumn} onClose={() => setShowNewProcess(false)} collaborators={collaborators} />}
     </>
   );
 }

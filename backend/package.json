@@ -7,20 +7,24 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test"
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
+    "compression": "^1.8.2",
     "cookie": "^0.7.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.22.2",
+    "express": "^4.22.3",
     "express-rate-limit": "^8.6.2",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.9.7",
     "socket.io": "^4.8.3",
     "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.4"
   }
 }

@@ -1,0 +1,139 @@
+/* Tela de entrada: cartão com a ilustração (branca) e o formulário (azul-marinho, borda curva).
+   A troca de lados só desliza (transform) e desbota (opacity): nada é espelhado no meio do caminho.
+   Sem animação contínua: parada na tela, não gasta processador. */
+.lg-page {
+  --lg-navy: #1a1a6e; --lg-blue: #2563eb; --lg-blue-dark: #1d4ed8; --lg-sky: #93c5fd; --lg-mist: #e3ecff;
+  --lg-ink: #1a1a6e; --lg-muted: #5f6a8a; --lg-ok: #4ade80;
+  --lg-slide: .9s cubic-bezier(.65, 0, .35, 1);
+  min-height: 100vh; display: grid; place-items: center; padding: 32px; background: #fff;
+  font: 15px/1.5 'Nunito Sans', sans-serif; color: var(--lg-ink); overflow-x: hidden;
+}
+
+.lg-card {
+  position: relative; width: min(1000px, 100%); height: 640px; overflow: hidden; isolation: isolate;
+  border-radius: 40px; background: #fff; border: 1px solid #e6eaf5;
+  box-shadow: 0 30px 80px #1a1a6e1f, 0 2px 8px #1a1a6e0d;
+  zoom: var(--lg-scale, 1);
+}
+
+/* Lado da ilustração */
+.lg-art { position: absolute; inset: 0 auto 0 0; width: 56%; padding: 34px 40px; display: flex; flex-direction: column; transition: transform var(--lg-slide); will-change: transform; }
+.lg-card.is-new .lg-art { transform: translateX(78.5714%); } /* 44% do cartão ÷ 56% */
+.lg-art > * { transition: transform var(--lg-slide); }
+.lg-card.is-new .lg-art > * { transform: translateX(64px); } /* afasta o conteúdo da curva, que agora fica à esquerda */
+.lg-brand { font: 800 1.55rem/1 'Outfit', sans-serif; letter-spacing: -0.02em; color: var(--lg-navy); }
+.lg-brand span { color: var(--lg-blue); }
+.lg-brand small { display: block; margin-top: 6px; font: 600 .78rem 'Nunito Sans', sans-serif; letter-spacing: 0; color: var(--lg-muted); }
+.lg-illustration { flex: 1; display: grid; place-items: center; }
+.lg-illustration svg { width: 100%; max-width: 440px; height: auto; }
+
+/* Lado do formulário */
+.lg-panel { position: absolute; inset: 0 0 0 auto; z-index: 2; width: 44%; background: var(--lg-navy); color: #fff; transition: transform var(--lg-slide); will-change: transform; }
+.lg-card.is-new .lg-panel { transform: translateX(-127.2727%); } /* 56% do cartão ÷ 44% */
+.lg-wave { position: absolute; top: 0; width: 90px; height: 100%; fill: var(--lg-navy); }
+.lg-wave.left { left: -89px; }
+.lg-wave.right { right: -89px; transform: scaleX(-1); }
+
+.lg-forms { position: relative; height: 100%; overflow: hidden; }
+.lg-form { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 52px 46px 30px 40px; transition: opacity .3s ease; }
+.lg-card.is-new .lg-form { padding: 46px 40px 30px 46px; }
+.lg-form > * { flex-shrink: 0; }
+/* Desbota um formulário e mostra o outro na segunda metade do deslizamento */
+.lg-form.is-first { opacity: 0; pointer-events: none; }
+.lg-card.is-new .lg-form.is-login { opacity: 0; pointer-events: none; }
+.lg-card.is-new .lg-form.is-first, .lg-card:not(.is-new) .lg-form.is-login { opacity: 1; pointer-events: auto; transition-delay: .45s; }
+
+/* Margem automática acima do título e acima do rodapé (.lg-switch): o espaço livre se divide entre
+   os dois, e o bloco título–campos–botão fica no meio da altura do painel. */
+.lg-form h1 { margin-top: auto; font: 800 2.1rem/1.1 'Outfit', sans-serif; letter-spacing: -0.02em; color: #fff; }
+.lg-sub { margin-top: 6px; font-size: .9rem; color: #c7cdf0; }
+.lg-sub strong { color: #fff; }
+.lg-fields { display: grid; gap: 12px; margin-top: 24px; }
+.lg-field { display: grid; gap: 5px; }
+.lg-field label { font-size: .84rem; font-weight: 700; color: #e6e9fb; }
+.lg-input { position: relative; }
+.lg-input input {
+  width: 100%; height: 46px; padding: 0 18px; border-radius: 999px; border: 1.5px solid #ffffff24;
+  background: #ffffff12; color: #fff; font: 600 1rem 'Nunito Sans', sans-serif; transition: border-color .15s, background .15s;
+}
+.lg-input input.has-eye { padding-right: 52px; }
+.lg-input input::placeholder { color: #ffffff80; font-weight: 400; }
+.lg-input input:focus { outline: none; border-color: var(--lg-sky); background: #ffffff1c; }
+.lg-input input:-webkit-autofill { -webkit-text-fill-color: #fff; -webkit-box-shadow: 0 0 0 40px #2b2b7e inset; caret-color: #fff; }
+.lg-eye { position: absolute; top: 1px; right: 1px; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: none; color: #c7cdf0; cursor: pointer; }
+.lg-eye:hover { color: #fff; }
+.lg-eye svg { width: 19px; height: 19px; }
+
+.lg-primary { height: 48px; margin: 18px 0 16px; border: 0; border-radius: 999px; background: var(--lg-blue); color: #fff; font: 700 1rem 'Nunito Sans', sans-serif; cursor: pointer; transition: background .15s; }
+.lg-form.is-first .lg-primary { margin-bottom: 0; } /* aqui o botão é o último item do bloco centralizado */
+.lg-primary:hover:not(:disabled) { background: var(--lg-blue-dark); }
+.lg-primary:disabled { opacity: .6; cursor: progress; }
+.lg-help { margin-top: -4px; font-size: .78rem; color: #aab2e0; }
+.lg-switch { margin-top: auto; padding-top: 18px; border-top: 1px solid #ffffff1f; display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: .86rem; color: #c7cdf0; }
+.lg-secondary { min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1.5px solid #ffffff4d; background: none; color: #fff; font: 700 .88rem 'Nunito Sans', sans-serif; white-space: nowrap; cursor: pointer; transition: background .15s, border-color .15s; }
+.lg-secondary:hover { background: #ffffff14; border-color: #ffffff80; }
+.lg-primary:focus-visible, .lg-secondary:focus-visible, .lg-eye:focus-visible { outline: 3px solid var(--lg-sky); outline-offset: 2px; }
+
+/* Requisitos da senha: ficam verdes conforme a digitação */
+.lg-rules { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: .8rem; color: #c7cdf0; }
+.lg-rules li { display: flex; align-items: center; gap: 7px; transition: color .2s; }
+.lg-rules li.ok { color: var(--lg-ok); }
+.lg-dot { width: 16px; height: 16px; flex-shrink: 0; display: grid; place-items: center; border-radius: 50%; border: 1.5px solid #ffffff59; transition: background .2s, border-color .2s; }
+.lg-rules li.ok .lg-dot { background: #16a34a; border-color: #16a34a; color: #fff; }
+.lg-dot svg { width: 10px; height: 10px; }
+.lg-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Barra do topo e link "Esqueceu a senha?" existem só no celular */
+.lg-topbar, .lg-forgot { display: none; }
+
+/* Celular e tablet em pé: página branca e simples (sem ilustração e sem painel azul).
+   Barra no topo com a marca e o botão de primeiro acesso; título, campos e botão em sequência.
+   O conteúdo fica no topo da página, então o teclado abre embaixo sem espremer nada. */
+@media (max-width: 860px) {
+  .lg-page { display: block; padding: 0; }
+  .lg-card { width: 100%; height: auto; min-height: 100vh; overflow: visible; border: 0; border-radius: 0; box-shadow: none; zoom: 1; }
+  .lg-art, .lg-wave { display: none; }
+
+  .lg-topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-bottom: 1px solid #e6e8ef; }
+  .lg-topbar-brand { font: 800 1.55rem/1 'Outfit', sans-serif; letter-spacing: -0.02em; color: var(--lg-navy); }
+  .lg-topbar-brand span { color: var(--lg-blue); }
+  .lg-top-action { min-height: 44px; padding: 0 18px; border: 0; border-radius: 16px; background: var(--lg-blue); color: #fff; font: 700 .95rem 'Nunito Sans', sans-serif; cursor: pointer; }
+  .lg-top-action:hover { background: var(--lg-blue-dark); }
+
+  .lg-panel, .lg-card.is-new .lg-panel { position: static; width: 100%; background: #fff; color: var(--lg-ink); transform: none; }
+  .lg-forms { display: grid; height: auto; overflow: visible; }
+  .lg-form, .lg-card.is-new .lg-form { position: relative; inset: auto; grid-area: 1 / 1; padding: 30px 20px 32px; }
+  .lg-form[inert] { position: absolute; inset: 0 0 auto; } /* só o formulário visível define a altura */
+  .lg-card.is-new .lg-form.is-first, .lg-card:not(.is-new) .lg-form.is-login { transition-delay: .1s; }
+
+  .lg-form h1 { margin-top: 0; font-size: 2.1rem; color: var(--lg-ink); }
+  .lg-sub { margin-top: 8px; font-size: 1rem; color: #3b4261; }
+  .lg-sub strong { color: var(--lg-ink); }
+  .lg-fields { gap: 14px; margin-top: 28px; }
+  .lg-field label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } /* o nome vai dentro do campo; continua para leitores de tela */
+  .lg-input input { height: 56px; padding: 0 18px; border-radius: 16px; border: 1.5px solid #b9bfcc; background: #fff; color: var(--lg-ink); font-weight: 500; }
+  .lg-input input.has-eye { padding-right: 56px; }
+  .lg-input input::placeholder { color: #6b7280; }
+  .lg-input input:focus { border-color: var(--lg-blue); background: #fff; box-shadow: 0 0 0 3px #2563eb26; }
+  .lg-input input:-webkit-autofill { -webkit-text-fill-color: var(--lg-ink); -webkit-box-shadow: 0 0 0 40px #fff inset; caret-color: var(--lg-ink); }
+  .lg-eye { top: 6px; right: 6px; color: var(--lg-ink); }
+  .lg-eye:hover { color: var(--lg-blue); }
+
+  .lg-forgot { display: block; align-self: flex-start; min-height: 44px; margin-top: 4px; padding: 0 6px; border: 0; background: none; color: #1d4ed8; font: 700 .95rem 'Nunito Sans', sans-serif; cursor: pointer; }
+  .lg-help, .lg-switch { display: none; }
+  .lg-primary, .lg-form.is-first .lg-primary { height: 56px; margin: 14px 0 0; border-radius: 16px; font-size: 1.05rem; }
+  .lg-primary:focus-visible, .lg-top-action:focus-visible, .lg-forgot:focus-visible, .lg-eye:focus-visible { outline: 3px solid #2563eb66; outline-offset: 2px; }
+
+  .lg-rules { grid-template-columns: 1fr 1fr; gap: 6px 10px; font-size: .84rem; color: #4b5470; }
+  .lg-rules li.ok { color: #15803d; }
+  .lg-dot { border-color: #b9bfcc; }
+}
+@media (max-width: 340px) { .lg-rules { grid-template-columns: 1fr; } }
+/* Tablet em pé: o mesmo layout, com o conteúdo numa coluna de largura confortável */
+@media (min-width: 600px) and (max-width: 860px) {
+  .lg-topbar { padding: 14px 32px; }
+  .lg-form, .lg-card.is-new .lg-form { width: 100%; max-width: 520px; justify-self: center; padding: 48px 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lg-art, .lg-art > *, .lg-panel, .lg-form, .lg-rules li, .lg-dot { transition: none !important; }
+}

@@ -33,7 +33,7 @@
 .pc-deadlines { display:flex; flex-direction:column; max-height:100%; }
 .pc-deadlines > header { display:flex; flex-wrap:wrap; align-items:center; gap:10px; border-bottom:1px solid var(--lk-border); padding-bottom:18px; margin-bottom:20px; }
 .pc-reset { padding:0; border:0; font-size:11px; }
-.pc-deadline-list { display:flex; flex-direction:column; gap:12px; overflow:auto; flex:1 1 0; min-height:120px; scrollbar-width:thin; scrollbar-color:color-mix(in srgb,var(--lk-muted) 25%,transparent) transparent; }
+.pc-deadline-list { display:flex; flex-direction:column; gap:12px; overflow:auto; flex:1 1 0; min-height:120px; }
 .pc-deadline { display:flex; align-items:flex-start; gap:12px; padding:12px; border:1px solid var(--lk-border); border-radius:12px; background:var(--lk-soft); }
 .pc-date { flex:0 0 44px; padding:8px 3px; display:flex; flex-direction:column; align-items:center; gap:5px; background:var(--lk-surface); border:1px solid var(--lk-border); border-radius:10px; }
 .pc-date strong { font-size:16px; font-weight:600; }

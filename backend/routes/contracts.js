@@ -1,9 +1,10 @@
 import crypto from 'crypto';
 import express from 'express';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
-import db from '../db.js';
+import db, { withTransaction } from '../db.js';
 import { requireEditorOrAdmin } from '../middleware/editor.js';
 import { getIO } from '../socket.js';
+import { ClientError } from '../errors.js';
 import { isValidDateString, normalizeText, validateContractPayload } from '../validation.js';
 
 const router = express.Router();
@@ -95,14 +96,7 @@ async function fetchContract(conn, id) {
   return rows[0] ? serializeContract(rows[0]) : null;
 }
 
-async function getUserName(conn, userId) {
-  if (!userId) return null;
-  const [rows] = await conn.query('SELECT username FROM users WHERE id = ? LIMIT 1', [userId]);
-  return rows[0]?.username || null;
-}
-
 async function logEvent(conn, req, contractId, event) {
-  const userName = await getUserName(conn, req.userId);
   const [result] = await conn.query(
     `INSERT INTO contract_events
      (contract_id, type, event_date, amendment_number, previous_due_date, new_due_date,
@@ -111,31 +105,28 @@ async function logEvent(conn, req, contractId, event) {
     [contractId, event.type, event.eventDate || todayIso(), event.amendmentNumber ?? null,
       event.previousDueDate ?? null, event.newDueDate ?? null, event.previousValue ?? null, event.newValue ?? null,
       event.previousValueVariable ?? null, event.newValueVariable ?? null,
-      event.notes || null, event.changes ? JSON.stringify(event.changes) : null, req.userId || null, userName]
+      event.notes || null, event.changes ? JSON.stringify(event.changes) : null, req.userId || null, req.userName || null]
   );
   return result.insertId;
 }
 
+
 // Executa `work` numa transação; devolve o contrato atualizado e avisa os clientes conectados.
 async function inTransaction(res, work, { status = 200, socketEvent = 'contract:updated', failMessage }) {
-  const conn = await db.getConnection();
   try {
-    await conn.beginTransaction();
-    const result = await work(conn);
-    if (result?.error) {
-      await conn.rollback();
-      return res.status(result.status || 400).json({ error: result.error });
-    }
-    await conn.commit();
+    const result = await withTransaction(async (conn) => {
+      const outcome = await work(conn);
+      // Recusa de regra de negócio (ex.: contrato não encontrado): desfaz tudo e a mensagem vai para o usuário.
+      if (outcome?.error) throw new ClientError(outcome.error, outcome.status || 400);
+      return outcome;
+    });
     getIO()?.emit(socketEvent, result.contract);
     // `extra`: dados só para quem fez a ação (ex.: id do aditivo criado, para anexar o termo em seguida).
     return res.status(status).json(result.extra ? { ...result.contract, ...result.extra } : result.contract);
   } catch (error) {
-    await conn.rollback().catch(() => {});
+    if (error instanceof ClientError) return res.status(error.status).json({ error: error.message });
     console.error(error);
     return res.status(500).json({ error: failMessage });
-  } finally {
-    conn.release();
   }
 }
 
@@ -167,7 +158,9 @@ router.get('/:id/history', async (req, res) => {
   try {
     const [rows] = await db.query(
       // Anexos de documentos não aparecem no histórico (registros antigos desse tipo ficam ocultos).
-      "SELECT * FROM contract_events WHERE contract_id = ? AND type <> 'document' ORDER BY created_at ASC, id ASC",
+      `SELECT id, type, event_date, amendment_number, previous_due_date, new_due_date, previous_value, new_value,
+              previous_value_variable, new_value_variable, notes, changes, user_name, created_at
+       FROM contract_events WHERE contract_id = ? AND type <> 'document' ORDER BY created_at ASC, id ASC`,
       [req.params.id]
     );
     return res.json(rows.map(serializeEvent));
@@ -392,11 +385,10 @@ router.post(
         [req.params.id, kind, eventId]
       );
       if (previous.length) await conn.query('DELETE FROM contract_documents WHERE id IN (?)', [previous.map((row) => row.id)]);
-      const userName = await getUserName(conn, req.userId);
       await conn.query(
         `INSERT INTO contract_documents (contract_id, event_id, kind, file_name, mime_type, size_bytes, data, user_name)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [req.params.id, eventId, kind, fileName, mimeType, req.body.length, req.body, userName]
+        [req.params.id, eventId, kind, fileName, mimeType, req.body.length, req.body, req.userName || null]
       );
       return { contract: await fetchContract(conn, req.params.id) };
     }, { status: 201, failMessage: 'Falha ao anexar documento' });
@@ -411,12 +403,17 @@ router.delete('/:id/documents/:docId', requireEditorOrAdmin, contractWriteLimite
   return { contract: await fetchContract(conn, req.params.id) };
 }, { failMessage: 'Falha ao remover documento' }));
 
+// Contrato, histórico e anexos saem juntos: se uma parte falhar, nada é apagado.
 router.delete('/:id', requireEditorOrAdmin, contractWriteLimiter, async (req, res) => {
   try {
-    const [result] = await db.query('DELETE FROM contracts WHERE id = ?', [req.params.id]);
-    if (result.affectedRows === 0) return res.status(404).json({ error: 'Contrato não encontrado' });
-    await db.query('DELETE FROM contract_events WHERE contract_id = ?', [req.params.id]);
-    await db.query('DELETE FROM contract_documents WHERE contract_id = ?', [req.params.id]);
+    const deleted = await withTransaction(async (conn) => {
+      const [result] = await conn.query('DELETE FROM contracts WHERE id = ?', [req.params.id]);
+      if (result.affectedRows === 0) return false;
+      await conn.query('DELETE FROM contract_events WHERE contract_id = ?', [req.params.id]);
+      await conn.query('DELETE FROM contract_documents WHERE contract_id = ?', [req.params.id]);
+      return true;
+    });
+    if (!deleted) return res.status(404).json({ error: 'Contrato não encontrado' });
     getIO()?.emit('contract:deleted', { id: req.params.id });
     return res.json({ success: true });
   } catch (error) {

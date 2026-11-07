@@ -4,7 +4,7 @@ import "./DatePicker.css";
 const MONTHS = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 const WEEKDAYS = ["D", "S", "T", "Q", "Q", "S", "S"];
 const POPOVER_WIDTH = 300;
-const POPOVER_HEIGHT = 392;
+const POPOVER_HEIGHT = 452;
 
 const toIso = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 const fromIso = (value) => {
@@ -38,7 +38,7 @@ const addMonths = (date, months) => {
 const SHORTCUTS = [["+6 meses", 6], ["+1 ano", 12], ["+2 anos", 24]];
 
 /** Campo de data com calendário próprio (valor no formato AAAA-MM-DD, como o input nativo). */
-export default function DatePicker({ value, onChange, required, id, placeholder = "dd/mm/aaaa" }) {
+export default function DatePicker({ value, onChange, required, id, placeholder = "dd/mm/aaaa", min }) {
   const autoId = useId();
   const inputId = id || autoId;
   const wrapRef = useRef(null);
@@ -54,10 +54,14 @@ export default function DatePicker({ value, onChange, required, id, placeholder 
   useEffect(() => { setText(toDisplay(value)); }, [value]);
 
   const openPopover = () => {
-    const rect = wrapRef.current.getBoundingClientRect();
+    // Medidas em px da tela divididas pelo zoom (preferência de tamanho da letra), já que o popover fica dentro do conteúdo ampliado.
+    const zoom = wrapRef.current.currentCSSZoom || 1;
+    const r = wrapRef.current.getBoundingClientRect();
+    const rect = { top: r.top / zoom, bottom: r.bottom / zoom, left: r.left / zoom };
+    const viewW = window.innerWidth / zoom, viewH = window.innerHeight / zoom;
     // Posição fixa: não é cortado pela rolagem do formulário; abre para cima se faltar espaço embaixo.
-    const below = rect.bottom + 6 + POPOVER_HEIGHT <= window.innerHeight;
-    const left = Math.min(Math.max(8, rect.left), window.innerWidth - POPOVER_WIDTH - 8);
+    const below = rect.bottom + 6 + POPOVER_HEIGHT <= viewH;
+    const left = Math.min(Math.max(8, rect.left), viewW - POPOVER_WIDTH - 8);
     setView(selected || new Date());
     setPosition({ left, top: below ? rect.bottom + 6 : Math.max(8, rect.top - 6 - POPOVER_HEIGHT) });
   };
@@ -154,6 +158,7 @@ export default function DatePicker({ value, onChange, required, id, placeholder 
                   className={`dp-day ${outside ? "outside" : ""} ${sameDay(date, today) ? "today" : ""} ${sameDay(date, selected) ? "selected" : ""}`}
                   aria-label={date.toLocaleDateString("pt-BR", { dateStyle: "full" })}
                   aria-pressed={sameDay(date, selected)}
+                  disabled={Boolean(min) && toIso(date) < min}
                   onClick={() => choose(date)}
                 >
                   {date.getDate()}

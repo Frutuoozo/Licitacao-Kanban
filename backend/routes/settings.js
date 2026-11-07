@@ -63,11 +63,13 @@ router.put('/', requireAdmin, settingsWriteLimiter, async (req, res) => {
     else return res.status(400).json({ error: `Valor inválido para ${key}.` });
   }
   try {
-    for (const [key, value] of Object.entries(next)) {
+    // Todas as chaves num upsert só (uma consulta, atômica).
+    const rows = Object.entries(next).map(([key, value]) => [key, String(value), req.userId || null]);
+    if (rows.length > 0) {
       await db.query(
-        `INSERT INTO app_settings (setting_key, setting_value, updated_by) VALUES (?, ?, ?)
+        `INSERT INTO app_settings (setting_key, setting_value, updated_by) VALUES ?
          ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_by = VALUES(updated_by)`,
-        [key, String(value), req.userId || null]
+        [rows]
       );
     }
     res.json(await readSettings());

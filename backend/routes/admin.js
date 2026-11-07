@@ -4,6 +4,8 @@ import { randomBytes, randomUUID } from 'crypto';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import db from '../db.js';
 import { validatePassword } from '../security.js';
+import { closeUserSockets } from '../socket.js';
+import { deleteUser } from '../users.js';
 import { isAllowedRole, isValidCpf, isValidEmail, isNonEmptyString, MAX_LENGTHS, normalizeText } from '../validation.js';
 
 const router = express.Router();
@@ -82,6 +84,7 @@ router.patch('/users/:id/password', adminMutationLimiter, async (req, res) => {
       'UPDATE users SET password_hash = ?, first_access = TRUE, failed_attempts = 0, locked_until = NULL, session_version = session_version + 1 WHERE id = ?',
       [hash, id]
     );
+    closeUserSockets(id);
     res.json({ ok: true });
   } catch (error) {
     console.error(error);
@@ -143,7 +146,8 @@ router.delete('/users/:id', adminMutationLimiter, async (req, res) => {
         return res.status(400).json({ error: 'Não é possível excluir o último administrador' });
       }
     }
-    await db.query('DELETE FROM users WHERE id = ?', [id]);
+    await deleteUser(id);
+    closeUserSockets(id);
     res.json({ ok: true });
   } catch (error) {
     console.error(error);

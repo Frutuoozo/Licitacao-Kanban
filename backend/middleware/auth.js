@@ -16,7 +16,8 @@ export const verifyToken = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] });
-    db.query('SELECT session_version FROM users WHERE id = ? LIMIT 1', [decoded.id])
+    // Uma consulta só: role e username ficam em req para requireAdmin/requireEditorOrAdmin e para o histórico de contratos.
+    db.query('SELECT session_version, role, username FROM users WHERE id = ? LIMIT 1', [decoded.id])
       .then(([rows]) => {
         if (rows.length === 0) {
           return res.status(401).json({ error: 'Unauthorized!' });
@@ -26,6 +27,8 @@ export const verifyToken = (req, res, next) => {
           return res.status(401).json({ error: 'Session expired' });
         }
         req.userId = decoded.id;
+        req.userRole = rows[0].role;
+        req.userName = rows[0].username;
         next();
       })
       .catch(() => res.status(500).json({ error: 'Erro ao verificar sessão' }));

@@ -12,12 +12,13 @@ import {
   IconUnarchive,
   IconUser,
 } from "../icons";
-import { authFetch } from "../authFetch";
+import { authFetch, API_URL } from "../authFetch";
 import { useAppSettings } from "../appSettings";
+import { formatDate as formatPreferredDate, formatDateTime, usePreferences } from "../preferences";
 import DatePicker from "../components/DatePicker";
+import { downloadCsv, printTable } from "../exportTable";
 import "./ContratosPage.css";
 
-const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
 // O leitor de PDF (PDF.js) só é baixado quando um documento é aberto.
 const PdfViewer = lazy(() => import("../components/PdfViewer"));
 
@@ -45,9 +46,13 @@ function parseLocalDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+// Datas na tela seguem a preferência (15/10/2026 ou 15 de out. de 2026); o CSV usa sempre o formato numérico.
 function formatDate(value) {
+  return parseLocalDate(value) ? formatPreferredDate(String(value).slice(0, 10)) : "—";
+}
+function formatNumericDate(value) {
   const date = parseLocalDate(value);
-  return date ? date.toLocaleDateString("pt-BR") : "—";
+  return date ? date.toLocaleDateString("pt-BR") : "";
 }
 
 function formatMoney(value) {
@@ -155,7 +160,9 @@ const VIEW_KEY = "lk-contracts-view";
 
 function formatShortDate(value) {
   const date = parseLocalDate(value);
-  return date ? date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "—";
+  if (!date) return "—";
+  const long = formatPreferredDate(String(value).slice(0, 10));
+  return long.includes("/") ? date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : long;
 }
 
 function matchesVigencia(contract, filter) {
@@ -176,20 +183,23 @@ function matchesVigencia(contract, filter) {
   return filter === "year" ? year === thisYear : year > thisYear;
 }
 
-function exportContractsCsv(contracts) {
+// Exporta os contratos exibidos no formato escolhido nas Preferências (CSV ou PDF).
+function exportContracts(contracts, format) {
   const header = ["Nº do processo", "Processo", "Objeto", "Modalidade", "Lei", "Fiscal efetivo", "Fiscal substituto", "Vencimento", "Valor", "Aditivos", "Situação", "Encerrado em", "Motivo do encerramento"];
   const rows = contracts.map((c) => [
     c.processNumber, c.processName, c.objectDescription, c.modality, (LAW_INFO[c.lawType] || LAW_INFO.new).label,
-    c.fiscalEffective, c.fiscalSubstitute || "", formatDate(c.dueDate),
+    c.fiscalEffective, c.fiscalSubstitute || "", formatNumericDate(c.dueDate),
     c.valueVariable ? "Variável" : Number(c.contractValue).toLocaleString("pt-BR", { minimumFractionDigits: 2 }), `${c.amendmentCount || 0}/${MAX_AMENDMENTS}`,
-    getContractStatus(c).label, c.closedAt ? formatDate(c.closedAt) : "", c.closedReason || "",
+    getContractStatus(c).label, c.closedAt ? formatNumericDate(c.closedAt) : "", c.closedReason || "",
   ]);
-  // Separador ";" e BOM para abrir com acentos corretos no Excel em português.
-  const csv = [header, ...rows].map((row) => row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(";")).join("\r\n");
-  const url = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }));
-  const link = Object.assign(document.createElement("a"), { href: url, download: `contratos-${new Date().toISOString().slice(0, 10)}.csv` });
-  link.click();
-  URL.revokeObjectURL(url);
+  if (format === "pdf") {
+    // No PDF ficam as colunas que cabem numa folha deitada.
+    const pick = [0, 1, 3, 5, 7, 8, 9, 10];
+    const ok = printTable({ title: "Contratos", subtitle: "Contratos exibidos com os filtros atuais", header: pick.map((i) => header[i]), rows: rows.map((row) => pick.map((i) => row[i])) });
+    if (!ok) window.alert("O navegador bloqueou a janela do PDF. Permita pop-ups para este site e tente de novo.");
+    return;
+  }
+  downloadCsv(`contratos-${new Date().toISOString().slice(0, 10)}.csv`, header, rows);
 }
 
 export function RowMenu({ contract, actions, label }) {
@@ -199,10 +209,13 @@ export function RowMenu({ contract, actions, label }) {
   const setOpen = (next) => {
     if (!next) { setPosition(null); return; }
     // Posição fixa calculada a partir do botão: o menu não é cortado pela rolagem horizontal da tabela.
-    const rect = ref.current.getBoundingClientRect();
+    // Dividido pelo zoom da preferência de tamanho da letra (o menu fica dentro do conteúdo ampliado).
+    const zoom = ref.current.currentCSSZoom || 1;
+    const r = ref.current.getBoundingClientRect();
+    const rect = { top: r.top / zoom, bottom: r.bottom / zoom, right: r.right / zoom };
     const menuHeight = 44 + actions.length * 36;
-    const top = rect.bottom + 6 + menuHeight > window.innerHeight ? rect.top - 6 - menuHeight : rect.bottom + 6;
-    setPosition({ top, right: window.innerWidth - rect.right });
+    const top = rect.bottom + 6 + menuHeight > window.innerHeight / zoom ? rect.top - 6 - menuHeight : rect.bottom + 6;
+    setPosition({ top, right: window.innerWidth / zoom - rect.right });
   };
   useEffect(() => {
     if (!open) return;
@@ -654,7 +667,7 @@ function ContractHistory({ events, error }) {
               {event.notes && event.type !== "created" && event.type !== "document" && <p className="ct-history-notes">“{event.notes}”</p>}
               <small>
                 {event.userName ? `${event.userName} · ` : ""}
-                {Number.isFinite(stamp.getTime()) ? stamp.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : ""}
+                {Number.isFinite(stamp.getTime()) ? formatDateTime(stamp.toISOString(), "") : ""}
               </small>
             </div>
           </li>
@@ -1262,6 +1275,7 @@ function ManagersView({ contracts, loading, onOpenContract }) {
 }
 
 export default function ContratosAtivos({ isViewer, onUnauthorized, onOpenMenu }) {
+  const exportFormat = usePreferences().preferences.exportFormat === "pdf" ? "pdf" : "csv";
   const [contracts, setContracts] = useState([]);
   const [modalities, setModalities] = useState([]);
   const [collaborators, setCollaborators] = useState([]);
@@ -1487,12 +1501,6 @@ export default function ContratosAtivos({ isViewer, onUnauthorized, onOpenMenu }
     closed: ` encerrado${count === 1 ? "" : "s"}`,
   })[scope];
 
-  // Todos os contratos numa página só; a página rola pelo documento com a barra discreta.
-  useEffect(() => {
-    const root = document.documentElement;
-    root.classList.add("ct-scroll");
-    return () => root.classList.remove("ct-scroll");
-  }, []);
   const modalityOptions = [...new Set([...modalities, ...contracts.map((contract) => contract.modality)])].filter(Boolean);
 
   const canEdit = !isViewer;
@@ -1549,17 +1557,14 @@ export default function ContratosAtivos({ isViewer, onUnauthorized, onOpenMenu }
     <div className="lk-contracts">
       <header className="ct-header">
         <button className="lk-menu" aria-label="Abrir navegação" onClick={onOpenMenu}>☰</button>
-        <div className="ct-header-text">
-          <h1>Contratos</h1>
-          <p>Gerencie vigências, valores, fiscais e prazos dos contratos</p>
-        </div>
+        <h1 className="lk-sr">Contratos</h1>
         <nav className="process-page-tabs ct-page-tabs" aria-label="Seções de contratos">
           {[["contracts", "Contratos"], ["managers", "Gestores"]].map(([id, label]) => (
             <button type="button" key={id} className={pageTab === id ? "active" : ""} aria-current={pageTab === id ? "page" : undefined} onClick={() => setPageTab(id)}>{label}</button>
           ))}
         </nav>
         <div className="ct-header-actions">
-          <button type="button" className="ct-header-export" onClick={() => exportContractsCsv(filteredContracts)} disabled={filteredContracts.length === 0} title="Exporta os contratos exibidos (com os filtros atuais) em CSV">Exportar</button>
+          <button type="button" className="ct-header-export" onClick={() => exportContracts(filteredContracts, exportFormat)} disabled={filteredContracts.length === 0} title={`Exporta os contratos exibidos (com os filtros atuais) em ${exportFormat.toUpperCase()}. O formato muda em Meu perfil › Preferências.`}>Exportar {exportFormat.toUpperCase()}</button>
           {canEdit && <button type="button" className="ct-new-button" onClick={openAdd}><IconPlus /> Novo contrato</button>}
         </div>
       </header>
@@ -1620,7 +1625,7 @@ export default function ContratosAtivos({ isViewer, onUnauthorized, onOpenMenu }
           </select>
         </label>
         <div className="ct-toolbar-actions">
-          <div className="ct-view-toggle" role="group" aria-label="Situação dos contratos">
+          <div className="ct-view-toggle ct-scope-toggle" role="group" aria-label="Situação dos contratos">
             <button type="button" className={scope === "all" ? "active" : ""} aria-pressed={scope === "all"} onClick={() => changeScope("all")}>Todos <span className="ct-toggle-count">{loading ? "—" : contracts.length}</span></button>
             <button type="button" className={scope === "active" ? "active" : ""} aria-pressed={scope === "active"} onClick={() => changeScope("active")}>Vigentes <span className="ct-toggle-count">{loading ? "—" : activeTotal}</span></button>
             <button type="button" className={scope === "renewal" ? "active" : ""} aria-pressed={scope === "renewal"} onClick={() => changeScope("renewal")}>Renovação <span className="ct-toggle-count">{loading ? "—" : summary.renewal}</span></button>

@@ -21,6 +21,8 @@
 .dp-popover .dp-day { display: grid; place-items: center; height: 36px; border: 0; border-radius: 10px; background: transparent; color: #111827; font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; transition: background .12s, color .12s; }
 .dp-popover .dp-day:hover { background: #f1f5f9; }
 .dp-popover .dp-day.outside { color: #b6bcc6; }
+.dp-popover .dp-day:disabled { background: transparent; color: #cbd5e1; cursor: not-allowed; }
+.lk-dark .dp-popover .dp-day:disabled { color: #ffffff2e; }
 .dp-popover .dp-day.today { color: #2563eb; font-weight: 700; box-shadow: inset 0 0 0 1px #bfdbfe; }
 .dp-popover .dp-day.selected, .dp-popover .dp-day.selected:hover { background: #2563eb; color: #fff; font-weight: 700; box-shadow: 0 4px 10px #2563eb40; }
 .dp-popover .dp-day:focus-visible, .dp-popover button:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }

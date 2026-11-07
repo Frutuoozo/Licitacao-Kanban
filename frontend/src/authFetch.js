@@ -1,3 +1,13 @@
+// Endereço da API. Sem REACT_APP_API_URL (desenvolvimento), usa o mesmo host em que o site foi aberto,
+// na porta 3001: localhost, IP da rede e Tailscale funcionam sem editar o .env e o cookie de sessão
+// continua no mesmo site (localhost e 192.168.x.x contam como sites diferentes para o navegador).
+// Em produção, "same-origin": a Vercel repassa /api e /socket.io ao backend (frontend/vercel.json), e o
+// cookie de login deixa de ser "de outro site", que o Safari bloqueia.
+const configuredApiUrl = process.env.REACT_APP_API_URL;
+export const API_URL = configuredApiUrl === "same-origin"
+  ? window.location.origin
+  : configuredApiUrl || `${window.location.protocol}//${window.location.hostname}:3001`;
+
 export function getCookie(name) {
   if (typeof document === "undefined") return "";
   const escaped = name.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");

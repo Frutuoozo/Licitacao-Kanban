@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconArchive, IconClose, IconEdit, IconPlus, IconTrash, IconUnarchive, IconUsers } from "../icons";
-import { authFetch } from "../authFetch";
+import { authFetch, API_URL } from "../authFetch";
 import { useAppSettings } from "../appSettings";
 import { RowMenu } from "./ContratosPage";
 import "./ColaboradoresPage.css";
 
-const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
 const EMPTY_FORM = { nome: "", cpf: "", email: "", codigo: "", ativo: true };
 const EXIT_MS = 220;
 
@@ -99,7 +98,7 @@ export default function ColaboradoresPage({ isAdmin, onUnauthorized, onOpenMenu 
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Admin usa a rota completa; os demais perfis, a de leitura.
+  // Admin usa a rota completa; os demais perfis, a de leitura, que não traz o CPF.
   const listUrl = isAdmin ? `${API_URL}/api/admin/collaborators` : `${API_URL}/api/collaborators`;
   const load = useCallback(() => {
     setError(""); setLoading(true);
@@ -119,12 +118,6 @@ export default function ColaboradoresPage({ isAdmin, onUnauthorized, onOpenMenu 
 
   useEffect(() => { load(); }, [load]);
 
-  // Rolagem discreta da página, como em Contratos.
-  useEffect(() => {
-    const root = document.documentElement;
-    root.classList.add("ct-scroll");
-    return () => root.classList.remove("ct-scroll");
-  }, []);
 
   const openAdd = () => { setEditing(null); setForm(EMPTY_FORM); setFormError(""); setShowForm(true); };
   const openEdit = (c) => {
@@ -197,7 +190,7 @@ export default function ColaboradoresPage({ isAdmin, onUnauthorized, onOpenMenu 
         || c.nome.toLocaleLowerCase("pt-BR").includes(q)
         || c.email.toLocaleLowerCase("pt-BR").includes(q)
         || (c.codigo || "").toLocaleLowerCase("pt-BR").includes(q)
-        || (digits && c.cpf.replace(/\D/g, "").includes(digits)))
+        || (digits && c.cpf?.replace(/\D/g, "").includes(digits)))
       .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
   }, [collabs, search, statusFilter]);
 
@@ -212,12 +205,9 @@ export default function ColaboradoresPage({ isAdmin, onUnauthorized, onOpenMenu 
   return (
     // Reaproveita o visual de Contratos (lk-contracts): barra, tabela, selos, menu, painel e modais.
     <div className="lk-contracts cb-page">
-      <header className="ct-header">
+      <h1 className="lk-sr">Colaboradores</h1>
+      <header className="ct-header lk-menu-bar">
         <button className="lk-menu" aria-label="Abrir navegação" onClick={onOpenMenu}>☰</button>
-        <div className="ct-header-text">
-          <h1>Colaboradores</h1>
-          <p>Cadastre e consulte os dados dos colaboradores vinculados ao sistema</p>
-        </div>
       </header>
 
       {error && (
@@ -230,7 +220,7 @@ export default function ColaboradoresPage({ isAdmin, onUnauthorized, onOpenMenu 
       <section className="ct-toolbar cb-toolbar" aria-label="Filtros de colaboradores">
         <label className="ct-field cb-field-search">
           <span>Buscar colaborador</span>
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nome, CPF, e-mail ou COD..." />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={isAdmin ? "Nome, CPF, e-mail ou COD..." : "Nome, e-mail ou COD..."} />
         </label>
         <label className="ct-field">
           <span>Status</span>
@@ -273,7 +263,7 @@ export default function ColaboradoresPage({ isAdmin, onUnauthorized, onOpenMenu 
               <tbody>
                 {filtered.map((c) => (
                   <tr key={c.id} className={c.ativo === false ? "inactive" : ""}>
-                    <td className="cb-col-name"><strong>{c.nome}</strong><small>CPF {c.cpf}</small></td>
+                    <td className="cb-col-name"><strong>{c.nome}</strong>{isAdmin && <small>CPF {c.cpf}</small>}</td>
                     <td data-label="E-mail" className="cb-col-email">{c.email}</td>
                     <td data-label="COD" className="cb-col-cod"><span className="cb-cod">{c.codigo || "—"}</span></td>
                     <td data-label="Status" className="cb-col-status">

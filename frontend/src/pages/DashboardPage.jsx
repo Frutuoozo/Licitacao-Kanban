@@ -1,22 +1,25 @@
 import AppSidebar from "../components/AppSidebar";
 import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
-import { authFetch } from "../authFetch";
-import { normalizeDocs } from "../utils";
+import { authFetch, API_URL as API } from "../authFetch";
+import { formatDate, formatDateTime } from "../preferences";
 import { IconMoon, IconSun, IconCalendar } from "../icons";
 import { ActiveProcessProgress, SetorPieChart } from "./ProcessosPage";
+import MonthColumnChart, { monthlyCounts } from "../components/MonthColumnChart";
 import "./DashboardPage.css";
 
-const API = process.env.REACT_APP_API_URL || "http://localhost:3001";
 const dateOf = value => value ? new Date(`${String(value).slice(0, 10)}T12:00:00`) : null;
-const docsOf = p => normalizeDocs(p.docs || []).filter(d => d.type === "doc");
 
-export default function DashboardPage({ columns, archived, sortedColumns = [], user, onNavigate, onLogout, loading, error }) {
+// Título da atividade recente: o nome do contrato (ex.: "Contrato Athosmed"); o número só se não houver nome.
+function activityTitle(contract) {
+  const name = (contract.processName || "").trim() || contract.processNumber || "";
+  return /^contrato\b/i.test(name) ? name : `Contrato ${name}`;
+}
+
+export default function DashboardPage({ darkMode: dark = false, onToggleDarkMode, columns, archived, pending = [], sortedColumns = [], user, onNavigate, onLogout, loading, error }) {
   const [contracts, setContracts] = useState(null);
   const [contractError, setContractError] = useState("");
-  const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [dark, setDark] = useState(false);
   useEffect(() => {
     let live = true;
     const load = async () => {
@@ -46,45 +49,50 @@ export default function DashboardPage({ columns, archived, sortedColumns = [], u
   }, [menuOpen]);
 
   const today = new Date(); today.setHours(12, 0, 0, 0);
-  const attention = columns.map(process => {
-    const dueDate = dateOf(process.dueDate);
+  // Demandas ainda não iniciadas, do vencimento mais próximo ao mais distante.
+  const pendingList = pending.map(demand => {
+    const dueDate = dateOf(demand.dueDate);
     const days = dueDate ? Math.round((dueDate - today) / 86400000) : null;
     return {
-      ...process,
-      key: `p-${process.id}`,
-      label: process.title || (process.processNumber ? `Processo ${process.processNumber}` : "Processo sem título"),
-      number: process.title && process.processNumber ? `Nº ${process.processNumber}` : "",
-      section: "processos",
+      ...demand,
       days,
+      reason: days === null ? "Sem vencimento" : days < 0 ? `Vencida há ${-days} ${days === -1 ? "dia" : "dias"}` : days === 0 ? "Vence hoje" : days === 1 ? "Vence amanhã" : `Vence em ${days} dias`,
     };
-  }).filter(process => Number.isFinite(process.days) && process.days <= 30)
-    .sort((a, b) => a.days - b.days)
-    .map(process => ({
-      ...process,
-      reason: process.days < 0 ? `Vencido há ${-process.days} dias`
-        : process.days === 0 ? "Vence hoje"
-        : process.days === 1 ? "Prazo amanhã" : `Vence em ${process.days} dias`,
-      color: process.days <= 1 ? "#dc2626" : "#d97706",
-    }));
+  }).sort((a, b) => (a.days ?? Infinity) - (b.days ?? Infinity));
   const activity = (contracts || []).filter(c => c.updatedAt || c.createdAt).map(c => ({ ...c, date: new Date(c.updatedAt || c.createdAt) })).filter(c => Number.isFinite(c.date.getTime())).sort((a, b) => b.date - a.date);
+  // Atividades (contratos cadastrados ou atualizados) no mês atual, para o contador ao lado do título.
+  const activityThisMonth = activity.filter(c => c.date.getFullYear() === today.getFullYear() && c.date.getMonth() === today.getMonth()).length;
   const go = (section, tab) => { setMenuOpen(false); onNavigate(section, tab); };
   const unavailable = loading || error;
-  const inProgressCount = columns.filter(process => docsOf(process).some(doc => doc.done)).length;
+  // Só processos iniciados: quem vence hoje ainda não está vencido.
+  const overdueCount = columns.filter(process => { const d = dateOf(process.dueDate); return d && d < today; }).length;
   const bySector = new Map();
   columns.forEach(process => {
-    const setor = process.setor?.trim() || "Sem colaborador";
+    const setor = process.setor?.trim() || "Sem gestor principal";
     bySector.set(setor, (bySector.get(setor) || 0) + 1);
   });
+  // Contratos não encerrados que vencem nos próximos 3 meses (de hoje até o mesmo dia daqui a 3 meses),
+  // do vencimento mais próximo ao mais distante. Sem nenhum, o painel não aparece.
+  const dueLimit = new Date(today.getFullYear(), today.getMonth() + 3, today.getDate(), 23, 59);
+  const contractName = c => (c.processName || "").trim() || c.processNumber;
+  const dueCards = (contracts || [])
+    .filter(c => { const d = dateOf(c.dueDate); return !c.closedAt && d && d >= today && d <= dueLimit; })
+    .sort((a, b) => dateOf(a.dueDate) - dateOf(b.dueDate));
+  const amendmentLabel = n => (n ? `${n}º aditivo de 4` : "Termo de contrato");
+  // Processos concluídos (arquivados) por mês, nos últimos 12 meses.
+  const doneMonths = monthlyCounts(new Date(today.getFullYear(), today.getMonth() - 11, 1), archived, p => (p.archivedAt ? new Date(p.archivedAt) : null), p => p.title || p.processNumber);
+  const doneTotal = doneMonths.reduce((sum, m) => sum + m.count, 0);
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   const sectorData = Array.from(bySector, ([setor, count]) => ({ setor, count }))
     .sort((a, b) => b.count - a.count || a.setor.localeCompare(b.setor, "pt-BR"));
   return <div className={`lk-dashboard ${dark ? "lk-dark" : ""}`}>
     {menuOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setMenuOpen(false)} />}
-    <AppSidebar user={user} activeSection="dashboard" menuOpen={menuOpen} onNavigate={go} onLogout={onLogout} />
+    <AppSidebar user={user} darkMode={dark} onToggleDarkMode={onToggleDarkMode} activeSection="dashboard" menuOpen={menuOpen} onNavigate={go} onLogout={onLogout} />
     <main className="lk-main">
-      <header className="lk-heading"><div><button className="lk-menu" aria-label="Abrir navegação" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>☰</button><h1>Dashboard</h1><p>Visão geral dos processos e contratos</p></div><div className="lk-actions"><button aria-label="Abrir calendário de processos" title="Abrir calendário de processos" onClick={() => go("processos", "calendar")}><IconCalendar /></button><button aria-label={dark ? "Usar tema claro" : "Usar tema escuro"} title={dark ? "Tema claro" : "Tema escuro"} aria-pressed={dark} onClick={() => setDark(!dark)}>{dark ? <IconSun /> : <IconMoon />}</button></div></header>
+      <header className="lk-heading"><h1 className="lk-sr">Dashboard</h1><div><button className="lk-menu" aria-label="Abrir navegação" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>☰</button></div><div className="lk-actions"><button aria-label="Abrir calendário de processos" title="Abrir calendário de processos" onClick={() => go("processos", "calendar")}><IconCalendar /></button><button aria-label={dark ? "Usar tema claro" : "Usar tema escuro"} title={dark ? "Tema claro" : "Tema escuro"} aria-pressed={dark} onClick={onToggleDarkMode}>{dark ? <IconSun /> : <IconMoon />}</button></div></header>
       {(error || contractError) && <p className="lk-error" role="alert">{error || contractError} Os indicadores afetados estão indisponíveis.</p>}
       <section className="lk-kpis" aria-label="Resumo">
-        {[["PROCESSOS", unavailable ? "—" : columns.length, "blue"], ["EM ANDAMENTO", unavailable ? "—" : inProgressCount, "green"], ["CONCLUÍDOS", unavailable ? "—" : archived.length, "blue"], ["ATENÇÃO", unavailable ? "—" : attention.length, "amber"]].map(([label, value, tone]) => <article className={`lk-kpi ${tone}`} key={label}><h2><i aria-hidden="true" />{label}</h2><strong>{value}</strong></article>)}
+        {[["INICIADOS", columns.length, "blue"], ["PENDENTES", pending.length, "amber"], ["VENCIDOS", overdueCount, "red"], ["CONCLUÍDOS", doneMonths[doneMonths.length - 1].count, "green"]].map(([label, value, tone]) => [label, unavailable ? "—" : value, tone]).map(([label, value, tone]) => <article className={`lk-kpi ${tone}`} key={label}><h2><i aria-hidden="true" />{label}</h2><strong>{value}</strong></article>)}
       </section>
       <div className="lk-top-grid">
         <section className="lk-panel lk-progress-panel">
@@ -93,15 +101,35 @@ export default function DashboardPage({ columns, archived, sortedColumns = [], u
             : <ActiveProcessProgress columns={columns} sortedColumns={sortedColumns} />}
         </section>
         <section className="lk-panel lk-sector-panel">
-          <div className="lk-panel-heading"><h2>Processos por Colaborador</h2><button onClick={() => go("processos", "board")}>Ver processos</button></div>
+          <div className="lk-panel-heading"><h2>Processos por Gestor Principal</h2><button onClick={() => go("processos", "board")}>Ver processos</button></div>
           {unavailable ? <p className="lk-empty">{loading ? "Carregando processos…" : "Dados indisponíveis."}</p>
             : <SetorPieChart data={sectorData} />}
         </section>
       </div>
-      <div className="lk-bottom-grid">
-        <section className="lk-panel" id="lk-attention"><div className="lk-panel-heading"><h2>Atenção necessária</h2><span className="lk-pending">{unavailable ? "—" : attention.length} pendências</span></div><div className="lk-attention-list">{attention.map(i => <button key={i.key} onClick={() => go(i.section)}><i style={{ background: i.color }} /><span><strong>{i.label}</strong><small>{i.number ? `${i.number} · ` : ""}{i.reason}</small></span></button>)}{!attention.length && <p className="lk-empty">{error ? "Não foi possível verificar os prazos dos processos." : loading ? "Carregando prazos…" : "Nenhum processo vencido ou com vencimento nos próximos 30 dias."}</p>}</div></section>
-        <section className="lk-panel"><div className="lk-panel-heading"><h2>Atividade recente</h2>{activity.length > 4 && <button onClick={() => setExpanded(!expanded)}>{expanded ? "Ver menos" : "Ver todas"}</button>}</div><div className={`lk-activity ${expanded ? "expanded" : ""}`}>{activity.slice(0, expanded ? undefined : 4).map(c => <button key={c.id} onClick={() => go("contratos")}><span className="lk-activity-icon">•</span><span><strong>{c.processNumber ? `Contrato ${c.processNumber}` : c.processName} {c.updatedAt && c.updatedAt !== c.createdAt ? "atualizado" : "cadastrado"}</strong><small>{c.date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</small></span></button>)}{!activity.length && <p className="lk-empty">{contracts === null && !contractError ? "Carregando atividades…" : "Nenhuma atividade disponível."}</p>}</div></section>
+      <div className="lk-bottom-grid is-three">
+        <section className="lk-panel" id="lk-pending"><div className="lk-panel-heading"><h2>Processos pendentes</h2><span className="lk-pending">{unavailable ? "—" : pending.length} {pending.length === 1 ? "pendência" : "pendências"}</span></div><div className="lk-attention-list">{pendingList.map(d => <button key={d.id} onClick={() => go("demandas")}><i style={{ background: d.typeColor || "var(--lk-muted)" }} /><span><strong>{d.title}</strong><small>{d.processNumber ? `Nº ${d.processNumber} · ` : ""}{d.reason}</small></span></button>)}{!pendingList.length && <p className="lk-empty">{error ? "Não foi possível carregar as demandas." : loading ? "Carregando demandas…" : "Nenhuma demanda pendente."}</p>}</div></section>
+        <section className="lk-panel lk-done-panel">
+          <div className="lk-panel-heading"><h2>Processos concluídos</h2><button onClick={() => go("processos", "reports")}>Ver relatórios</button></div>
+          {unavailable ? <p className="lk-empty">{loading ? "Carregando processos…" : "Dados indisponíveis."}</p> : <>
+            <p className="lk-done-summary"><strong>{doneTotal}</strong><span>nos últimos 12 meses</span><span className="lk-count">{doneMonths[doneMonths.length - 1].count} neste mês</span></p>
+            <MonthColumnChart title="Processos concluídos por mês, nos últimos 12 meses" months={doneMonths} describe={n => (n ? plural(n, "processo concluído", "processos concluídos") : "Nenhum processo concluído")} onSelect={() => go("processos", "reports")} />
+          </>}
+        </section>
+        <section className="lk-panel"><div className="lk-panel-heading"><h2>Atividade recente</h2><span className="lk-count">{contracts === null ? "—" : `${activityThisMonth} neste mês`}</span></div><div className="lk-activity">{activity.map(c => <button key={c.id} onClick={() => go("contratos")}><span className="lk-activity-icon">•</span><span><strong>{activityTitle(c)} {c.updatedAt && c.updatedAt !== c.createdAt ? "atualizado" : "cadastrado"}</strong><small>{formatDateTime(c.date.toISOString())}</small></span></button>)}{!activity.length && <p className="lk-empty">{contracts === null && !contractError ? "Carregando atividades…" : "Nenhuma atividade disponível."}</p>}</div></section>
       </div>
+      {dueCards.length > 0 && <div className="lk-bottom-grid lk-chart-grid">
+        <section className="lk-panel">
+          <div className="lk-panel-heading"><h2>Vencimentos de contratos</h2><button onClick={() => go("contratos")}>Ver contratos</button></div>
+          <h3 className="lk-due-heading">{plural(dueCards.length, "contrato vence", "contratos vencem")} nos próximos 3 meses</h3>
+          <div className="lk-due-cards">{dueCards.map(c => (
+            <button type="button" key={c.id} className="lk-due-card" onClick={() => go("contratos")} title={contractName(c)}>
+              <span className="lk-due-top"><strong>{formatDate(c.dueDate)}</strong><small>{amendmentLabel(c.amendmentCount)}</small></span>
+              <span className="lk-due-name">{contractName(c)}</span>
+              <span className="lk-due-people"><span><small>Fiscal</small><b title={c.fiscalEffective}>{c.fiscalEffective || "—"}</b></span><span><small>Substituto</small><b title={c.fiscalSubstitute || undefined}>{c.fiscalSubstitute || "—"}</b></span></span>
+            </button>
+          ))}</div>
+        </section>
+      </div>}
     </main>
   </div>;
 }

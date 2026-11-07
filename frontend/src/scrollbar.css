@@ -1,0 +1,16 @@
+/* Barra de rolagem única do sistema: fina e quase invisível; escurece levemente ao passar o mouse.
+   Para mudar o visual, altere só aqui. Definir scrollbar-width ou scrollbar-color em outro elemento
+   anula estas regras no Chrome. A única exceção é esconder a barra (scrollbar-width: none). */
+:root { --lk-scroll: #1118271a; --lk-scroll-hover: #11182733; }
+html.lk-theme-dark { --lk-scroll: #ffffff24; --lk-scroll-hover: #ffffff40; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--lk-scroll); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--lk-scroll-hover); }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+
+/* Firefox não tem ::-webkit-scrollbar. */
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-width: thin; scrollbar-color: var(--lk-scroll) transparent; }
+}

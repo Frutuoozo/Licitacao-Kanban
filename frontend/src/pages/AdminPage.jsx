@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { IconTrash, IconEdit, IconClose, IconPlus } from "../icons";
-import { authFetch } from "../authFetch";
+import { authFetch, API_URL } from "../authFetch";
+import { formatDateTime } from "../preferences";
 import { DEFAULT_SETTINGS, useAppSettings } from "../appSettings";
 import "./AdminPage.css";
 import ModelsManager from "./ModelsManager";
 
-const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001";
 
 // ── Seção Usuários ────────────────────────────────────────────────────────────
 
@@ -137,7 +137,7 @@ function UsersSection({ currentUserId, onUnauthorized, onSelfDemoted }) {
     }
   };
 
-  const fmtDate    = d => { try { return new Date(d).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }); } catch { return "—"; } };
+  const fmtDate    = d => formatDateTime(d);
   const adminCount = users.filter(u => u.role === "admin").length;
 
   return (
@@ -671,12 +671,9 @@ export default function AdminPage({ currentUserId, onUnauthorized, onSelfDemoted
   return (
     // Reaproveita o visual das páginas novas (lk-contracts): cabeçalho, painel lateral e modais.
     <div className="lk-contracts adm-page">
-      <header className="ct-header">
+      <h1 className="lk-sr">Administração</h1>
+      <header className="ct-header lk-menu-bar">
         <button className="lk-menu" aria-label="Abrir navegação" onClick={onOpenMenu}>☰</button>
-        <div className="ct-header-text">
-          <h1>Administração</h1>
-          <p>Gerencie acessos, permissões e configurações administrativas do sistema</p>
-        </div>
       </header>
 
       <section className="adm-cards" aria-label="Áreas de administração">

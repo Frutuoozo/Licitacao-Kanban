@@ -12,11 +12,14 @@ const MAX_LENGTHS = {
   templateName: 120,
   genericText: 500,
   contractObject: 2000,
+  processNotes: 2000,
 };
 
 export function isNonEmptyString(value, maxLength) {
   return typeof value === 'string' && value.trim().length > 0 && value.trim().length <= maxLength;
 }
+
+const PROCESS_PRIORITIES = ['urgent', 'high', 'moderate', 'routine'];
 
 export function normalizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -24,6 +27,15 @@ export function normalizeText(value) {
 
 export function isValidDateString(value) {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+// Dia atual em Teresina (AAAA-MM-DD). O servidor roda em UTC: às 21h de lá já seria o dia seguinte.
+export function isoToday(now = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Fortaleza' }).format(now);
+}
+
+export function isPastDate(value, now = new Date()) {
+  return value < isoToday(now);
 }
 
 export function isValidEmail(value) {
@@ -77,14 +89,22 @@ export function validateProcessPayload(payload) {
   const typeColor = payload.typeColor == null ? null : normalizeText(payload.typeColor);
   const dueDate = payload.dueDate == null ? null : normalizeText(payload.dueDate);
   const status = payload.status == null ? 'active' : normalizeText(payload.status);
+  // Sem o campo (undefined), quem grava mantém a observação atual.
+  const notes = payload.notes === undefined ? undefined : (normalizeText(payload.notes) || null);
+  // Sem o campo (undefined), quem grava mantém a prioridade atual; ao criar, vale rotina.
+  const priority = payload.priority;
 
   if (!isNonEmptyString(title, MAX_LENGTHS.title)) return 'Título obrigatório';
   if (processNumber.length > MAX_LENGTHS.processNumber) return 'Número do processo muito longo';
-  if (!isNonEmptyString(setor, MAX_LENGTHS.setor)) return 'Setor obrigatório';
+  // Só a demanda pendente pode ficar sem gestor principal.
+  if (status !== 'pending' && !setor) return 'Informe o gestor principal.';
+  if (setor.length > MAX_LENGTHS.setor) return 'Nome do gestor muito longo.';
   if (type !== null && type.length > MAX_LENGTHS.type) return 'Tipo muito longo';
   if (typeColor !== null && !isHexColor(typeColor)) return 'Cor inválida';
   if (dueDate !== null && !isValidDateString(dueDate)) return 'Data de vencimento inválida';
-  if (!isAllowedStatus(status)) return 'Status inválido';
+  if (!isAllowedStatus(status) && status !== 'pending') return 'Status inválido';
+  if (notes !== undefined && notes !== null && notes.length > MAX_LENGTHS.processNotes) return 'Observação muito longa.';
+  if (priority !== undefined && !PROCESS_PRIORITIES.includes(priority)) return 'Prioridade inválida.';
 
   const docs = Array.isArray(payload.docs)
     ? payload.docs.map(sanitizeProcessDoc).filter(Boolean)
@@ -101,8 +121,18 @@ export function validateProcessPayload(payload) {
       docs,
       status,
       dueDate,
+      notes,
+      priority,
     }
   };
+}
+
+// Campos obrigatórios desde o cadastro da demanda, pendente ou iniciada.
+export function missingDemandField({ processNumber, dueDate, type }) {
+  if (!processNumber) return 'Informe o número do processo.';
+  if (!dueDate) return 'Informe a data de vencimento.';
+  if (!type) return 'Informe o tipo de processo.';
+  return null;
 }
 
 export function validateContractPayload(payload) {
