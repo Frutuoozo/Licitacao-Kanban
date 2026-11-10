@@ -127,9 +127,10 @@ export function validateProcessPayload(payload) {
   };
 }
 
-// Campos obrigatórios desde o cadastro da demanda, pendente ou iniciada.
-export function missingDemandField({ processNumber, dueDate, type }) {
-  if (!processNumber) return 'Informe o número do processo.';
+// Campos obrigatórios desde o cadastro da demanda. O número do processo só é exigido da iniciada:
+// a pendente pode nascer sem ele, e ele é pedido quando ela for iniciada.
+export function missingDemandField({ processNumber, dueDate, type, status }) {
+  if (status !== 'pending' && !processNumber) return 'Informe o número do processo.';
   if (!dueDate) return 'Informe a data de vencimento.';
   if (!type) return 'Informe o tipo de processo.';
   return null;

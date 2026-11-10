@@ -145,21 +145,25 @@ router.put('/:id', requireEditorOrAdmin, processWriteLimiter, async (req, res) =
   }
 });
 
-// PUT para iniciar uma demanda pendente: exige gestor (o informado ou o que ela já tem).
+// PUT para iniciar uma demanda pendente: exige gestor e número do processo (os informados ou os que ela já tem).
 router.put('/:id/start', requireEditorOrAdmin, processWriteLimiter, async (req, res) => {
   const { id } = req.params;
   const informed = normalizeText(req.body?.setor);
+  const informedNumber = normalizeText(req.body?.processNumber);
   if (informed.length > MAX_LENGTHS.setor) return res.status(400).json({ error: 'Nome do gestor muito longo.' });
+  if (informedNumber.length > MAX_LENGTHS.processNumber) return res.status(400).json({ error: 'Número do processo muito longo' });
   try {
     const started = await withTransaction(async (conn) => {
-      const [[current]] = await conn.query('SELECT status, setor FROM processes WHERE id = ? FOR UPDATE', [id]);
+      const [[current]] = await conn.query('SELECT status, setor, processNumber FROM processes WHERE id = ? FOR UPDATE', [id]);
       if (!current) throw new ClientError('Demanda não encontrada.', 404);
       if (current.status !== 'pending') throw new ClientError('Esta demanda já foi iniciada.', 409);
       const setor = informed || normalizeText(current.setor);
       if (!setor) throw new ClientError('Informe o gestor principal.');
+      const processNumber = informedNumber || normalizeText(current.processNumber);
+      if (!processNumber) throw new ClientError('Informe o número do processo.');
       const startedAt = new Date();
-      await conn.query(`UPDATE processes SET status = 'active', setor = ?, started_at = ? WHERE id = ?`, [setor, startedAt, id]);
-      return { id, setor, startedAt };
+      await conn.query(`UPDATE processes SET status = 'active', setor = ?, processNumber = ?, started_at = ? WHERE id = ?`, [setor, processNumber, startedAt, id]);
+      return { id, setor, processNumber, startedAt };
     });
     getIO()?.emit('process:started', started);
     res.json({ success: true, ...started });

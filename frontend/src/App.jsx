@@ -231,10 +231,10 @@ export default function App() {
     if (process.status === 'pending') setPendingDemands(add); else setColumns(add);
   }, []);
   // Demanda iniciada: sai das pendentes e entra em Processos.
-  const moveToStarted = useCallback((id, setor, startedAt) => {
+  const moveToStarted = useCallback((id, setor, startedAt, processNumber) => {
     setPendingDemands((pending) => {
       const demand = pending.find(c => c.id === id);
-      if (demand) setColumns(list => (list.find(c => c.id === id) ? list : [...list, { ...demand, status: 'active', setor, startedAt }]));
+      if (demand) setColumns(list => (list.find(c => c.id === id) ? list : [...list, { ...demand, status: 'active', setor, startedAt, processNumber: processNumber ?? demand.processNumber }]));
       return pending.filter(c => c.id !== id);
     });
   }, []);
@@ -279,7 +279,7 @@ export default function App() {
       setArchived(p => p.map(c => c.id === id ? { ...c, ...next } : c));
       setPendingDemands(p => p.map(c => c.id === id ? { ...c, ...next } : c));
     });
-    socket.on('process:started', ({ id, setor, startedAt }) => moveToStarted(id, setor, startedAt));
+    socket.on('process:started', ({ id, setor, startedAt, processNumber }) => moveToStarted(id, setor, startedAt, processNumber));
     socket.on('process:deleted', ({ id }) => { setColumns(p => p.filter(c => c.id !== id)); setArchived(p => p.filter(c => c.id !== id)); setPendingDemands(p => p.filter(c => c.id !== id)); });
     socket.on('process:items_updated', ({ id, docs }) => { setColumns(p => p.map(c => c.id === id ? { ...c, docs } : c)); setArchived(p => p.map(c => c.id === id ? { ...c, docs } : c)); setPendingDemands(p => p.map(c => c.id === id ? { ...c, docs } : c)); });
     socket.on('process:status_changed', ({ id, status }) => {
@@ -334,9 +334,9 @@ export default function App() {
     setColumns(p => p.map(c => c.id === id ? { ...c, ...next } : c));
     setPendingDemands(p => p.map(c => c.id === id ? { ...c, ...next } : c));
   };
-  const startDemand = async (id, setor) => {
-    const started = await demandRequest(`/api/processes/${id}/start`, 'PUT', setor ? { setor } : {});
-    moveToStarted(id, started.setor, started.startedAt);
+  const startDemand = async (id, missingFields = {}) => {
+    const started = await demandRequest(`/api/processes/${id}/start`, 'PUT', missingFields);
+    moveToStarted(id, started.setor, started.startedAt, started.processNumber);
   };
   const deleteDemand = async (id) => {
     await demandRequest(`/api/processes/${id}`, 'DELETE');

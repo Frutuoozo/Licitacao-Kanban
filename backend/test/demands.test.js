@@ -88,8 +88,22 @@ describe('demandas', { skip: testDbSkip || false }, () => {
       assert.ok(res.body.startedAt, 'a resposta traz a data de início');
     });
 
+    test('pendente pode nascer sem número do processo', async () => {
+      const d = demand({ processNumber: '' });
+      const res = await call('POST', '/processes', d);
+      assert.equal(res.status, 201);
+      assert.equal((await row(d.id)).processNumber, '');
+    });
+
+    test('iniciada sem número do processo é recusada', async () => {
+      const d = demand({ status: 'active', setor: 'Maria', processNumber: '' });
+      const res = await call('POST', '/processes', d);
+      assert.equal(res.status, 400);
+      assert.equal(res.body.error, 'Informe o número do processo.');
+      assert.equal(await row(d.id), undefined);
+    });
+
     for (const [field, value, message] of [
-      ['processNumber', '', 'Informe o número do processo.'],
       ['dueDate', null, 'Informe a data de vencimento.'],
       ['type', null, 'Informe o tipo de processo.'],
     ]) {
@@ -164,6 +178,43 @@ describe('demandas', { skip: testDbSkip || false }, () => {
       const res = await call('PUT', `/processes/${d.id}/start`, {});
       assert.equal(res.status, 200);
       assert.equal((await row(d.id)).setor, 'João');
+    });
+
+    test('sem número do processo é recusado e continua pendente', async () => {
+      const d = demand({ setor: 'João', processNumber: '' });
+      await call('POST', '/processes', d);
+      const res = await call('PUT', `/processes/${d.id}/start`, {});
+      assert.equal(res.status, 400);
+      assert.equal(res.body.error, 'Informe o número do processo.');
+      assert.equal((await row(d.id)).status, 'pending');
+    });
+
+    test('com o número informado grava o número e passa a iniciada', async () => {
+      const d = demand({ processNumber: '' });
+      await call('POST', '/processes', d);
+      const res = await call('PUT', `/processes/${d.id}/start`, { setor: 'Maria', processNumber: ' 002/2026 ' });
+      assert.equal(res.status, 200);
+      assert.equal(res.body.processNumber, '002/2026');
+      const saved = await row(d.id);
+      assert.equal(saved.status, 'active');
+      assert.equal(saved.processNumber, '002/2026');
+    });
+
+    test('usa o número que a demanda já tem', async () => {
+      const d = demand({ setor: 'João' });
+      await call('POST', '/processes', d);
+      const res = await call('PUT', `/processes/${d.id}/start`, {});
+      assert.equal(res.status, 200);
+      assert.equal(res.body.processNumber, '001/2026');
+      assert.equal((await row(d.id)).processNumber, '001/2026');
+    });
+
+    test('número longo demais é recusado ao iniciar', async () => {
+      const d = demand({ setor: 'João', processNumber: '' });
+      await call('POST', '/processes', d);
+      const res = await call('PUT', `/processes/${d.id}/start`, { processNumber: '1'.repeat(121) });
+      assert.equal(res.status, 400);
+      assert.equal((await row(d.id)).status, 'pending');
     });
 
     test('demanda já iniciada não inicia de novo nem perde a data', async () => {
@@ -258,12 +309,12 @@ describe('demandas', { skip: testDbSkip || false }, () => {
       assert.equal((await row(d.id)).setor, 'Maria');
     });
 
-    test('pendente não pode perder o número do processo', async () => {
+    test('pendente pode ficar sem o número do processo', async () => {
       const d = demand();
       await call('POST', '/processes', d);
       const res = await call('PUT', `/processes/${d.id}`, { ...d, processNumber: '' });
-      assert.equal(res.status, 400);
-      assert.equal((await row(d.id)).processNumber, '001/2026');
+      assert.equal(res.status, 200);
+      assert.equal((await row(d.id)).processNumber, '');
     });
 
     test('editar não muda a situação, mesmo que o pedido tente', async () => {
