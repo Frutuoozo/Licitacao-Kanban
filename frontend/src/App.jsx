@@ -73,6 +73,12 @@ export default function App() {
     setActiveSection(allowed ? section : "dashboard");
     if (allowed && section === "processos") setActiveTab(tab || "board");
   }, []);
+  // Menu lateral: a aba só vem dos subitens de Processos (no celular); sem ela, a aba atual continua.
+  const navigateFromSidebar = useCallback((section, tab) => {
+    setActiveSection(section);
+    if (tab) setActiveTab(tab);
+    setSidebarOpen(false);
+  }, []);
   const [sessionUser, setSessionUser] = useState(undefined);
   const [inactivityWarning, setInactivityWarning] = useState(false);
   const [inactivityCountdown, setInactivityCountdown] = useState(60);
@@ -1315,7 +1321,7 @@ export default function App() {
       ) : activeSection === "demandas" ? (
         <div className={`lk-dashboard lk-process-shell ${darkMode ? "lk-dark" : ""}`}>
           {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
-          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="demandas" menuOpen={sidebarOpen} onLogout={handleLogout} onNavigate={section => { setActiveSection(section); setSidebarOpen(false); }} />
+          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="demandas" menuOpen={sidebarOpen} onLogout={handleLogout} processTab={activeTab} onNavigate={navigateFromSidebar} />
           <main className="lk-process-main"><Suspense fallback={pageLoading}>
             <DemandasPage demands={[...pendingDemands, ...columns]} templates={templates} collaborators={collaborators} loading={processLoading} error={processError}
               isViewer={sessionUser?.role === "viewer"} onCreate={createDemand} onUpdate={updateDemand} onStart={startDemand} onDelete={deleteDemand} onOpenMenu={() => setSidebarOpen(true)} />
@@ -1324,13 +1330,13 @@ export default function App() {
       ) : activeSection === "processos" ? (
         <div className={`lk-dashboard lk-process-shell ${darkMode ? "lk-dark" : ""}`}>
           {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
-          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="processos" menuOpen={sidebarOpen} onLogout={handleLogout} onNavigate={section => { setActiveSection(section); setSidebarOpen(false); }} />
+          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="processos" menuOpen={sidebarOpen} onLogout={handleLogout} processTab={activeTab} onNavigate={navigateFromSidebar} />
           <main className="lk-process-main"><Suspense fallback={pageLoading}>{processPage}</Suspense></main>
         </div>
       ) : activeSection === "admin" && sessionUser?.role === "admin" ? (
         <div className={`lk-dashboard lk-process-shell ${darkMode ? "lk-dark" : ""}`}>
           {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
-          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="admin" menuOpen={sidebarOpen} onLogout={handleLogout} onNavigate={section => { setActiveSection(section); setSidebarOpen(false); }} />
+          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="admin" menuOpen={sidebarOpen} onLogout={handleLogout} processTab={activeTab} onNavigate={navigateFromSidebar} />
           <main className="lk-process-main"><Suspense fallback={pageLoading}>
             <AdminPage currentUserId={sessionUser?.id} onUnauthorized={handleLogout} onSelfDemoted={handleSelfDemotedFromAdmin} sectors={sectors} onSectorsChange={setSectors} templates={templates} saveTemplates={saveTemplates} onOpenMenu={() => setSidebarOpen(true)} />
           </Suspense></main>
@@ -1338,7 +1344,7 @@ export default function App() {
       ) : activeSection === "perfil" ? (
         <div className={`lk-dashboard lk-process-shell ${darkMode ? "lk-dark" : ""}`}>
           {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
-          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="perfil" menuOpen={sidebarOpen} onLogout={handleLogout} onNavigate={section => { setActiveSection(section); setSidebarOpen(false); }} />
+          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="perfil" menuOpen={sidebarOpen} onLogout={handleLogout} processTab={activeTab} onNavigate={navigateFromSidebar} />
           <main className="lk-process-main"><Suspense fallback={pageLoading}>
             <PerfilPage onLogout={handleLogout} sessionUser={sessionUser} onOpenMenu={() => setSidebarOpen(true)}
               onStartPageChange={(startPage) => setSessionUser((user) => (user ? { ...user, startPage } : user))}
@@ -1348,7 +1354,7 @@ export default function App() {
       ) : activeSection === "colaboradores" ? (
         <div className={`lk-dashboard lk-process-shell ${darkMode ? "lk-dark" : ""}`}>
           {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
-          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="colaboradores" menuOpen={sidebarOpen} onLogout={handleLogout} onNavigate={section => { setActiveSection(section); setSidebarOpen(false); }} />
+          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="colaboradores" menuOpen={sidebarOpen} onLogout={handleLogout} processTab={activeTab} onNavigate={navigateFromSidebar} />
           <main className="lk-process-main"><Suspense fallback={pageLoading}>
             <ColaboradoresPage isAdmin={sessionUser?.role === "admin"} onUnauthorized={handleLogout} onOpenMenu={() => setSidebarOpen(true)} />
           </Suspense></main>
@@ -1356,7 +1362,7 @@ export default function App() {
       ) : activeSection === "contratos" ? (
         <div className={`lk-dashboard lk-process-shell ${darkMode ? "lk-dark" : ""}`}>
           {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
-          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="contratos" menuOpen={sidebarOpen} onLogout={handleLogout} onNavigate={section => { setActiveSection(section); setSidebarOpen(false); }} />
+          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="contratos" menuOpen={sidebarOpen} onLogout={handleLogout} processTab={activeTab} onNavigate={navigateFromSidebar} />
           <main className="lk-process-main"><Suspense fallback={pageLoading}>
             <ContratosAtivos isViewer={sessionUser?.role === "viewer"} onUnauthorized={handleLogout} onOpenMenu={() => setSidebarOpen(true)} />
           </Suspense></main>

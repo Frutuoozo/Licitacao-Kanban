@@ -3,6 +3,8 @@ import "./ProcessReports.css";
 import { formatDate, usePreferences } from "../preferences";
 import { downloadCsv } from "../exportTable";
 import { Fragment, useState, useEffect, useRef, useMemo } from "react";
+import { Toast, useToast } from "../components/Toast";
+import { clearedStartedField } from "../processRules";
 import {
   IconPlus, IconTrash, IconEdit, IconClose, IconCheck,
   IconUnarchive, IconChevron, IconCalendar, IconFlag,
@@ -89,7 +91,7 @@ function PhaseCard({ phase, docs, onToggleDoc, onDeleteDoc, onDeletePhase, onRen
 
 // ── ProcessColumn ─────────────────────────────────────────────────────────────
 
-function ProcessColumn({ column, onUpdateDocs, onDeleteColumn, onRenameColumn, onArchive, isViewer, templates = {}, collaborators = [] }) {
+function ProcessColumn({ column, onUpdateDocs, onDeleteColumn, onRenameColumn, onArchive, onInvalidEdit, isViewer, templates = {}, collaborators = [] }) {
   const hideDone = usePreferences().preferences.hideDoneDocs;
   const [addingItem, setAddingItem]     = useState(null);
   const [newName, setNewName]           = useState("");
@@ -146,6 +148,9 @@ function ProcessColumn({ column, onUpdateDocs, onDeleteColumn, onRenameColumn, o
     const title = editTitle.trim();
     if (!title) return;
     const selectedType = editType?.trim() || null;
+    // O quadro grava sem esperar o servidor: o que ele recusaria é barrado aqui, com aviso, e o formulário fica aberto.
+    const problem = clearedStartedField(column, { processNumber: editProcessNumber, dueDate: editDueDate, type: selectedType });
+    if (problem) { onInvalidEdit(problem); return; }
     const selectedTypeColor = selectedType ? tmplColor(selectedType, templates[selectedType]) : (column.typeColor || "#30363d");
     const typeChanged = selectedType !== (column.type || null);
     const nextDocs = typeChanged && selectedType && templates[selectedType]
@@ -854,6 +859,7 @@ export default function ProcessosPage({
   isViewer,
 }) {
   const boardRef = useRef(null);
+  const { toast, notify, closeToast } = useToast();
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   useEffect(() => {
@@ -933,6 +939,7 @@ export default function ProcessosPage({
               <ProcessColumn key={col.id} column={col}
                 onUpdateDocs={updateDocs} onDeleteColumn={deleteColumn}
                 onRenameColumn={renameColumn} onArchive={archiveColumn}
+                onInvalidEdit={(text) => notify("error", "Faltam dados do processo", text)}
                 isViewer={isViewer} templates={templates} collaborators={collaborators} />
             ))}
           </div>
@@ -966,6 +973,7 @@ export default function ProcessosPage({
         loading ? <p className="lk-empty">Carregando calendário…</p> : !error && <ProcessCalendar columns={columns} />
       )}
 
+      <Toast toast={toast} onClose={closeToast} />
     </>
   );
 }

@@ -5,7 +5,8 @@ import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import db from '../db.js';
 import { validatePassword } from '../security.js';
 import { closeUserSockets } from '../socket.js';
-import { deleteUser } from '../users.js';
+import { ClientError } from '../errors.js';
+import { changeUserRole, deleteUser } from '../users.js';
 import { isAllowedRole, isValidCpf, isValidEmail, isNonEmptyString, MAX_LENGTHS, normalizeText } from '../validation.js';
 
 const router = express.Router();
@@ -47,18 +48,10 @@ router.patch('/users/:id', adminMutationLimiter, async (req, res) => {
     return res.status(400).json({ error: 'Papel inválido' });
   }
   try {
-    const [rows] = await db.query('SELECT role FROM users WHERE id = ?', [id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Usuário não encontrado' });
-    const oldRole = rows[0].role;
-    if (oldRole === 'admin' && role !== 'admin') {
-      const [countRows] = await db.query("SELECT COUNT(*) AS c FROM users WHERE role = 'admin'");
-      if (countRows[0].c <= 1) {
-        return res.status(400).json({ error: 'Deve existir pelo menos um administrador' });
-      }
-    }
-    await db.query('UPDATE users SET role = ? WHERE id = ?', [role, id]);
+    await changeUserRole(id, role);
     res.json({ ok: true });
   } catch (error) {
+    if (error instanceof ClientError) return res.status(error.status).json({ error: error.message });
     console.error(error);
     res.status(500).json({ error: 'Falha ao atualizar usuário' });
   }
@@ -138,18 +131,11 @@ router.delete('/users/:id', adminMutationLimiter, async (req, res) => {
     return res.status(400).json({ error: 'Use o menu de perfil para excluir a própria conta' });
   }
   try {
-    const [rows] = await db.query('SELECT role FROM users WHERE id = ?', [id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Usuário não encontrado' });
-    if (rows[0].role === 'admin') {
-      const [countRows] = await db.query("SELECT COUNT(*) AS c FROM users WHERE role = 'admin'");
-      if (countRows[0].c <= 1) {
-        return res.status(400).json({ error: 'Não é possível excluir o último administrador' });
-      }
-    }
     await deleteUser(id);
     closeUserSockets(id);
     res.json({ ok: true });
   } catch (error) {
+    if (error instanceof ClientError) return res.status(error.status).json({ error: error.message });
     console.error(error);
     res.status(500).json({ error: 'Falha ao remover usuário' });
   }

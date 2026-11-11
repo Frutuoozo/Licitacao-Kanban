@@ -1,15 +1,18 @@
+// Cada limite é o tamanho da coluna onde o texto é gravado: passar disso virava erro 500 do banco.
 const MAX_LENGTHS = {
   username: 80,
   name: 255,
   title: 255,
-  processNumber: 120,
+  processNumber: 100, // processes.processNumber
+  contractProcessNumber: 120, // contracts.process_number
   setor: 120,
-  type: 120,
+  type: 100, // processes.type, contract_modalities.name
+  modality: 120, // contracts.modality
   typeColor: 32,
   email: 254,
   cpf: 18,
   docName: 255,
-  templateName: 120,
+  templateName: 100, // templates.name
   genericText: 500,
   contractObject: 2000,
   processNotes: 2000,
@@ -25,8 +28,15 @@ export function normalizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+// Data AAAA-MM-DD que existe no calendário (2026-02-31 é recusada). O ano começa em 1000, o menor que a
+// coluna DATE do MySQL aceita.
 export function isValidDateString(value) {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1000 || month < 1 || month > 12 || day < 1) return false;
+  const isLeap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  const daysInMonth = [31, isLeap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  return day <= daysInMonth;
 }
 
 // Dia atual em Teresina (AAAA-MM-DD). O servidor roda em UTC: às 21h de lá já seria o dia seguinte.
@@ -61,13 +71,16 @@ export function isAllowedStatus(value) {
   return ['active', 'archived'].includes(value);
 }
 
+const PROCESS_ITEM_TYPES = ['doc', 'phase'];
+
 export function sanitizeProcessDoc(doc) {
   if (!doc || typeof doc !== 'object') return null;
   const id = normalizeText(doc.id);
   const type = normalizeText(doc.type);
   const name = normalizeText(doc.name);
   const bgColor = doc.bgColor == null ? null : normalizeText(doc.bgColor);
-  if (!id || !isNonEmptyString(type, MAX_LENGTHS.type) || !isNonEmptyString(name, MAX_LENGTHS.docName)) {
+  // process_items.type só aceita estes dois valores.
+  if (!id || !PROCESS_ITEM_TYPES.includes(type) || !isNonEmptyString(name, MAX_LENGTHS.docName)) {
     return null;
   }
   if (bgColor !== null && !isHexColor(bgColor)) return null;
@@ -106,9 +119,11 @@ export function validateProcessPayload(payload) {
   if (notes !== undefined && notes !== null && notes.length > MAX_LENGTHS.processNotes) return 'Observação muito longa.';
   if (priority !== undefined && !PROCESS_PRIORITIES.includes(priority)) return 'Prioridade inválida.';
 
-  const docs = Array.isArray(payload.docs)
-    ? payload.docs.map(sanitizeProcessDoc).filter(Boolean)
-    : [];
+  // Sem o campo (undefined), quem edita mantém os itens atuais; ao criar, o processo nasce sem itens.
+  if (payload.docs !== undefined && !Array.isArray(payload.docs)) return 'Itens do processo inválidos.';
+  const docs = payload.docs === undefined
+    ? undefined
+    : payload.docs.map(sanitizeProcessDoc).filter(Boolean);
 
   return {
     ok: true,
@@ -156,14 +171,14 @@ export function validateContractPayload(payload) {
 
   if (!isNonEmptyString(processName, MAX_LENGTHS.title)) return 'Nome do processo obrigatório';
   if (!isNonEmptyString(objectDescription, MAX_LENGTHS.contractObject)) return 'Descrição do objeto obrigatória';
-  if (!isNonEmptyString(processNumber, MAX_LENGTHS.processNumber)) return 'Número do processo obrigatório';
+  if (!isNonEmptyString(processNumber, MAX_LENGTHS.contractProcessNumber)) return 'Número do processo obrigatório';
   if (!Number.isFinite(contractValue) || contractValue < 0 || contractValue > 9999999999999.99) {
     return 'Valor do contrato inválido';
   }
   if (!isValidDateString(dueDate)) return 'Data de vencimento inválida';
   if (!isNonEmptyString(fiscalEffective, MAX_LENGTHS.name)) return 'Fiscal efetivo obrigatório';
   if (fiscalSubstitute.length > MAX_LENGTHS.name) return 'Nome do fiscal substituto muito longo';
-  if (!isNonEmptyString(modality, MAX_LENGTHS.type)) return 'Modalidade obrigatória';
+  if (!isNonEmptyString(modality, MAX_LENGTHS.modality)) return 'Modalidade obrigatória';
   if (!['old', 'new'].includes(lawType)) return 'Lei do contrato inválida';
 
   return {

@@ -175,3 +175,8 @@ header.lk-menu-bar{display:none;min-height:0}
 .lk-dark .lk-progress-panel .dash-process-progress-fill:not(.is-zero) { box-shadow: inset 0 0 0 1px #ffffff40; }
 .lk-progress-panel .dash-process-progress-fill.is-zero { width: 2px !important; border-radius: 0; background: color-mix(in srgb, var(--lk-muted) 35%, transparent); }
 @media (prefers-reduced-motion: reduce) { .dash-process-progress-fill, .lk-progress-panel .dash-process-progress-item { transition: none; } }
+
+/* Subitens de Processos no menu: só aparecem quando o menu vira gaveta (as abas saem do topo da página). */
+.lk-sidebar .lk-subnav,.lk-sidebar .lk-subnav-toggle{display:none}
+.lk-nav-group{position:relative}
+@media(max-width:1024px){.lk-sidebar nav .lk-nav-group>button:first-child{padding-right:52px}.lk-sidebar nav .lk-subnav-toggle{display:grid;place-items:center;position:absolute;top:0;right:0;width:44px;min-height:44px;margin:0;padding:0;color:var(--lk-muted)}.lk-sidebar nav .lk-subnav-toggle svg{width:16px;height:16px}.lk-sidebar nav .lk-subnav-toggle[aria-expanded="false"] svg{transform:rotate(-90deg)}.lk-sidebar .lk-subnav[hidden]{display:none}.lk-sidebar .lk-subnav{display:grid;gap:2px;margin:-4px 0 8px 22px;padding-left:10px;border-left:1px solid var(--lk-border)}.lk-sidebar nav .lk-subnav button{min-height:40px;margin:0;padding:8px 10px;font-size:13px;color:var(--lk-muted)}.lk-sidebar nav .lk-subnav button.selected{color:var(--lk-blue)}}

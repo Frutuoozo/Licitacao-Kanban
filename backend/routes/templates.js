@@ -22,27 +22,22 @@ function parseItems(row) {
   return typeof raw === 'string' ? JSON.parse(raw) : raw;
 }
 
-// Itens e cor de um template no formato do PUT ({ items, color } ou legado: array de itens).
-function templateParts(tpl) {
-  if (Array.isArray(tpl)) return { items: tpl, color: null };
-  if (tpl && typeof tpl === 'object') return { items: tpl.items || [], color: tpl.color || null };
-  return { items: [], color: null };
-}
-
 // Sincroniza os processos ativos com os templates: cor do tipo e lista de itens, preservando
 // o 'is_done' por nome do item. Tudo em lote (número fixo de consultas, independente de quantos processos).
+// `templates` é um Map nome limpo -> { items, color }: com um objeto comum, templates['constructor']
+// devolvia uma função do JavaScript e o processo desse tipo perdia os itens.
 export async function syncActiveProcesses(connection, templates) {
   const [activeProcesses] = await connection.query(
     "SELECT id, type, typeColor FROM processes WHERE status IN ('active', 'pending')"
   );
-  const targets = activeProcesses.filter((process) => process.type && templates[process.type]);
+  const targets = activeProcesses.filter((process) => process.type && templates.has(process.type));
   if (targets.length === 0) return;
   const targetIds = targets.map((process) => process.id);
 
   // 1. Cor: um UPDATE por cor nova, cobrindo todos os processos que precisam dela.
   const idsByColor = new Map();
   for (const process of targets) {
-    const { color } = templateParts(templates[process.type]);
+    const { color } = templates.get(process.type);
     if (process.typeColor === color) continue;
     if (!idsByColor.has(color)) idsByColor.set(color, []);
     idsByColor.get(color).push(process.id);
@@ -52,10 +47,13 @@ export async function syncActiveProcesses(connection, templates) {
   }
 
   // 2. Itens: lê os concluídos de todos os processos de uma vez, apaga e reinsere em lote.
-  const [doneItems] = await connection.query(
-    'SELECT process_id, name FROM process_items WHERE process_id IN (?) AND is_done = 1',
+  // FOR UPDATE trava os itens até o fim da transação: quem marca um item ao mesmo tempo espera, ou é
+  // esperado, e a marcação não se perde entre a leitura e a regravação.
+  const [lockedItems] = await connection.query(
+    'SELECT process_id, name, is_done FROM process_items WHERE process_id IN (?) FOR UPDATE',
     [targetIds]
   );
+  const doneItems = lockedItems.filter((item) => item.is_done);
   const doneByProcess = new Map();
   for (const item of doneItems) {
     if (!doneByProcess.has(item.process_id)) doneByProcess.set(item.process_id, new Set());
@@ -64,7 +62,7 @@ export async function syncActiveProcesses(connection, templates) {
 
   const newProcessItems = targets.flatMap((process) => {
     const done = doneByProcess.get(process.id);
-    return templateParts(templates[process.type]).items.map((item, index) => {
+    return templates.get(process.type).items.map((item, index) => {
       let itemType = 'doc';
       let itemName = '';
       let itemBgColor = null;
@@ -130,6 +128,23 @@ router.get('/', async (req, res) => {
 // Chave de comparação de nomes igual à do MySQL (utf8mb4_0900_ai_ci): ignora maiúsculas e acentos.
 const nameKey = (name) => name.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 
+const ITEM_TYPES = ['doc', 'phase'];
+
+// Itens de um modelo: texto (documento) ou { type, name, bgColor }, como a sincronização grava em
+// process_items. Item fora disso virava erro 500 do banco ou item sem nome nos processos.
+function checkTemplateItems(items, templateName) {
+  if (!Array.isArray(items)) throw new ClientError(`Itens inválidos no modelo ${templateName}.`);
+  for (const item of items) {
+    const isObject = item !== null && typeof item === 'object' && !Array.isArray(item);
+    const name = typeof item === 'string' ? item : isObject ? item.name : null;
+    const type = isObject ? item.type || 'doc' : 'doc';
+    const bgColor = isObject ? item.bgColor || null : null;
+    if (!isNonEmptyString(name, MAX_LENGTHS.docName) || !ITEM_TYPES.includes(type) || (bgColor !== null && !isHexColor(bgColor))) {
+      throw new ClientError(`Item inválido no modelo ${templateName}.`);
+    }
+  }
+}
+
 // Valida e converte o payload em linhas da tabela templates. Lança ClientError com a mensagem para o usuário.
 export function parseTemplates(templates) {
   // Salvar apaga todos os modelos e grava a lista recebida: uma lista vazia (ex.: bug na tela) apagaria tudo.
@@ -154,6 +169,7 @@ export function parseTemplates(templates) {
       description = normalizeText(val.description).slice(0, 255) || null;
       if (color !== null && !isHexColor(color)) throw new ClientError('Cor de template inválida');
     }
+    checkTemplateItems(items, cleanName);
     return [cleanName, JSON.stringify(items), sortOrder, color, description];
   });
   return rows.sort((a, b) => a[2] - b[2]);
@@ -169,12 +185,15 @@ router.put('/', requireAdmin, templateWriteLimiter, async (req, res) => {
   try {
     // Validação antes da transação: payload inválido não chega a mexer no banco.
     const rows = parseTemplates(templates);
+    // Daqui em diante vale o que foi gravado (nomes sem espaços nas pontas), não o payload cru: com o nome
+    // " Compras ", os processos do tipo Compras não eram sincronizados.
+    const saved = new Map(rows.map(([name, items, order, color, description]) => [name, { items: JSON.parse(items), color, order, description: description || '' }]));
     await withTransaction(async (connection) => {
       await connection.query('DELETE FROM templates');
       await connection.query('INSERT INTO templates (name, items, sort_order, type_color, description) VALUES ?', [rows]);
-      await syncActiveProcesses(connection, templates);
+      await syncActiveProcesses(connection, saved);
     });
-    getIO()?.emit('templates:updated', templates);
+    getIO()?.emit('templates:updated', Object.fromEntries(saved));
     res.json({ success: true });
   } catch (error) {
     if (error instanceof ClientError) return res.status(error.status).json({ error: error.message });

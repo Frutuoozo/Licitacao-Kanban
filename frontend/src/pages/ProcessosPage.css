@@ -218,3 +218,11 @@ html.lk-board-fullscreen .lk-process-main:has(> .process-board-wrap) { padding-t
 .lk-process-shell .doc-card.doc-pastel:not(.done) .check-btn:hover .check-box { border-color: color-mix(in srgb, var(--doc-color) 65%, #fff); }
 /* Preferência "esconder concluídos": aviso discreto no lugar dos documentos marcados. */
 .lk-process-shell .docs-hidden-done { margin: 6px 0 2px; padding: 6px 10px; border: 1px dashed var(--lk-border); border-radius: 8px; color: var(--lk-muted); font-size: 10px; font-weight: 600; }
+
+/* Com o menu recolhido, as abas ficam no menu (subitens de Processos); no topo sobra só a tela cheia. */
+@media (max-width: 1024px) {
+  .lk-process-shell .process-page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .lk-process-shell .process-page-heading { margin-bottom: 0; }
+  .lk-process-shell .process-page-tabs { display: flex; width: auto; }
+  .lk-process-shell .process-page-tabs > button:not(.process-fullscreen-button) { display: none; }
+}

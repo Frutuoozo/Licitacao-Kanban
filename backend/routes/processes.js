@@ -18,11 +18,26 @@ const processWriteLimiter = rateLimit({
   keyGenerator: (req) => req.userId || ipKeyGenerator(req.ip),
 });
 
+// Processo iniciado não pode perder número, vencimento ou tipo (os três são obrigatórios desde o cadastro).
+// Processo antigo que já não tinha o campo continua editável.
+function clearedStartedField(current, { processNumber, dueDate, type }) {
+  if (current.processNumber && !processNumber) return 'Informe o número do processo.';
+  if (current.due && !dueDate) return 'Informe a data de vencimento.';
+  if (current.type && !type) return 'Informe o tipo de processo.';
+  return null;
+}
+
 // Grava os itens (documentos/fases) de um processo, na ordem recebida.
 function insertItems(conn, processId, docs) {
   if (!docs || docs.length === 0) return null;
   const values = docs.map((doc, index) => [doc.id, processId, doc.type, doc.name, doc.done || false, doc.bgColor || null, index]);
   return conn.query('INSERT INTO process_items (id, process_id, type, name, is_done, bg_color, order_index) VALUES ?', [values]);
+}
+
+// Itens atuais de um processo, no formato que o front recebe.
+async function readItems(conn, processId) {
+  const [rows] = await conn.query('SELECT id, type, name, is_done, bg_color FROM process_items WHERE process_id = ? ORDER BY order_index ASC', [processId]);
+  return rows.map((row) => ({ id: row.id, type: row.type, name: row.name, done: Boolean(row.is_done), bgColor: row.bg_color }));
 }
 
 // GET all processes (active and archived)
@@ -93,16 +108,18 @@ router.post('/', requireEditorOrAdmin, processWriteLimiter, async (req, res) => 
   if (missing) return res.status(400).json({ error: missing });
   if (isPastDate(dueDate)) return res.status(400).json({ error: PAST_DUE_MESSAGE });
 
-  const createdAt = new Date();
-  const startedAt = status === 'active' ? createdAt : null;
   try {
-    await withTransaction(async (conn) => {
+    // "Iniciado em" vem do relógio do MySQL, o mesmo de created_at e de "arquivado em" (antes vinha do Node,
+    // e com os dois em fusos diferentes o processo era "iniciado" depois de arquivado).
+    const { createdAt, startedAt } = await withTransaction(async (conn) => {
       await conn.query(
         `INSERT INTO processes (id, title, processNumber, setor, type, typeColor, status, due_date, started_at, notes, priority)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id, title, processNumber, setor || null, type, typeColor, status, dueDate, startedAt, notes ?? null, priority]
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, IF(? = 'active', NOW(), NULL), ?, ?)`,
+        [id, title, processNumber, setor || null, type, typeColor, status, dueDate, status, notes ?? null, priority]
       );
       await insertItems(conn, id, docs);
+      const [[times]] = await conn.query('SELECT created_at AS createdAt, started_at AS startedAt FROM processes WHERE id = ?', [id]);
+      return times;
     });
     getIO()?.emit('process:added', { id, title, processNumber, setor: setor || null, type, typeColor, status, dueDate, notes: notes ?? null, priority, createdAt, startedAt, docs: docs || [] });
     res.status(201).json({ success: true, createdAt, startedAt });
@@ -117,12 +134,12 @@ router.put('/:id', requireEditorOrAdmin, processWriteLimiter, async (req, res) =
   const { id } = req.params;
   try {
     const saved = await withTransaction(async (conn) => {
-      const [[current]] = await conn.query("SELECT status, notes, priority, DATE_FORMAT(due_date, '%Y-%m-%d') AS due FROM processes WHERE id = ? FOR UPDATE", [id]);
+      const [[current]] = await conn.query("SELECT status, processNumber, type, notes, priority, DATE_FORMAT(due_date, '%Y-%m-%d') AS due FROM processes WHERE id = ? FOR UPDATE", [id]);
       if (!current) throw new ClientError('Processo não encontrado.', 404);
       const isPending = current.status === 'pending';
       const validated = validateProcessPayload({ ...req.body, status: isPending ? 'pending' : 'active', dueDate: req.body.dueDate ?? null });
       if (typeof validated === 'string') throw new ClientError(validated);
-      const missing = isPending && missingDemandField(validated.data);
+      const missing = isPending ? missingDemandField(validated.data) : clearedStartedField(current, validated.data);
       if (missing) throw new ClientError(missing);
       const { title, processNumber, setor, dueDate, type, typeColor, docs, notes, priority = current.priority } = validated.data;
       // Pendente que venceu com o tempo continua editável; só não pode receber uma data passada nova.
@@ -132,9 +149,12 @@ router.put('/:id', requireEditorOrAdmin, processWriteLimiter, async (req, res) =
         `UPDATE processes SET title = ?, processNumber = ?, setor = ?, type = ?, typeColor = ?, due_date = ?, notes = ?, priority = ? WHERE id = ?`,
         [title, processNumber, setor || null, type ?? null, typeColor ?? null, dueDate ?? null, nextNotes, priority, id]
       );
-      await conn.query('DELETE FROM process_items WHERE process_id = ?', [id]);
-      await insertItems(conn, id, docs);
-      return { id, title, processNumber, setor: setor || null, dueDate, type: type ?? null, typeColor: typeColor ?? null, notes: nextNotes, priority, docs: docs || [] };
+      const savedDocs = docs === undefined ? await readItems(conn, id) : docs;
+      if (docs !== undefined) {
+        await conn.query('DELETE FROM process_items WHERE process_id = ?', [id]);
+        await insertItems(conn, id, docs);
+      }
+      return { id, title, processNumber, setor: setor || null, dueDate, type: type ?? null, typeColor: typeColor ?? null, notes: nextNotes, priority, docs: savedDocs };
     });
     getIO()?.emit('process:updated', saved);
     res.json({ success: true });
@@ -161,8 +181,9 @@ router.put('/:id/start', requireEditorOrAdmin, processWriteLimiter, async (req, 
       if (!setor) throw new ClientError('Informe o gestor principal.');
       const processNumber = informedNumber || normalizeText(current.processNumber);
       if (!processNumber) throw new ClientError('Informe o número do processo.');
-      const startedAt = new Date();
-      await conn.query(`UPDATE processes SET status = 'active', setor = ?, processNumber = ?, started_at = ? WHERE id = ?`, [setor, processNumber, startedAt, id]);
+      // Relógio do MySQL, o mesmo de "arquivado em".
+      await conn.query(`UPDATE processes SET status = 'active', setor = ?, processNumber = ?, started_at = NOW() WHERE id = ?`, [setor, processNumber, id]);
+      const [[{ startedAt }]] = await conn.query('SELECT started_at AS startedAt FROM processes WHERE id = ?', [id]);
       return { id, setor, processNumber, startedAt };
     });
     getIO()?.emit('process:started', started);
@@ -219,8 +240,10 @@ router.put('/:id/status', requireEditorOrAdmin, processWriteLimiter, async (req,
 router.put('/:id/items', requireEditorOrAdmin, processWriteLimiter, async (req, res) => {
   const { id } = req.params;
   const { docs } = req.body;
-  const safeDocs = Array.isArray(docs) ? docs.map(sanitizeProcessDoc).filter(Boolean) : [];
-  
+  // Sem a lista, recusa: tratar a falta como "lista vazia" apagaria todos os itens do processo.
+  if (!Array.isArray(docs)) return res.status(400).json({ error: 'Informe os itens do processo.' });
+  const safeDocs = docs.map(sanitizeProcessDoc).filter(Boolean);
+
   try {
     await withTransaction(async (conn) => {
       await conn.query('DELETE FROM process_items WHERE process_id = ?', [id]);

@@ -324,6 +324,34 @@ describe('demandas', { skip: testDbSkip || false }, () => {
       assert.equal((await row(d.id)).status, 'pending');
     });
 
+    // Iniciado: os três nasceram obrigatórios e não podem ser apagados na edição.
+    for (const [field, empty, message, column] of [
+      ['processNumber', '', 'Informe o número do processo.', 'processNumber'],
+      ['dueDate', null, 'Informe a data de vencimento.', 'due_date'],
+      ['type', '', 'Informe o tipo de processo.', 'type'],
+    ]) {
+      test(`iniciado não pode ficar sem ${field}`, async () => {
+        const d = demand({ status: 'active', setor: 'Maria' });
+        await call('POST', '/processes', d);
+        const before = (await row(d.id))[column];
+        const res = await call('PUT', `/processes/${d.id}`, { ...d, title: 'Outro', [field]: empty });
+        assert.equal(res.status, 400);
+        assert.equal(res.body.error, message);
+        const saved = await row(d.id);
+        assert.deepEqual(saved[column], before);
+        assert.equal(saved.title, d.title);
+      });
+    }
+
+    test('processo antigo, iniciado sem vencimento nem tipo, continua editável', async () => {
+      const d = demand({ status: 'active', setor: 'Maria' });
+      await call('POST', '/processes', d);
+      await db.query('UPDATE processes SET due_date = NULL, type = NULL WHERE id = ?', [d.id]);
+      const res = await call('PUT', `/processes/${d.id}`, { ...d, title: 'Título novo', dueDate: null, type: null });
+      assert.equal(res.status, 200);
+      assert.equal((await row(d.id)).title, 'Título novo');
+    });
+
     test('processo inexistente dá 404 e não grava itens soltos', async () => {
       const d = demand();
       const res = await call('PUT', `/processes/${d.id}`, d);

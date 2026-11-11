@@ -5,7 +5,7 @@ import db, { withTransaction } from '../db.js';
 import { requireEditorOrAdmin } from '../middleware/editor.js';
 import { getIO } from '../socket.js';
 import { ClientError } from '../errors.js';
-import { isValidDateString, normalizeText, validateContractPayload } from '../validation.js';
+import { isoToday, isValidDateString, normalizeText, validateContractPayload } from '../validation.js';
 
 const router = express.Router();
 
@@ -33,9 +33,8 @@ function formatDate(value) {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
 }
 
-function todayIso() {
-  return formatDate(new Date());
-}
+// Dia de hoje em Teresina (o servidor roda em UTC: às 21h de lá, o dia do Node já seria o seguinte).
+const todayIso = () => isoToday();
 
 function serializeContract(row) {
   return {
@@ -94,6 +93,14 @@ const contractSelect = `
 async function fetchContract(conn, id) {
   const [rows] = await conn.query(`${contractSelect} WHERE c.id = ?`, [id]);
   return rows[0] ? serializeContract(rows[0]) : null;
+}
+
+// Lê o contrato travando a linha até o fim da transação. Duas alterações ao mesmo tempo no mesmo contrato
+// passam a esperar uma pela outra, e a segunda já vê o que a primeira gravou (número do aditivo, limite,
+// encerramento). Sem a trava, as duas liam a mesma situação e as duas gravavam.
+async function lockContract(conn, id) {
+  await conn.query('SELECT id FROM contracts WHERE id = ? FOR UPDATE', [id]);
+  return fetchContract(conn, id);
 }
 
 async function logEvent(conn, req, contractId, event) {
@@ -198,7 +205,7 @@ router.put('/:id', requireEditorOrAdmin, contractWriteLimiter, (req, res) => {
 
   const c = validated.data;
   return inTransaction(res, async (conn) => {
-    const current = await fetchContract(conn, req.params.id);
+    const current = await lockContract(conn, req.params.id);
     if (!current) return { status: 404, error: 'Contrato não encontrado' };
 
     // Com valor variável, o número guardado não é exibido: mantém o último valor informado.
@@ -238,7 +245,7 @@ router.post('/:id/amendments', requireEditorOrAdmin, contractWriteLimiter, (req,
   if (notes.length > NOTES_MAX) return res.status(400).json({ error: 'Observação muito longa.' });
 
   return inTransaction(res, async (conn) => {
-    const current = await fetchContract(conn, req.params.id);
+    const current = await lockContract(conn, req.params.id);
     if (!current) return { status: 404, error: 'Contrato não encontrado' };
     if (current.closedAt) return { status: 409, error: 'Contrato encerrado manualmente. Reabra o contrato antes de lançar um aditivo.' };
     if (current.amendmentCount >= MAX_AMENDMENTS) {
@@ -272,7 +279,7 @@ router.post('/:id/close', requireEditorOrAdmin, contractWriteLimiter, (req, res)
   if (reason.length > NOTES_MAX) return res.status(400).json({ error: 'Motivo muito longo.' });
 
   return inTransaction(res, async (conn) => {
-    const current = await fetchContract(conn, req.params.id);
+    const current = await lockContract(conn, req.params.id);
     if (!current) return { status: 404, error: 'Contrato não encontrado' };
     if (current.closedAt) return { status: 409, error: 'Este contrato já está encerrado.' };
     await conn.query('UPDATE contracts SET closed_at = ?, closed_reason = ? WHERE id = ?', [closedAt, reason || null, req.params.id]);
@@ -286,7 +293,7 @@ router.post('/:id/reopen', requireEditorOrAdmin, contractWriteLimiter, (req, res
   if (reason.length > NOTES_MAX) return res.status(400).json({ error: 'Motivo muito longo.' });
 
   return inTransaction(res, async (conn) => {
-    const current = await fetchContract(conn, req.params.id);
+    const current = await lockContract(conn, req.params.id);
     if (!current) return { status: 404, error: 'Contrato não encontrado' };
     if (!current.closedAt) return { status: 409, error: 'Este contrato não foi encerrado manualmente.' };
     await conn.query('UPDATE contracts SET closed_at = NULL, closed_reason = NULL WHERE id = ?', [req.params.id]);
@@ -371,7 +378,7 @@ router.post(
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ error: 'Arquivo vazio.' });
 
     return inTransaction(res, async (conn) => {
-      const current = await fetchContract(conn, req.params.id);
+      const current = await lockContract(conn, req.params.id);
       if (!current) return { status: 404, error: 'Contrato não encontrado' };
       if (kind === 'amendment') {
         const [events] = await conn.query(

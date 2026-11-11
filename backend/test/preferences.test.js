@@ -82,4 +82,22 @@ describe('preferências', { skip: testDbSkip || false }, () => {
     assert.equal(res.status, 200);
     assert.deepEqual(res.body.preferences, { exportFormat: 'pdf', hideDoneDocs: true });
   });
+
+  // Antes cada pedido lia as preferências, mesclava e gravava: o segundo apagava o que o primeiro gravou.
+  // A corrida depende do tempo: repetir algumas rodadas torna a falha previsível sem a correção.
+  test('duas preferências salvas ao mesmo tempo ficam as duas', async () => {
+    for (let round = 1; round <= 5; round += 1) {
+      await savePreferences({});
+      const responses = await Promise.all([
+        call('PATCH', '/preferences', { preferences: { theme: 'dark' } }),
+        call('PATCH', '/preferences', { preferences: { fontSize: 'large' } }),
+        call('PATCH', '/preferences', { startPage: 'contratos' }),
+      ]);
+      assert.deepEqual(responses.map((res) => res.status), [200, 200, 200], `rodada ${round}`);
+      const [[saved]] = await db.query('SELECT start_page, preferences FROM users WHERE id = ?', [userId]);
+      const stored = typeof saved.preferences === 'string' ? JSON.parse(saved.preferences) : saved.preferences;
+      assert.deepEqual(stored, { theme: 'dark', fontSize: 'large' }, `rodada ${round}: uma preferência se perdeu`);
+      assert.equal(saved.start_page, 'contratos', `rodada ${round}: a página inicial se perdeu`);
+    }
+  });
 });

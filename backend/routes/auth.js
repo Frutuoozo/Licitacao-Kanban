@@ -9,6 +9,7 @@ import { requireCsrf } from '../middleware/csrf.js';
 import { buildAuthCookieOptions, buildCsrfCookieOptions, generateCsrfToken, getJwtSecret, validatePassword } from '../security.js';
 import { isNonEmptyString, MAX_LENGTHS, normalizeText } from '../validation.js';
 import { closeUserSockets } from '../socket.js';
+import { ClientError } from '../errors.js';
 import { deleteUser } from '../users.js';
 import { readSettings } from './settings.js';
 
@@ -78,8 +79,12 @@ const preferencesFor = (user) => {
 };
 
 // Colunas lidas no login e no primeiro acesso (inclui as de startPageFor e preferencesFor).
+// Horários comparados pelo próprio MySQL (um relógio só): locked_until e password_changed_at são gravados com
+// NOW() do MySQL, e compará-los com a hora do Node falhava quando os dois estavam em fusos diferentes.
+const LOCKED_SECONDS_SQL = 'COALESCE(GREATEST(TIMESTAMPDIFF(SECOND, NOW(), locked_until), 0), 0) AS locked_seconds';
 const LOGIN_USER_COLUMNS = `id, username, password_hash, role, first_access, session_version,
-  failed_attempts, locked_until, password_changed_at, start_page, preferences`;
+  failed_attempts, locked_until, ${LOCKED_SECONDS_SQL}, password_changed_at,
+  TIMESTAMPDIFF(SECOND, password_changed_at, NOW()) AS password_age_seconds, start_page, preferences`;
 
 // ── Proteção contra descoberta de usuários ──
 // Quem tenta entrar não pode distinguir "usuário não existe" de "senha errada": nem pela mensagem,
@@ -98,18 +103,23 @@ const phantomAttempts = new Map();
 const phantomKey = (username) => normalizeText(username).toLowerCase();
 
 // Minutos que faltam para o fim de um bloqueio (0 = não está bloqueado).
-function minutesUntil(date) {
-  const remaining = date ? new Date(date).getTime() - Date.now() : 0;
-  return remaining > 0 ? Math.max(1, Math.ceil(remaining / 60000)) : 0;
+function minutesFromSeconds(seconds) {
+  return seconds > 0 ? Math.max(1, Math.ceil(seconds / 60)) : 0;
 }
+// Só para o bloqueio simulado (na memória do Node, então o relógio do Node é o certo).
+const minutesUntil = (date) => minutesFromSeconds(date ? (new Date(date).getTime() - Date.now()) / 1000 : 0);
 
 // Minutos de bloqueio que ainda restam para `username` (real ou inexistente), lido antes de conferir a senha.
-const lockedMinutesFor = (user, username) => minutesUntil(user ? user.locked_until : phantomAttempts.get(phantomKey(username))?.lockedUntil);
+// Usuário real: locked_seconds já vem calculado pelo MySQL (LOGIN_USER_COLUMNS).
+const lockedMinutesFor = (user, username) => (user
+  ? minutesFromSeconds(Number(user.locked_seconds))
+  : minutesUntil(phantomAttempts.get(phantomKey(username))?.lockedUntil));
 
 // Mesma regra de contagem para os dois casos: soma 1; ao atingir o limite, zera e bloqueia.
 // Devolve 'failed' (senha errada), 'locking' (esta tentativa bloqueou) ou 'locked' (já estava bloqueado).
+// `current.lockedMinutes`: minutos de bloqueio que restam, medidos no relógio de quem guarda o bloqueio.
 function countFailure(current, settings) {
-  if (minutesUntil(current.lockedUntil)) return { outcome: 'locked' };
+  if (current.lockedMinutes) return { outcome: 'locked' };
   const attempts = current.attempts + 1;
   if (settings.lockoutEnabled && attempts >= settings.lockoutAttempts) {
     return { outcome: 'locking', attempts: 0, lockedUntil: new Date(Date.now() + settings.lockoutMinutes * 60000) };
@@ -120,7 +130,7 @@ function countFailure(current, settings) {
 function phantomFailure(username, settings) {
   const key = phantomKey(username);
   const entry = phantomAttempts.get(key) || { attempts: 0, lockedUntil: null };
-  const next = countFailure(entry, settings);
+  const next = countFailure({ ...entry, lockedMinutes: minutesUntil(entry.lockedUntil) }, settings);
   if (next.outcome === 'locked') return next;
   phantomAttempts.delete(key); // reinserir move o nome para o fim da fila de descarte
   phantomAttempts.set(key, { attempts: next.attempts, lockedUntil: next.lockedUntil });
@@ -134,10 +144,10 @@ function phantomFailure(username, settings) {
 // mesmo trabalho no banco, mesmo tempo de resposta.
 async function registerFailedAttempt(username, settings) {
   return withTransaction(async (conn) => {
-    const [rows] = await conn.query('SELECT failed_attempts, locked_until FROM users WHERE username = ? FOR UPDATE', [username]);
+    const [rows] = await conn.query(`SELECT failed_attempts, ${LOCKED_SECONDS_SQL} FROM users WHERE username = ? FOR UPDATE`, [username]);
     const user = rows[0];
     const next = user
-      ? countFailure({ attempts: user.failed_attempts || 0, lockedUntil: user.locked_until }, settings)
+      ? countFailure({ attempts: user.failed_attempts || 0, lockedMinutes: minutesFromSeconds(Number(user.locked_seconds)) }, settings)
       : phantomFailure(username, settings);
     // O fim do bloqueio é calculado pelo relógio do MySQL (como antes), não pelo do Node: evita erro se os fusos diferirem.
     if (next.outcome === 'locking') {
@@ -224,7 +234,7 @@ router.post('/login', authIpLimiter, authLimiter, async (req, res) => {
 
     // Troca periódica: senha vencida volta para o fluxo de primeiro acesso (definir nova senha).
     if (settings.passwordExpiryEnabled && user.password_changed_at) {
-      const ageDays = (Date.now() - new Date(user.password_changed_at).getTime()) / 86400000;
+      const ageDays = Number(user.password_age_seconds) / 86400;
       if (ageDays >= settings.passwordExpiryDays) {
         await db.query('UPDATE users SET first_access = TRUE WHERE id = ?', [user.id]);
         return res.status(200).json({ firstAccess: true, passwordExpired: true, username: user.username });
@@ -327,13 +337,19 @@ router.patch('/preferences', verifyToken, requireCsrf, async (req, res) => {
   }
   if (!hasStart && Object.keys(changes).length === 0) return res.status(400).json({ error: 'Nada para salvar.' });
   try {
-    const [rows] = await db.query('SELECT role, start_page, preferences FROM users WHERE id = ?', [req.userId]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Usuário não encontrado' });
-    if (startPage === 'admin' && rows[0].role !== 'admin') return res.status(403).json({ error: 'Somente administradores podem abrir na Administração.' });
-    const merged = { ...preferencesFor(rows[0]), ...changes };
-    await db.query('UPDATE users SET start_page = ?, preferences = ? WHERE id = ?', [hasStart ? startPage : rows[0].start_page, JSON.stringify(merged), req.userId]);
-    res.json({ startPage: hasStart ? startPage : startPageFor(rows[0]), preferences: merged });
+    // Lê e grava com a linha travada: duas mudanças ao mesmo tempo (ex.: tema e tamanho da letra) esperam
+    // uma pela outra, e a segunda mescla sobre o que a primeira gravou em vez de apagá-lo.
+    const saved = await withTransaction(async (conn) => {
+      const [rows] = await conn.query('SELECT role, start_page, preferences FROM users WHERE id = ? FOR UPDATE', [req.userId]);
+      if (rows.length === 0) throw new ClientError('Usuário não encontrado', 404);
+      if (startPage === 'admin' && rows[0].role !== 'admin') throw new ClientError('Somente administradores podem abrir na Administração.', 403);
+      const merged = { ...preferencesFor(rows[0]), ...changes };
+      await conn.query('UPDATE users SET start_page = ?, preferences = ? WHERE id = ?', [hasStart ? startPage : rows[0].start_page, JSON.stringify(merged), req.userId]);
+      return { startPage: hasStart ? startPage : startPageFor(rows[0]), preferences: merged };
+    });
+    res.json(saved);
   } catch (error) {
+    if (error instanceof ClientError) return res.status(error.status).json({ error: error.message });
     console.error(error);
     res.status(500).json({ error: 'Falha ao salvar preferências' });
   }
@@ -342,7 +358,8 @@ router.patch('/preferences', verifyToken, requireCsrf, async (req, res) => {
 // PATCH /password
 router.patch('/password', verifyToken, requireCsrf, passwordLimiter, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
-  if (!currentPassword || !newPassword) {
+  // Só texto: o bcrypt lança erro com número ou objeto, e a resposta virava 500.
+  if (typeof currentPassword !== 'string' || !currentPassword || !newPassword) {
     return res.status(400).json({ error: 'Informe senha atual e nova senha' });
   }
   const passwordError = validatePassword(newPassword);
@@ -403,27 +420,22 @@ router.post('/logout', (req, res) => {
 // DELETE /account — remove o usuário (confirmação por senha)
 router.delete('/account', verifyToken, requireCsrf, passwordLimiter, async (req, res) => {
   const { password } = req.body;
-  if (!password) {
+  // Só texto: o bcrypt lança erro com número ou objeto, e a resposta virava 500.
+  if (typeof password !== 'string' || !password) {
     return res.status(400).json({ error: 'Informe sua senha para confirmar' });
   }
   try {
-    const [users] = await db.query('SELECT password_hash, role FROM users WHERE id = ?', [req.userId]);
+    const [users] = await db.query('SELECT password_hash FROM users WHERE id = ?', [req.userId]);
     if (users.length === 0) return res.status(404).json({ error: 'User not found' });
-    const user = users[0];
-    if (!await bcrypt.compare(password, user.password_hash)) {
+    if (!await bcrypt.compare(password, users[0].password_hash)) {
       return res.status(401).json({ error: 'Senha incorreta' });
-    }
-    if (user.role === 'admin') {
-      const [countRows] = await db.query("SELECT COUNT(*) AS c FROM users WHERE role = 'admin'");
-      if (countRows[0].c <= 1) {
-        return res.status(400).json({ error: 'Não é possível excluir o último administrador' });
-      }
     }
     await deleteUser(req.userId);
     closeUserSockets(req.userId);
     clearAuthCookies(res);
     res.json({ ok: true });
   } catch (error) {
+    if (error instanceof ClientError) return res.status(error.status).json({ error: error.message });
     console.error(error);
     res.status(500).json({ error: 'Falha ao remover conta' });
   }
