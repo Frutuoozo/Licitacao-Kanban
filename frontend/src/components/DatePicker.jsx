@@ -37,8 +37,9 @@ const addMonths = (date, months) => {
 
 const SHORTCUTS = [["+6 meses", 6], ["+1 ano", 12], ["+2 anos", 24]];
 
-/** Campo de data com calendário próprio (valor no formato AAAA-MM-DD, como o input nativo). */
-export default function DatePicker({ value, onChange, required, id, placeholder = "dd/mm/aaaa", min }) {
+/** Campo de data com calendário próprio (valor no formato AAAA-MM-DD, como o input nativo).
+ *  `shortcuts`: botões de atalho [rótulo, meses a somar]; o padrão serve aos contratos. */
+export default function DatePicker({ value, onChange, required, id, placeholder = "dd/mm/aaaa", min, shortcuts = SHORTCUTS }) {
   const autoId = useId();
   const inputId = id || autoId;
   const wrapRef = useRef(null);
@@ -168,7 +169,7 @@ export default function DatePicker({ value, onChange, required, id, placeholder 
           </div>
 
           <div className="dp-shortcuts" aria-label="Atalhos a partir da data atual">
-            {SHORTCUTS.map(([label, months]) => (
+            {shortcuts.map(([label, months]) => (
               <button type="button" key={label} title={`${label} a partir de ${base.toLocaleDateString("pt-BR")}`} onClick={() => choose(addMonths(base, months))}>{label}</button>
             ))}
           </div>

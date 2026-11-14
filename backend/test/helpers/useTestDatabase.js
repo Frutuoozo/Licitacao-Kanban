@@ -3,12 +3,13 @@
 // Servidores e scripts iniciados pelo teste herdam o mesmo process.env, então também usam o banco de teste.
 //
 // O banco de teste recebe a estrutura de tabelas do banco da aplicação (CREATE TABLE ... LIKE), sem
-// copiar nenhum dado. Se não der para usá-lo, `testDbSkip` traz o motivo e os testes de banco são pulados.
+// copiar nenhum dado, e é atualizado quando a estrutura da aplicação muda.
+// Se não der para usá-lo, `testDbSkip` traz o motivo e os testes de banco são pulados.
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import mysql from 'mysql2/promise';
 import { resolveDbSsl } from '../../dbSsl.js';
-import { resolveTestDatabase } from './testDatabase.js';
+import { resolveTestDatabase, syncTableStructure } from './testDatabase.js';
 
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
 
@@ -37,8 +38,11 @@ if (!skip) {
           "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'",
           [resolved.source]
         );
+        // Cria as que faltam e recria (vazias) as que ficaram com estrutura antiga: coluna nova ou índice novo
+        // no banco da aplicação chegam aqui na próxima execução dos testes.
         for (const { TABLE_NAME: table } of tables) {
-          await conn.query(`CREATE TABLE IF NOT EXISTS \`${resolved.name}\`.\`${table}\` LIKE \`${resolved.source}\`.\`${table}\``);
+          const result = await syncTableStructure(conn, { schema: resolved.source, table }, { schema: resolved.name, table });
+          if (result === 'recreated') console.log(`[banco de teste] estrutura de ${table} atualizada`);
         }
       }
     } finally {
@@ -50,3 +54,5 @@ if (!skip) {
 }
 
 export const testDbSkip = skip;
+// Banco da aplicação de onde vem a estrutura (só para leitura: CREATE TABLE ... LIKE).
+export const testDbSource = resolved.source || null;

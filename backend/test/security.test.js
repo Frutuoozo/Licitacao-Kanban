@@ -2,12 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validatePassword } from '../security.js';
 import { isAdminRole, isEditorOrAdminRole } from '../permissions.js';
-import { normalizeContractUrl } from '../contracts.js';
 import { validateProcessPayload } from '../validation.js';
 
+// Política atual: 8+ caracteres, 1 maiúscula, 1 número e 1 caractere especial (conferidos nessa ordem).
 test('validatePassword rejects short or simple passwords', () => {
   assert.equal(validatePassword('abc'), 'A senha deve conter no mínimo 8 caracteres');
-  assert.equal(validatePassword('abcdefgh'), 'A senha deve conter pelo menos um caractere especial');
+  assert.equal(validatePassword(12345678), 'A senha deve conter no mínimo 8 caracteres');
+  assert.equal(validatePassword('abcdefgh'), 'A senha deve conter pelo menos uma letra maiúscula');
+  assert.equal(validatePassword('Abcdefgh'), 'A senha deve conter pelo menos um número');
+  assert.equal(validatePassword('Abcdefg1'), 'A senha deve conter pelo menos um caractere especial');
+});
+
+test('validatePassword accepts a password that follows every rule', () => {
+  assert.equal(validatePassword('Abcdef1!'), null);
+  assert.equal(validatePassword('Senha#2026 com espaço'), null);
 });
 
 test('permission helpers accept only expected roles', () => {
@@ -16,15 +24,6 @@ test('permission helpers accept only expected roles', () => {
   assert.equal(isEditorOrAdminRole('admin'), true);
   assert.equal(isEditorOrAdminRole('editor'), true);
   assert.equal(isEditorOrAdminRole('viewer'), false);
-});
-
-test('normalizeContractUrl blocks non-google URLs', () => {
-  const blocked = normalizeContractUrl('https://example.com/file.csv');
-  assert.equal(blocked.ok, false);
-  assert.match(blocked.error, /Google/);
-
-  const allowed = normalizeContractUrl('https://docs.google.com/spreadsheets/d/abc/export?format=csv');
-  assert.equal(allowed.ok, true);
 });
 
 test('validateProcessPayload rejects invalid data and accepts a normal payload', () => {

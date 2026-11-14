@@ -1,11 +1,11 @@
-import express from 'express';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import db from '../db.js';
 import { requireAdmin } from '../middleware/admin.js';
+import { createRouter } from '../asyncRouter.js';
 
 // Configurações administrativas gerais (chave/valor). Leitura para todos os autenticados,
 // porque o app precisa delas em qualquer perfil (ex.: tempo de sessão); gravação só para admin.
-const router = express.Router();
+const router = createRouter();
 const settingsWriteLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   limit: 30,

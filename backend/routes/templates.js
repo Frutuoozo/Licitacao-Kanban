@@ -1,13 +1,13 @@
-import express from 'express';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import db, { withTransaction } from '../db.js';
 import { getIO } from '../socket.js';
 import crypto from 'crypto';
 import { requireAdmin } from '../middleware/admin.js';
 import { isHexColor, isNonEmptyString, MAX_LENGTHS, normalizeText } from '../validation.js';
-import { ClientError } from '../errors.js';
+import { ClientError, sendError } from '../errors.js';
+import { createRouter } from '../asyncRouter.js';
 
-const router = express.Router();
+const router = createRouter();
 const templateWriteLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,
@@ -22,17 +22,30 @@ function parseItems(row) {
   return typeof raw === 'string' ? JSON.parse(raw) : raw;
 }
 
+// Item do modelo como é gravado em process_items: texto vira documento sem cor.
+const toItemRow = (item) => (typeof item === 'string'
+  ? { type: 'doc', name: item, bgColor: null }
+  : { type: item?.type || 'doc', name: item?.name || '', bgColor: item?.bgColor || null });
+
+// Lista de itens comparável: 'Termo' e { type: 'doc', name: 'Termo' } são o mesmo item. Aceita o formato
+// antigo da coluna ({ items: [...] }). O MySQL reordena as chaves do JSON, então não dá para comparar o texto.
+const itemsKey = (items) => {
+  const list = Array.isArray(items) ? items : Array.isArray(items?.items) ? items.items : [];
+  return JSON.stringify(list.map((item) => { const row = toItemRow(item); return [row.type, row.name, row.bgColor]; }));
+};
+
 // Sincroniza os processos ativos com os templates: cor do tipo e lista de itens, preservando
 // o 'is_done' por nome do item. Tudo em lote (número fixo de consultas, independente de quantos processos).
 // `templates` é um Map nome limpo -> { items, color }: com um objeto comum, templates['constructor']
 // devolvia uma função do JavaScript e o processo desse tipo perdia os itens.
-export async function syncActiveProcesses(connection, templates) {
+// `itemsChanged`: nomes dos modelos cujos itens mudaram. Só os processos desses modelos têm os itens
+// regravados; os outros mantêm os próprios (inclusive ajustes feitos só naquele processo). Sem ele, todos.
+export async function syncActiveProcesses(connection, templates, itemsChanged = null) {
   const [activeProcesses] = await connection.query(
     "SELECT id, type, typeColor FROM processes WHERE status IN ('active', 'pending')"
   );
   const targets = activeProcesses.filter((process) => process.type && templates.has(process.type));
   if (targets.length === 0) return;
-  const targetIds = targets.map((process) => process.id);
 
   // 1. Cor: um UPDATE por cor nova, cobrindo todos os processos que precisam dela.
   const idsByColor = new Map();
@@ -49,9 +62,12 @@ export async function syncActiveProcesses(connection, templates) {
   // 2. Itens: lê os concluídos de todos os processos de uma vez, apaga e reinsere em lote.
   // FOR UPDATE trava os itens até o fim da transação: quem marca um item ao mesmo tempo espera, ou é
   // esperado, e a marcação não se perde entre a leitura e a regravação.
+  const itemTargets = itemsChanged ? targets.filter((process) => itemsChanged.has(process.type)) : targets;
+  if (itemTargets.length === 0) return;
+  const itemTargetIds = itemTargets.map((process) => process.id);
   const [lockedItems] = await connection.query(
     'SELECT process_id, name, is_done FROM process_items WHERE process_id IN (?) FOR UPDATE',
-    [targetIds]
+    [itemTargetIds]
   );
   const doneItems = lockedItems.filter((item) => item.is_done);
   const doneByProcess = new Map();
@@ -60,27 +76,16 @@ export async function syncActiveProcesses(connection, templates) {
     doneByProcess.get(item.process_id).add(item.name);
   }
 
-  const newProcessItems = targets.flatMap((process) => {
+  const newProcessItems = itemTargets.flatMap((process) => {
     const done = doneByProcess.get(process.id);
     return templates.get(process.type).items.map((item, index) => {
-      let itemType = 'doc';
-      let itemName = '';
-      let itemBgColor = null;
-
-      if (typeof item === 'string') {
-        itemName = item;
-      } else if (item && typeof item === 'object') {
-        itemType = item.type || 'doc';
-        itemName = item.name || '';
-        itemBgColor = item.bgColor || null;
-      }
-
+      const { type: itemType, name: itemName, bgColor: itemBgColor } = toItemRow(item);
       const isDone = done?.has(itemName) ? 1 : 0;
       return [crypto.randomUUID(), process.id, itemType, itemName, isDone, itemBgColor, index];
     });
   });
 
-  await connection.query('DELETE FROM process_items WHERE process_id IN (?)', [targetIds]);
+  await connection.query('DELETE FROM process_items WHERE process_id IN (?)', [itemTargetIds]);
   if (newProcessItems.length > 0) {
     await connection.query(
       'INSERT INTO process_items (id, process_id, type, name, is_done, bg_color, order_index) VALUES ?',
@@ -189,16 +194,18 @@ router.put('/', requireAdmin, templateWriteLimiter, async (req, res) => {
     // " Compras ", os processos do tipo Compras não eram sincronizados.
     const saved = new Map(rows.map(([name, items, order, color, description]) => [name, { items: JSON.parse(items), color, order, description: description || '' }]));
     await withTransaction(async (connection) => {
+      // Itens de antes (travados até o fim): só os modelos que mudaram regravam os itens dos seus processos.
+      const [previous] = await connection.query('SELECT name, items FROM templates FOR UPDATE');
+      const previousKeys = new Map(previous.map((row) => [row.name, itemsKey(parseItems(row))]));
+      const itemsChanged = new Set([...saved].filter(([name, t]) => previousKeys.get(name) !== itemsKey(t.items)).map(([name]) => name));
       await connection.query('DELETE FROM templates');
       await connection.query('INSERT INTO templates (name, items, sort_order, type_color, description) VALUES ?', [rows]);
-      await syncActiveProcesses(connection, saved);
+      await syncActiveProcesses(connection, saved, itemsChanged);
     });
     getIO()?.emit('templates:updated', Object.fromEntries(saved));
     res.json({ success: true });
   } catch (error) {
-    if (error instanceof ClientError) return res.status(error.status).json({ error: error.message });
-    console.error(error);
-    res.status(500).json({ error: 'Falha ao salvar os modelos.' });
+    return sendError(res, error, 'Falha ao salvar os modelos.');
   }
 });
 

@@ -12,3 +12,35 @@ export function resolveTestDatabase(env) {
   if (!name.endsWith('_test')) return { skip: `o nome do banco de teste precisa terminar em _test (recebido: ${name})` };
   return { name, source };
 }
+
+// Estrutura de uma tabela para comparação: colunas (na ordem) e índices. Chaves estrangeiras ficam de fora,
+// porque CREATE TABLE ... LIKE não as copia (a cópia nunca teria e pareceria sempre diferente).
+async function tableStructure(conn, { schema, table }) {
+  const [columns] = await conn.query(
+    `SELECT COLUMN_NAME, ORDINAL_POSITION, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, COLLATION_NAME
+     FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION`,
+    [schema, table]
+  );
+  const [indexes] = await conn.query(
+    `SELECT INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, NON_UNIQUE
+     FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY INDEX_NAME, SEQ_IN_INDEX`,
+    [schema, table]
+  );
+  return columns.length ? JSON.stringify({ columns, indexes }) : null;
+}
+
+// Deixa `target` com a mesma estrutura de `source`: cria se não existe; se mudou (coluna nova, tipo, ordem,
+// índice), apaga e recria vazia. Os dados do banco de teste são descartáveis: cada teste cria os seus.
+// Só mexe em banco cujo nome termina em _test.
+export async function syncTableStructure(conn, source, target) {
+  if (!String(target.schema).endsWith('_test')) {
+    throw new Error(`a estrutura só é recriada em banco de teste (*_test); recebido: ${target.schema}`);
+  }
+  const quoted = (t) => `\`${t.schema}\`.\`${t.table}\``;
+  const wanted = await tableStructure(conn, source);
+  const current = await tableStructure(conn, target);
+  if (current === wanted) return 'unchanged';
+  if (current !== null) await conn.query(`DROP TABLE ${quoted(target)}`);
+  await conn.query(`CREATE TABLE ${quoted(target)} LIKE ${quoted(source)}`);
+  return current === null ? 'created' : 'recreated';
+}

@@ -16,6 +16,28 @@ function activityTitle(contract) {
   return /^contrato\b/i.test(name) ? name : `Contrato ${name}`;
 }
 
+const MONTHS_SHORT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+
+// Linha das listas "Processos pendentes" e "Atividade recente": bloco de data à esquerda (o que se procura
+// primeiro), título e detalhe no meio, etiqueta curta à direita. `tone` colore o bloco e a etiqueta:
+// "overdue" (vencida), "soon" (vence em até 3 dias), "new" (cadastro) ou neutro.
+function FeedRow({ date, tone = "", title, detail, badge, label, onClick }) {
+  const now = new Date();
+  return (
+    <li>
+      <button type="button" className={`lk-feed-row ${tone}`} onClick={onClick} title={label}>
+        <span className="lk-feed-date" aria-hidden="true">
+          {date ? <><b>{String(date.getDate()).padStart(2, "0")}</b><small>{MONTHS_SHORT[date.getMonth()]}{date.getFullYear() !== now.getFullYear() ? `/${String(date.getFullYear()).slice(2)}` : ""}</small></> : <small>sem<br />data</small>}
+        </span>
+        <span className="lk-feed-text"><strong>{title}</strong><small>{detail}</small></span>
+        <span className="lk-feed-badge">{badge}</span>
+      </button>
+    </li>
+  );
+}
+
+const urgencyTone = days => (days === null ? "" : days < 0 ? "overdue" : days <= 3 ? "soon" : "");
+
 export default function DashboardPage({ darkMode: dark = false, onToggleDarkMode, columns, archived, pending = [], sortedColumns = [], user, onNavigate, onLogout, loading, error }) {
   const [contracts, setContracts] = useState(null);
   const [contractError, setContractError] = useState("");
@@ -107,7 +129,11 @@ export default function DashboardPage({ darkMode: dark = false, onToggleDarkMode
         </section>
       </div>
       <div className="lk-bottom-grid is-three">
-        <section className="lk-panel" id="lk-pending"><div className="lk-panel-heading"><h2>Processos pendentes</h2><span className="lk-pending">{unavailable ? "—" : pending.length} {pending.length === 1 ? "pendência" : "pendências"}</span></div><div className="lk-attention-list">{pendingList.map(d => <button key={d.id} onClick={() => go("demandas")}><i style={{ background: d.typeColor || "var(--lk-muted)" }} /><span><strong>{d.title}</strong><small>{d.processNumber ? `Nº ${d.processNumber} · ` : ""}{d.reason}</small></span></button>)}{!pendingList.length && <p className="lk-empty">{error ? "Não foi possível carregar as demandas." : loading ? "Carregando demandas…" : "Nenhuma demanda pendente."}</p>}</div></section>
+        <section className="lk-panel" id="lk-pending"><div className="lk-panel-heading"><h2>Processos pendentes</h2><span className="lk-pending">{unavailable ? "—" : pending.length} {pending.length === 1 ? "pendência" : "pendências"}</span></div>{pendingList.length > 0 ? <ul className="lk-feed">{pendingList.map(d => (
+          <FeedRow key={d.id} date={dateOf(d.dueDate)} tone={urgencyTone(d.days)} title={d.title} badge={d.reason} onClick={() => go("demandas")}
+            label={`${d.title}: ${d.reason.toLowerCase()}. Abrir demandas`}
+            detail={<>{d.processNumber ? `Nº ${d.processNumber}` : "Sem número"}{d.type && <span className="lk-feed-type"><i style={{ background: d.typeColor || "var(--lk-muted)" }} />{d.type}</span>}</>} />
+        ))}</ul> : <p className="lk-empty">{error ? "Não foi possível carregar as demandas." : loading ? "Carregando demandas…" : "Nenhuma demanda pendente."}</p>}</section>
         <section className="lk-panel lk-done-panel">
           <div className="lk-panel-heading"><h2>Processos concluídos</h2><button onClick={() => go("processos", "reports")}>Ver relatórios</button></div>
           {unavailable ? <p className="lk-empty">{loading ? "Carregando processos…" : "Dados indisponíveis."}</p> : <>
@@ -115,7 +141,14 @@ export default function DashboardPage({ darkMode: dark = false, onToggleDarkMode
             <MonthColumnChart title="Processos concluídos por mês, nos últimos 12 meses" months={doneMonths} describe={n => (n ? plural(n, "processo concluído", "processos concluídos") : "Nenhum processo concluído")} onSelect={() => go("processos", "reports")} />
           </>}
         </section>
-        <section className="lk-panel"><div className="lk-panel-heading"><h2>Atividade recente</h2><span className="lk-count">{contracts === null ? "—" : `${activityThisMonth} neste mês`}</span></div><div className="lk-activity">{activity.map(c => <button key={c.id} onClick={() => go("contratos")}><span className="lk-activity-icon">•</span><span><strong>{activityTitle(c)} {c.updatedAt && c.updatedAt !== c.createdAt ? "atualizado" : "cadastrado"}</strong><small>{formatDateTime(c.date.toISOString())}</small></span></button>)}{!activity.length && <p className="lk-empty">{contracts === null && !contractError ? "Carregando atividades…" : "Nenhuma atividade disponível."}</p>}</div></section>
+        <section className="lk-panel"><div className="lk-panel-heading"><h2>Atividade recente</h2><span className="lk-count">{contracts === null ? "—" : `${activityThisMonth} neste mês`}</span></div>{activity.length > 0 ? <ul className="lk-feed">{activity.map(c => {
+          const updated = c.updatedAt && c.updatedAt !== c.createdAt;
+          return (
+            <FeedRow key={c.id} date={c.date} tone={updated ? "" : "new"} title={activityTitle(c)} badge={updated ? "Atualizado" : "Cadastrado"} onClick={() => go("contratos")}
+              label={`${activityTitle(c)} ${updated ? "atualizado" : "cadastrado"} em ${formatDateTime(c.date.toISOString())}. Abrir contratos`}
+              detail={`às ${c.date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`} />
+          );
+        })}</ul> : <p className="lk-empty">{contracts === null && !contractError ? "Carregando atividades…" : "Nenhuma atividade disponível."}</p>}</section>
       </div>
       {dueCards.length > 0 && <div className="lk-bottom-grid lk-chart-grid">
         <section className="lk-panel">

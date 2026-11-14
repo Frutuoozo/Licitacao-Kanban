@@ -79,6 +79,7 @@ describe('salvar modelos e os processos', { skip: testDbSkip || false }, () => {
   }
 
   test('modelo salvo com espaços nas pontas do nome sincroniza os processos do tipo', async () => {
+    assert.equal((await call('PUT', '/templates', { Compras: { items: ['Rascunho'] } })).status, 200);
     const p = await createProcess('Compras', [doc('Termo')]);
     assert.equal((await call('PUT', '/templates', { ' Compras ': { items: ['Termo', 'Contrato'] } })).status, 200);
     assert.deepEqual((await items(p.id)).map((i) => i.name), ['Termo', 'Contrato']);
@@ -104,6 +105,8 @@ describe('salvar modelos e os processos', { skip: testDbSkip || false }, () => {
 
   test('item marcado ao mesmo tempo em que os modelos são salvos continua marcado', async () => {
     for (let round = 1; round <= 5; round += 1) {
+      // O modelo muda a cada rodada: só modelo alterado regrava os itens, e é essa regravação que está em teste.
+      assert.equal((await call('PUT', '/templates', { Compras: { items: ['Rascunho'] } })).status, 200);
       const p = await createProcess('Compras', [doc('Termo'), doc('Edital')]);
       const responses = await Promise.all([
         call('PUT', `/processes/${p.id}/items`, { docs: [doc('Termo', true), doc('Edital')] }),
@@ -112,5 +115,51 @@ describe('salvar modelos e os processos', { skip: testDbSkip || false }, () => {
       assert.deepEqual(responses.map((r) => r.status), [200, 200], `rodada ${round}`);
       assert.deepEqual(await items(p.id), [{ name: 'Termo', done: true }, { name: 'Edital', done: false }], `rodada ${round}: a marcação se perdeu`);
     }
+  });
+
+  // Salvar regravava os itens de todos os processos, mesmo de modelos que não mudaram: era lento e desfazia
+  // os ajustes feitos num processo só (ex.: um documento a mais).
+  const itemIds = async (id) => (await db.query('SELECT id FROM process_items WHERE process_id = ? ORDER BY order_index', [id]))[0].map((r) => r.id);
+  const baseTemplates = { Compras: { items: ['Termo'], color: '#2563eb' }, Obras: { items: ['Projeto'], color: '#16a34a' } };
+
+  test('só os processos do modelo alterado são regravados', async () => {
+    assert.equal((await call('PUT', '/templates', baseTemplates)).status, 200);
+    const compras = await createProcess('Compras', [doc('Termo')]);
+    const obras = await createProcess('Obras', [doc('Projeto'), doc('Ajuste só deste processo')]);
+    const obrasIds = await itemIds(obras.id);
+
+    const edited = { ...baseTemplates, Compras: { items: ['Termo', 'Contrato'], color: '#2563eb' } };
+    assert.equal((await call('PUT', '/templates', edited)).status, 200);
+
+    assert.deepEqual((await items(compras.id)).map((i) => i.name), ['Termo', 'Contrato']);
+    assert.deepEqual((await items(obras.id)).map((i) => i.name), ['Projeto', 'Ajuste só deste processo']);
+    assert.deepEqual(await itemIds(obras.id), obrasIds, 'os itens de Obras foram regravados sem o modelo mudar');
+  });
+
+  test('salvar sem nenhuma alteração não regrava nada', async () => {
+    assert.equal((await call('PUT', '/templates', baseTemplates)).status, 200);
+    const compras = await createProcess('Compras', [doc('Termo'), doc('Extra')]);
+    const before = await itemIds(compras.id);
+    assert.equal((await call('PUT', '/templates', baseTemplates)).status, 200);
+    assert.deepEqual(await itemIds(compras.id), before);
+  });
+
+  test('só a cor mudou: a cor do processo acompanha e os itens ficam', async () => {
+    assert.equal((await call('PUT', '/templates', baseTemplates)).status, 200);
+    const obras = await createProcess('Obras', [doc('Projeto')]);
+    const before = await itemIds(obras.id);
+    assert.equal((await call('PUT', '/templates', { ...baseTemplates, Obras: { items: ['Projeto'], color: '#dc2626' } })).status, 200);
+    const [[row]] = await db.query('SELECT typeColor FROM processes WHERE id = ?', [obras.id]);
+    assert.equal(row.typeColor, '#dc2626');
+    assert.deepEqual(await itemIds(obras.id), before);
+  });
+
+  test('item salvo como texto ou como objeto doc sem cor conta como o mesmo item', async () => {
+    assert.equal((await call('PUT', '/templates', { ...baseTemplates, Compras: { items: ['Termo'], color: '#2563eb' } })).status, 200);
+    const compras = await createProcess('Compras', [doc('Termo'), doc('Extra')]);
+    const before = await itemIds(compras.id);
+    const sameAsObject = { ...baseTemplates, Compras: { items: [{ type: 'doc', name: 'Termo', bgColor: null }], color: '#2563eb' } };
+    assert.equal((await call('PUT', '/templates', sameAsObject)).status, 200);
+    assert.deepEqual(await itemIds(compras.id), before);
   });
 });

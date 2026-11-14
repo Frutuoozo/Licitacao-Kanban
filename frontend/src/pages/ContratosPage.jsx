@@ -6,6 +6,8 @@ import {
   IconEdit,
   IconFileText,
   IconGrid,
+  IconViewCards,
+  IconViewList,
   IconList,
   IconPlus,
   IconTrash,
@@ -250,7 +252,8 @@ export function RowMenu({ contract, actions, label }) {
 }
 
 // Abre os detalhes ao clicar ou ao pressionar Enter/Espaço, sem disparar a partir de botões internos.
-function openableProps(contract, onOpen, label) {
+// Também usada pelas Demandas (cards e tabela).
+export function openableProps(contract, onOpen, label) {
   const isInner = (event) => event.target.closest("button, a, input, select, textarea");
   return {
     tabIndex: 0,
@@ -1632,8 +1635,8 @@ export default function ContratosAtivos({ isViewer, onUnauthorized, onOpenMenu }
             <button type="button" className={scope === "closed" ? "active" : ""} aria-pressed={scope === "closed"} onClick={() => changeScope("closed")}>Encerrados <span className="ct-toggle-count">{loading ? "—" : summary.closed}</span></button>
           </div>
           <div className="ct-view-toggle ct-icon-toggle" role="group" aria-label="Visualização">
-            <button type="button" className={view === "list" ? "active" : ""} aria-pressed={view === "list"} aria-label="Lista" title="Lista" onClick={() => changeView("list")}><IconList /></button>
-            <button type="button" className={view === "cards" ? "active" : ""} aria-pressed={view === "cards"} aria-label="Cards" title="Cards" onClick={() => changeView("cards")}><IconGrid /></button>
+            <button type="button" className={view === "list" ? "active" : ""} aria-pressed={view === "list"} aria-label="Lista" title="Lista" onClick={() => changeView("list")}><IconViewList /></button>
+            <button type="button" className={view === "cards" ? "active" : ""} aria-pressed={view === "cards"} aria-label="Cards" title="Cards" onClick={() => changeView("cards")}><IconViewCards /></button>
           </div>
         </div>
       </section>

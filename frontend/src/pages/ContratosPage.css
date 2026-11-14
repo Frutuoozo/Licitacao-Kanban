@@ -37,7 +37,10 @@
 .ct-field input:focus, .ct-field select:focus { border-color: var(--lk-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lk-blue) 12%, transparent); }
 .ct-toolbar-actions { grid-column: -2; display: flex; align-items: center; justify-self: end; gap: 10px; }
 /* Lista / Cards: só ícones, botões quadrados. */
-.lk-dashboard .ct-icon-toggle button { width: 32px; padding: 0; justify-content: center; }
+.lk-dashboard .ct-icon-toggle button { width: 34px; height: 30px; padding: 0; justify-content: center; }
+/* Ícones de lista/cards: marcadores vazados; no botão ativo, preenchidos de leve na cor do botão. */
+.ct-icon-toggle .ic-fill { fill: none; transition: fill .15s; }
+.ct-icon-toggle button.active .ic-fill { fill: currentColor; fill-opacity: .18; }
 .ct-toggle-count { min-width: 20px; padding: 1px 6px; border-radius: 999px; background: color-mix(in srgb, var(--lk-muted) 14%, transparent); font-size: 10px; font-variant-numeric: tabular-nums; }
 .ct-view-toggle button.active .ct-toggle-count { background: var(--lk-tint); color: #2563eb; }
 .ct-view-toggle { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--lk-border); border-radius: 10px; background: var(--lk-soft); }

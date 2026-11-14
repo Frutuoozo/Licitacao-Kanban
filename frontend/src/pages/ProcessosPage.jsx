@@ -5,6 +5,7 @@ import { downloadCsv } from "../exportTable";
 import { Fragment, useState, useEffect, useRef, useMemo } from "react";
 import { Toast, useToast } from "../components/Toast";
 import { clearedStartedField } from "../processRules";
+import { monthlyEvolution } from "../processEvolution";
 import {
   IconPlus, IconTrash, IconEdit, IconClose, IconCheck,
   IconUnarchive, IconChevron, IconCalendar, IconFlag,
@@ -596,23 +597,10 @@ function ProcessReports({ columns, archived }) {
   filteredProcesses.forEach(p => { counts[p.situation]++; });
   const total = filteredProcesses.length;
 
+  // Cinza: abertos no início do mês; azul: iniciados; verde: concluídos (cinza seguinte = cinza + azul − verde).
   const chart = useMemo(() => {
-    const now = new Date();
-    const months = Array.from({ length: CHART_MONTHS }, (_, i) => {
-      const date = new Date(now.getFullYear(), now.getMonth() - (CHART_MONTHS - 1 - i), 1);
-      return { key: `${date.getFullYear()}-${date.getMonth()}`, label: MONTH_ABBR[date.getMonth()], month: date.getMonth(), year: date.getFullYear(), start: date, end: new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59), active: 0, created: 0, completed: 0 };
-    });
-    const byKey = new Map(months.map(m => [m.key, m]));
-    const monthOf = date => date && byKey.get(`${date.getFullYear()}-${date.getMonth()}`);
-    scoped.forEach(p => {
-      const created = monthOf(p.createdDate);
-      if (created) created.created++;
-      const completed = monthOf(p.archivedDate);
-      if (completed) completed.completed++;
-      // Ativo no mês: já existia (criado até o fim do mês) e não estava concluído antes do começo dele.
-      if (p.createdDate) months.forEach(m => { if (p.createdDate <= m.end && (!p.archivedDate || p.archivedDate >= m.start)) m.active++; });
-    });
-    const max = Math.max(1, ...months.flatMap(m => [m.active, m.created, m.completed]));
+    const months = monthlyEvolution(scoped, new Date(), CHART_MONTHS).map(m => ({ ...m, label: MONTH_ABBR[m.month] }));
+    const max = Math.max(1, ...months.flatMap(m => [m.open, m.created, m.completed]));
     return { months, max };
   }, [scoped]);
 
@@ -670,8 +658,8 @@ function ProcessReports({ columns, archived }) {
       <div className="rp-charts">
         <section className="rp-card rp-panel rp-evolution">
           <header className="rp-panel-heading">
-            <div><h2>Evolução dos processos</h2><p>Processos ativos, criados e concluídos em cada mês</p></div>
-            <div className="rp-legend" aria-hidden="true"><span><i className="active" />Ativos no mês</span><span><i className="created" />Criados</span><span><i className="completed" />Concluídos</span></div>
+            <div><h2>Evolução dos processos</h2><p>Processos abertos no início de cada mês, criados e concluídos</p></div>
+            <div className="rp-legend" aria-hidden="true"><span><i className="active" />Abertos no início do mês</span><span><i className="created" />Criados</span><span><i className="completed" />Concluídos</span></div>
           </header>
           <div className="rp-bars" onMouseLeave={() => setHoveredMonth(null)}>
             {chart.months.map((m, i) => (
@@ -679,7 +667,7 @@ function ProcessReports({ columns, archived }) {
                 type="button"
                 className={`rp-bar-group ${hoveredMonth === i ? "active" : ""} ${hoveredMonth !== null && hoveredMonth !== i ? "dimmed" : ""}`}
                 key={m.key}
-                aria-label={`${MONTH_NAMES[m.month]} de ${m.year}: ${m.active} ${m.active === 1 ? "ativo" : "ativos"}, ${m.created} ${m.created === 1 ? "criado" : "criados"}, ${m.completed} ${m.completed === 1 ? "concluído" : "concluídos"}`}
+                aria-label={`${MONTH_NAMES[m.month]} de ${m.year}: ${m.open} ${m.open === 1 ? "aberto" : "abertos"} no início do mês, ${m.created} ${m.created === 1 ? "criado" : "criados"}, ${m.completed} ${m.completed === 1 ? "concluído" : "concluídos"}`}
                 onMouseEnter={() => setHoveredMonth(i)}
                 onFocus={() => setHoveredMonth(i)}
                 onBlur={() => setHoveredMonth(null)}
@@ -688,14 +676,14 @@ function ProcessReports({ columns, archived }) {
                 {hoveredMonth === i && (
                   <span className={`rp-tooltip ${i === 0 ? "start" : i === chart.months.length - 1 ? "end" : ""}`} role="tooltip">
                     <strong>{MONTH_NAMES[m.month]} de {m.year}</strong>
-                    <span><i className="active" />Ativos no mês<b>{m.active}</b></span>
+                    <span><i className="active" />Abertos no início do mês<b>{m.open}</b></span>
                     <span><i className="created" />Criados<b>{m.created}</b></span>
                     <span><i className="completed" />Concluídos<b>{m.completed}</b></span>
                     {m.created > 0 && <small>{formatPercent(m.completed, m.created)} de conclusão no mês</small>}
                   </span>
                 )}
                 <span className="rp-bar-pair">
-                  <span className="rp-bar active" style={{ height: `${(m.active / chart.max) * 100}%` }}>{m.active > 0 && <em>{m.active}</em>}</span>
+                  <span className="rp-bar active" style={{ height: `${(m.open / chart.max) * 100}%` }}>{m.open > 0 && <em>{m.open}</em>}</span>
                   <span className="rp-bar created" style={{ height: `${(m.created / chart.max) * 100}%` }}>{m.created > 0 && <em>{m.created}</em>}</span>
                   <span className="rp-bar completed" style={{ height: `${(m.completed / chart.max) * 100}%` }}>{m.completed > 0 && <em>{m.completed}</em>}</span>
                 </span>

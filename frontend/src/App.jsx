@@ -1,10 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
 import { io } from "socket.io-client";
 import {
-  IconClose, IconUser, IconShield,
-  IconClipboard, IconFileText, IconUsers,
-} from "./icons";
-import {
   DEFAULT_TEMPLATES, normalizeTemplatesFromApi,
   orderedTemplateTypeNames, normalizeDocs,
 } from "./utils";
@@ -28,6 +24,8 @@ import "./pages/DemandasPage.css";
 import LoginPage from "./pages/LoginPage";
 import { DEFAULT_PREFERENCES, FONT_ZOOM, PreferencesContext, cachePreferences, readCachedPreferences, setDateFormat } from "./preferences";
 import { authFetch, API_URL } from "./authFetch";
+import { createSessionEnder } from "./sessionEnd";
+import { inactivityStatus } from "./inactivity";
 // Por último: as correções do tema escuro precisam vir depois dos estilos das páginas.
 import "./darkTheme.css";
 import "./scrollbar.css";
@@ -80,8 +78,9 @@ export default function App() {
     setSidebarOpen(false);
   }, []);
   const [sessionUser, setSessionUser] = useState(undefined);
-  const [inactivityWarning, setInactivityWarning] = useState(false);
-  const [inactivityCountdown, setInactivityCountdown] = useState(60);
+  // Segundos que faltam para a sessão automática encerrar (aviso do último minuto) ou null.
+  const [inactivitySeconds, setInactivitySeconds] = useState(null);
+  const keepSessionRef = useRef(null);
 
   const [appSettings, setAppSettings] = useState(DEFAULT_SETTINGS);
   // Preferências pessoais (tema, letra, alertas, exportação, datas): servidor + cópia no navegador.
@@ -138,12 +137,21 @@ export default function App() {
   }, [sessionPreferences, applyPreferences]);
   // Aviso mostrado como notificação na tela de login depois de sair: { type, title, text } ou null.
   const [logoutNotice, setLogoutNotice] = useState(null);
-  const handleLogout = useCallback(() => {
-    authFetch(`${API_URL}/api/auth/logout`, { method: "POST" })
-      .catch(() => { })
-      .finally(() => setSessionUser(null));
-  }, []);
-  sessionExpiredRef.current = () => { setLogoutNotice({ type: "warning", title: "Sessão expirada", text: "Entre novamente para continuar." }); setSessionUser(null); };
+  // Uma saída só, mesmo com vários 401 ao mesmo tempo (ver sessionEnd.js). O aviso vale só se vier.
+  const sessionEnderRef = useRef(null);
+  if (!sessionEnderRef.current) {
+    sessionEnderRef.current = createSessionEnder({
+      sendLogout: () => authFetch(`${API_URL}/api/auth/logout`, { method: "POST" }),
+      onEnd: (notice) => { if (notice) setLogoutNotice(notice); setSessionUser(null); },
+    });
+  }
+  // Botão Sair (e saídas que já definiram o próprio aviso): sem aviso de sessão expirada.
+  const handleLogout = useCallback(() => sessionEnderRef.current.end(null), []);
+  // A API recusou a sessão (401): volta ao login explicando o motivo.
+  const handleSessionExpired = useCallback(() => sessionEnderRef.current.end({ type: "warning", title: "Sessão expirada", text: "Entre novamente para continuar." }), []);
+  sessionExpiredRef.current = handleSessionExpired;
+  // Novo login: a próxima expiração volta a encerrar a sessão.
+  useEffect(() => { if (sessionUser) sessionEnderRef.current.reset(); }, [sessionUser]);
 
   // Configurações administrativas (sessão automática, confirmação ao excluir...).
   useEffect(() => {
@@ -154,15 +162,18 @@ export default function App() {
       .catch(() => { });
   }, [sessionUser]);
 
-  // Sessão automática: encerra a sessão após o tempo configurado sem atividade.
+  // Sessão automática (Administração → Segurança): encerra após o tempo configurado sem atividade, com
+  // contagem regressiva no último minuto. Desligada, ninguém é desconectado por inatividade (antes havia
+  // também um limite fixo de 15 min que valia sempre e saía sem aviso).
   // A última atividade fica no localStorage para valer entre abas abertas.
   useEffect(() => {
     if (!sessionUser || !appSettings.sessionTimeoutEnabled) return undefined;
     const limitMs = appSettings.sessionTimeoutMinutes * 60 * 1000;
     const KEY = "lk-last-activity";
-    const touch = () => { try { localStorage.setItem(KEY, String(Date.now())); } catch { /* sem storage: vale só esta aba */ } lastLocal = Date.now(); };
     let lastLocal = Date.now();
+    const touch = () => { lastLocal = Date.now(); try { localStorage.setItem(KEY, String(lastLocal)); } catch { /* sem storage: vale só esta aba */ } };
     touch();
+    keepSessionRef.current = () => { touch(); setInactivitySeconds(null); };
     let throttle = 0;
     const onActivity = () => { const now = Date.now(); if (now - throttle > 15000) { throttle = now; touch(); } };
     const events = ["mousedown", "keydown", "scroll", "touchstart", "mousemove"];
@@ -170,30 +181,19 @@ export default function App() {
     const timer = setInterval(() => {
       let last = lastLocal;
       try { last = Math.max(last, Number(localStorage.getItem(KEY)) || 0); } catch { /* usa a desta aba */ }
-      if (Date.now() - last >= limitMs) {
-        setLogoutNotice({ type: "warning", title: "Sessão encerrada por inatividade", text: `Você ficou ${appSettings.sessionTimeoutMinutes} minutos sem usar o sistema. Entre novamente para continuar.` });
-        handleLogout();
+      const status = inactivityStatus({ enabled: true, limitMs, lastActivity: last, now: Date.now() });
+      setInactivitySeconds(status.warningSeconds);
+      if (status.expired) {
+        sessionEnderRef.current.end({ type: "warning", title: "Sessão encerrada por inatividade", text: `Você ficou ${appSettings.sessionTimeoutMinutes} minutos sem usar o sistema. Entre novamente para continuar.` });
       }
-    }, 30000);
-    return () => { clearInterval(timer); events.forEach(event => window.removeEventListener(event, onActivity)); };
-  }, [sessionUser, appSettings.sessionTimeoutEnabled, appSettings.sessionTimeoutMinutes, handleLogout]);
-
-  // Aviso de inatividade
-  useEffect(() => {
-    if (!sessionUser) return;
-    const WARN_AT = 14 * 60 * 1000, LOGOUT_AT = 15 * 60 * 1000;
-    let warnTimer, logoutTimer, countdownInterval, warningActive = false;
-    const reset = () => {
-      clearTimeout(warnTimer); clearTimeout(logoutTimer); clearInterval(countdownInterval);
-      if (warningActive) { warningActive = false; setInactivityWarning(false); setInactivityCountdown(60); }
-      warnTimer = setTimeout(() => { warningActive = true; setInactivityWarning(true); setInactivityCountdown(60); countdownInterval = setInterval(() => { setInactivityCountdown(s => s - 1); }, 1000); }, WARN_AT);
-      logoutTimer = setTimeout(handleLogout, LOGOUT_AT);
+    }, 1000);
+    return () => {
+      clearInterval(timer);
+      events.forEach(event => window.removeEventListener(event, onActivity));
+      keepSessionRef.current = null;
+      setInactivitySeconds(null);
     };
-    const events = ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'];
-    events.forEach(e => window.addEventListener(e, reset, { passive: true }));
-    reset();
-    return () => { clearTimeout(warnTimer); clearTimeout(logoutTimer); clearInterval(countdownInterval); events.forEach(e => window.removeEventListener(e, reset)); setInactivityWarning(false); };
-  }, [sessionUser, handleLogout]);
+  }, [sessionUser, appSettings.sessionTimeoutEnabled, appSettings.sessionTimeoutMinutes]);
 
   const loadSessionUser = useCallback(() => {
     authFetch(`${API_URL}/api/auth/me`)
@@ -253,7 +253,7 @@ export default function App() {
     authFetch(`${API_URL}/api/processes`)
       .then(res => { if (!res.ok && res.status !== 401 && res.status !== 403) throw new Error("load"); if (res.status === 401 || res.status === 403) throw new Error('Unauthorized'); return res.json(); })
       .then(applyProcessList)
-      .catch(err => { if (err.message === 'Unauthorized') handleLogout(); else setProcessError("Não foi possível carregar os processos."); })
+      .catch(err => { if (err.message === 'Unauthorized') handleSessionExpired(); else setProcessError("Não foi possível carregar os processos."); })
       .finally(() => setProcessLoading(false));
     authFetch(`${API_URL}/api/templates`)
       .then(res => res.json())
@@ -263,7 +263,7 @@ export default function App() {
       .then(res => res.json())
       .then(data => { if (Array.isArray(data)) setSectors(data); })
       .catch(console.error);
-  }, [sessionUser, handleLogout, applyProcessList]);
+  }, [sessionUser, handleSessionExpired, applyProcessList]);
 
   // Colaboradores: recarrega ao abrir Processos ou Demandas para refletir cadastros recentes.
   useEffect(() => {
@@ -297,36 +297,23 @@ export default function App() {
       authFetch(`${API_URL}/api/processes`)
         .then(res => { if (res.status === 401 || res.status === 403) throw new Error('Unauthorized'); return res.json(); })
         .then(applyProcessList)
-        .catch(err => { if (err.message === 'Unauthorized') handleLogout(); });
+        .catch(err => { if (err.message === 'Unauthorized') handleSessionExpired(); });
     });
     return () => socket.disconnect();
-  }, [sessionUser, handleLogout, applyProcessList, addProcessLocally, moveToStarted]);
-
-  // Seções da sidebar
-  const SECTIONS = useMemo(() => {
-    const base = [
-      { id: "dashboard", label: "Dashboard", icon: IconClipboard },
-      { id: "processos", label: "Acompanhar Processos", icon: IconClipboard },
-      { id: "contratos", label: "Contratos Ativos", icon: IconFileText },
-      { id: "colaboradores", label: "Colaboradores", icon: IconUsers },
-      { id: "perfil", label: "Meu Perfil", icon: IconUser },
-    ];
-    if (sessionUser?.role === "admin") base.push({ id: "admin", label: "Administração", icon: IconShield });
-    return base;
-  }, [sessionUser?.role]);
+  }, [sessionUser, handleSessionExpired, applyProcessList, addProcessLocally, moveToStarted]);
 
   // API helper
   const apiFetch = useCallback((url, method, body) => {
     authFetch(`${API_URL}${url}`, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
-      .then(res => { if (res.status === 401 || res.status === 403) setSessionUser(null); })
+      .then(res => { if (res.status === 401 || res.status === 403) handleSessionExpired(); })
       .catch(console.error);
-  }, []);
+  }, [handleSessionExpired]);
 
   // Operações de demandas: esperam o servidor, para a tela mostrar o erro e manter o formulário aberto.
   const demandRequest = async (url, method, body) => {
     const res = await authFetch(`${API_URL}${url}`, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
     const data = await res.json().catch(() => ({}));
-    if (res.status === 401) { setSessionUser(null); throw new Error('Sessão expirada. Entre novamente.'); }
+    if (res.status === 401) { handleSessionExpired(); throw new Error('Sessão expirada. Entre novamente.'); }
     if (!res.ok) throw new Error(data.error || 'Tente de novo em instantes.');
     return data;
   };
@@ -396,7 +383,7 @@ export default function App() {
   // Retorna uma promessa: a tela de modelos mostra sucesso ou o erro do servidor.
   const saveTemplates = async (newTemplates) => {
     const res = await authFetch(`${API_URL}/api/templates`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newTemplates) });
-    if (res.status === 401) { setSessionUser(null); throw new Error('Sessão expirada.'); }
+    if (res.status === 401) { handleSessionExpired(); throw new Error('Sessão expirada.'); }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Não foi possível salvar os modelos.');
     setTemplates(newTemplates);
@@ -470,9 +457,6 @@ export default function App() {
           --space-xl: 32px;
         }
         .app::before { content: ''; position: fixed; inset: -60%; background-image: linear-gradient(rgba(128,128,128,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(128,128,128,0.04) 1px, transparent 1px); background-size: 40px 40px; transform: rotate(15deg); pointer-events: none; z-index: 0; }
-        .app-orb { position: fixed; border-radius: 50%; pointer-events: none; filter: blur(120px); z-index: 0; opacity: 0.45; }
-        .app-orb-1 { width: 700px; height: 700px; top: -20%; left: -10%; background: radial-gradient(circle, rgba(21,101,192,0.08) 0%, transparent 70%); }
-        .app-orb-2 { width: 600px; height: 600px; bottom: -15%; right: -10%; background: radial-gradient(circle, rgba(99,102,241,0.06) 0%, transparent 70%); }
         .header, .tabs, .board, .dashboard, .archive-grid, .empty-board { position: relative; z-index: 1; }
 
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -494,9 +478,6 @@ export default function App() {
         .header-stats { font-size: 0.8rem; color: var(--muted); }
         .header-actions { margin-left: auto; display: flex; gap: 10px; }
 
-        .hamburger { background: none; border: none; cursor: pointer; padding: 6px 4px; display: flex; flex-direction: column; gap: 5px; border-radius: 8px; transition: background .15s; flex-shrink: 0; }
-        .hamburger:hover { background: var(--surface2); }
-        .hamburger span { display: block; width: 20px; height: 2px; background: var(--text); border-radius: 2px; }
 
         .profile-wrap { position: relative; flex-shrink: 0; }
         .profile-trigger { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface2); color: var(--text); cursor: pointer; transition: background .15s, border-color .15s; }
@@ -626,82 +607,9 @@ export default function App() {
           .admin-td-user { font-size: 0.82rem; }
         }
 
-        .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 50; }
-        .sidebar { position: fixed; top: 0; left: 0; height: 100vh; width: 260px; background: var(--surface); border-right: 1px solid var(--border); z-index: 51; display: flex; flex-direction: column; transform: translateX(-100%); transition: transform .25s cubic-bezier(.4,0,.2,1); }
-        .sidebar.open { transform: translateX(0); }
-        .sidebar-header { padding: 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
-        .sidebar-logo { font-family: 'Outfit', sans-serif; font-size: 1.2rem; font-weight: 800; color: var(--accent); }
-        .sidebar-logo span { color: var(--text); }
-        .sidebar-nav { padding: 12px 10px; display: flex; flex-direction: column; gap: 4px; }
-        .sidebar-section-label { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; padding: 8px 10px 4px; }
-        .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 12px; cursor: pointer; font-size: 0.88rem; color: var(--muted); transition: background .15s, color .15s, transform .15s, box-shadow .15s; border: none; background: none; width: 100%; text-align: left; font-family: 'Nunito Sans', sans-serif; }
-        .sidebar-item:hover { background: var(--surface2); color: var(--text); transform: translateX(1px); }
-        .sidebar-item.active { background: rgba(148,163,184,.18); color: var(--accent); font-weight: 700; box-shadow: inset 3px 0 0 rgba(148,163,184,.9); }
-        .sidebar-item.danger { color: var(--red); }
-        .sidebar-item.danger:hover { background: rgba(248,81,73,.10); color: var(--red); }
-        .sidebar-logout-wrap { padding: 14px; border-top: 1px solid var(--border); }
-        .sidebar-footer { padding: 14px; border-top: 1px solid var(--border); font-size: 0.72rem; color: var(--muted); text-align: center; }
 
-.sidebar-bear-wrapper { display: none; }
 
-@media (max-width: 768px) {
-  .sidebar {
-    height: 100dvh;
-    max-height: 100dvh;
-  }
 
-  .sidebar-header,
-  .sidebar-logout-wrap,
-  .sidebar-footer {
-    flex-shrink: 0;
-  }
-
-  .sidebar-nav {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-  }
-
-  .sidebar-logout-wrap {
-    margin-top: auto;
-  }
-
-  .sidebar-footer {
-    padding-bottom: max(14px, env(safe-area-inset-bottom));
-  }
-}
-
-@media (min-width: 769px) {
-          .sidebar-bear-wrapper {
-            display: flex;
-            justify-content: center;
-            align-items: flex-end;
-            margin-top: auto;
-            margin-bottom: 5px;
-            padding: 0 5px;
-            width: 100%;
-            pointer-events: none;
-            box-sizing: border-box;
-          }
-          .sidebar-bear-img {
-            display: none;
-            width: 100%;
-            height: auto;
-            object-fit: contain;
-            transition: opacity 0.25s ease;
-          }
-          :root[data-theme="dark"] .sidebar-bear-img.bear-escuro,
-          :root:not([data-theme]) .sidebar-bear-img.bear-escuro {
-            display: block;
-          }
-          :root[data-theme="white"] .sidebar-bear-img.bear-claro,
-          :root[data-theme="creme"] .sidebar-bear-img.bear-claro {
-            display: block;
-          }
-          :root[data-theme="royal"] .sidebar-bear-img.bear-azul {
-            display: block;
-          }
-        }
 
         .tabs { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 28px; }
         .tab-btn { background: none; border: none; color: var(--muted); padding: 12px 16px; font-family: 'Nunito Sans', sans-serif; font-size: 0.85rem; cursor: pointer; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; }
@@ -715,8 +623,7 @@ export default function App() {
         .btn-confirm,
         .btn-add-tpl,
         .type-toggle,
-        .btn-chip,
-        .sidebar-item {
+        .btn-chip {
           min-height: 40px;
           border-radius: 12px;
           font-family: 'Nunito Sans', sans-serif;
@@ -796,7 +703,6 @@ export default function App() {
         .btn-confirm:focus-visible,
         .btn-add-tpl:focus-visible,
         .type-toggle:focus-visible,
-        .sidebar-item:focus-visible,
         .icon-btn:focus-visible {
           outline: 2px solid rgba(59,130,246,.5);
           outline-offset: 2px;
@@ -1327,18 +1233,12 @@ export default function App() {
               isViewer={sessionUser?.role === "viewer"} onCreate={createDemand} onUpdate={updateDemand} onStart={startDemand} onDelete={deleteDemand} onOpenMenu={() => setSidebarOpen(true)} />
           </Suspense></main>
         </div>
-      ) : activeSection === "processos" ? (
-        <div className={`lk-dashboard lk-process-shell ${darkMode ? "lk-dark" : ""}`}>
-          {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
-          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="processos" menuOpen={sidebarOpen} onLogout={handleLogout} processTab={activeTab} onNavigate={navigateFromSidebar} />
-          <main className="lk-process-main"><Suspense fallback={pageLoading}>{processPage}</Suspense></main>
-        </div>
       ) : activeSection === "admin" && sessionUser?.role === "admin" ? (
         <div className={`lk-dashboard lk-process-shell ${darkMode ? "lk-dark" : ""}`}>
           {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
           <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="admin" menuOpen={sidebarOpen} onLogout={handleLogout} processTab={activeTab} onNavigate={navigateFromSidebar} />
           <main className="lk-process-main"><Suspense fallback={pageLoading}>
-            <AdminPage currentUserId={sessionUser?.id} onUnauthorized={handleLogout} onSelfDemoted={handleSelfDemotedFromAdmin} sectors={sectors} onSectorsChange={setSectors} templates={templates} saveTemplates={saveTemplates} onOpenMenu={() => setSidebarOpen(true)} />
+            <AdminPage currentUserId={sessionUser?.id} onUnauthorized={handleSessionExpired} onSelfDemoted={handleSelfDemotedFromAdmin} sectors={sectors} onSectorsChange={setSectors} templates={templates} saveTemplates={saveTemplates} onOpenMenu={() => setSidebarOpen(true)} />
           </Suspense></main>
         </div>
       ) : activeSection === "perfil" ? (
@@ -1346,7 +1246,7 @@ export default function App() {
           {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
           <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="perfil" menuOpen={sidebarOpen} onLogout={handleLogout} processTab={activeTab} onNavigate={navigateFromSidebar} />
           <main className="lk-process-main"><Suspense fallback={pageLoading}>
-            <PerfilPage onLogout={handleLogout} sessionUser={sessionUser} onOpenMenu={() => setSidebarOpen(true)}
+            <PerfilPage onLogout={handleLogout} onSessionExpired={handleSessionExpired} sessionUser={sessionUser} onOpenMenu={() => setSidebarOpen(true)}
               onStartPageChange={(startPage) => setSessionUser((user) => (user ? { ...user, startPage } : user))}
               onPasswordChanged={() => { setLogoutNotice({ type: "ok", title: "Senha alterada", text: "Entre novamente com a nova senha." }); handleLogout(); }} />
           </Suspense></main>
@@ -1356,7 +1256,7 @@ export default function App() {
           {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
           <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="colaboradores" menuOpen={sidebarOpen} onLogout={handleLogout} processTab={activeTab} onNavigate={navigateFromSidebar} />
           <main className="lk-process-main"><Suspense fallback={pageLoading}>
-            <ColaboradoresPage isAdmin={sessionUser?.role === "admin"} onUnauthorized={handleLogout} onOpenMenu={() => setSidebarOpen(true)} />
+            <ColaboradoresPage isAdmin={sessionUser?.role === "admin"} onUnauthorized={handleSessionExpired} onOpenMenu={() => setSidebarOpen(true)} />
           </Suspense></main>
         </div>
       ) : activeSection === "contratos" ? (
@@ -1364,61 +1264,20 @@ export default function App() {
           {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
           <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="contratos" menuOpen={sidebarOpen} onLogout={handleLogout} processTab={activeTab} onNavigate={navigateFromSidebar} />
           <main className="lk-process-main"><Suspense fallback={pageLoading}>
-            <ContratosAtivos isViewer={sessionUser?.role === "viewer"} onUnauthorized={handleLogout} onOpenMenu={() => setSidebarOpen(true)} />
+            <ContratosAtivos isViewer={sessionUser?.role === "viewer"} onUnauthorized={handleSessionExpired} onOpenMenu={() => setSidebarOpen(true)} />
           </Suspense></main>
         </div>
       ) : (
-        <>
-          {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
-          <div className={`sidebar ${sidebarOpen ? "open" : ""}`}>
-            <div className="sidebar-header">
-              <div className="sidebar-logo">Licit<span>Kanban</span></div>
-              <button className="icon-btn" onClick={() => setSidebarOpen(false)}><IconClose /></button>
-            </div>
-            <nav className="sidebar-nav">
-              <p className="sidebar-section-label">Menu</p>
-              {SECTIONS.map(s => {
-                const Icon = s.icon; return (
-                  <button key={s.id} className={`sidebar-item ${activeSection === s.id ? "active" : ""}`}
-                    onClick={() => { setActiveSection(s.id); setSidebarOpen(false); }}>
-                    <Icon />{s.label}
-                  </button>
-                );
-              })}
-            </nav>
-
-            <div className="sidebar-bear-wrapper">
-              <img className="sidebar-bear-img bear-escuro" src="/image/fundo-escuro.png" alt="Mascote" />
-              <img className="sidebar-bear-img bear-claro" src="/image/fundo-claro.png" alt="Mascote" />
-              <img className="sidebar-bear-img bear-azul" src="/image/fundo-azul.png" alt="Mascote" />
-            </div>
-
-            <div className="sidebar-logout-wrap">
-              <button className="sidebar-item" style={{ color: 'var(--red)', justifyContent: 'center' }} onClick={handleLogout}>Sair</button>
-            </div>
-            <div className="sidebar-footer">LicitKanban v1.5</div>
-          </div>
-
-          <div className="app">
-            <div className="app-orb app-orb-1" aria-hidden="true" />
-            <div className="app-orb app-orb-2" aria-hidden="true" />
-            <header className="header">
-              <button className="hamburger" onClick={() => setSidebarOpen(true)}><span /><span /><span /></button>
-              <div className="logo">Licit<span>Kanban</span></div>
-              <div className="header-actions">
-              </div>
-            </header>
-
-            {(
-              processPage
-            )}
-          </div>
-
-
-        </>
+        // Processos, e também qualquer seção desconhecida (ex.: "admin" salvo para quem não é admin, que o
+        // efeito acima manda para Processos). Antes caía numa barra lateral antiga, sem uso.
+        <div className={`lk-dashboard lk-process-shell ${darkMode ? "lk-dark" : ""}`}>
+          {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
+          <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="processos" menuOpen={sidebarOpen} onLogout={handleLogout} processTab={activeTab} onNavigate={navigateFromSidebar} />
+          <main className="lk-process-main"><Suspense fallback={pageLoading}>{processPage}</Suspense></main>
+        </div>
       )}
       </Suspense>
-          {inactivityWarning && (
+          {inactivitySeconds !== null && (
             <div className="inactivity-toast">
               <div className="inactivity-toast-icon">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f0883e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1427,9 +1286,9 @@ export default function App() {
               </div>
               <div className="inactivity-toast-body">
                 <span className="inactivity-toast-title">Sessão expirando</span>
-                <span className="inactivity-toast-msg">Você será desconectado por inatividade em <strong>{inactivityCountdown}s</strong>.</span>
+                <span className="inactivity-toast-msg">Você será desconectado por inatividade em <strong>{inactivitySeconds}s</strong>.</span>
               </div>
-              <button className="inactivity-toast-btn">Continuar</button>
+              <button type="button" className="inactivity-toast-btn" onClick={() => keepSessionRef.current?.()}>Continuar</button>
             </div>
           )}
     </PreferencesContext.Provider>

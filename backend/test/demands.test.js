@@ -1,6 +1,6 @@
 // Demandas: todo processo nasce como pendente ou iniciado; só iniciado exige gestor e só ele vale como processo.
 // A proteção useTestDatabase vem primeiro: este processo só enxerga o BANCO DE TESTE (TEST_DB_NAME).
-import { testDbSkip } from './helpers/useTestDatabase.js';
+import { testDbSkip, testDbSource } from './helpers/useTestDatabase.js';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -10,6 +10,7 @@ import processesRouter from '../routes/processes.js';
 import templatesRouter from '../routes/templates.js';
 import { migrateDemandPriority, migrateDemands } from '../demandsMigration.js';
 import { isoToday, isPastDate } from '../validation.js';
+import { syncTableStructure } from './helpers/testDatabase.js';
 
 let server;
 let baseUrl;
@@ -36,6 +37,12 @@ before(async () => {
 
 after(async () => {
   server?.close();
+  // Os testes de migração apagam colunas e as recriam no fim da tabela: devolve a estrutura igual à da
+  // aplicação, senão o banco de teste fica com a ordem das colunas diferente para os outros arquivos.
+  if (!testDbSkip) {
+    const [[{ name }]] = await db.query('SELECT DATABASE() AS name');
+    await syncTableStructure(db, { schema: testDbSource, table: 'processes' }, { schema: name, table: 'processes' });
+  }
   await db.end();
 });
 
@@ -361,6 +368,8 @@ describe('demandas', { skip: testDbSkip || false }, () => {
   });
 
   test('salvar modelos também atualiza os itens das pendentes', async () => {
+    // Só modelo que mudou regrava os itens: parte de outra versão do modelo, para a gravação abaixo ser uma mudança.
+    assert.equal((await call('PUT', '/templates', { Compras: { items: ['Rascunho'], color: '#2563eb' } }, 'admin')).status, 200);
     const d = demand();
     await call('POST', '/processes', d);
     const res = await call('PUT', '/templates', { Compras: { items: ['Termo novo', 'Edital'], color: '#2563eb' } }, 'admin');

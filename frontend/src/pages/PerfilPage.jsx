@@ -254,7 +254,7 @@ function PasswordDrawer({ onClose, onChanged }) {
   );
 }
 
-export default function PerfilPage({ onLogout, onPasswordChanged, sessionUser, onOpenMenu, onStartPageChange }) {
+export default function PerfilPage({ onLogout, onSessionExpired = onLogout, onPasswordChanged, sessionUser, onOpenMenu, onStartPageChange }) {
   const { settings } = useAppSettings();
   const [me, setMe] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -309,13 +309,13 @@ export default function PerfilPage({ onLogout, onPasswordChanged, sessionUser, o
   useEffect(() => {
     authFetch(`${API_URL}/api/auth/me`)
       .then((res) => {
-        if (res.status === 401 || res.status === 403) { onLogout(); throw new Error("Unauthorized"); }
+        if (res.status === 401 || res.status === 403) { onSessionExpired(); throw new Error("Unauthorized"); }
         return res.json();
       })
       .then((data) => setMe(data))
       .catch(() => setMe(null))
       .finally(() => setLoading(false));
-  }, [onLogout]);
+  }, [onSessionExpired]);
 
   const username = me?.username ?? sessionUser?.username ?? "—";
   const role = me?.role ?? sessionUser?.role ?? "viewer";
@@ -329,7 +329,7 @@ export default function PerfilPage({ onLogout, onPasswordChanged, sessionUser, o
     try {
       const res = await authFetch(`${API_URL}/api/auth/sessions/revoke-others`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
-      if (res.status === 401) { onLogout(); return; }
+      if (res.status === 401) { onSessionExpired(); return; }
       if (!res.ok) throw new Error(data.error || "Não foi possível encerrar as outras sessões.");
       setShowRevoke(false);
       setHistoryKey((key) => key + 1);
@@ -460,7 +460,7 @@ export default function PerfilPage({ onLogout, onPasswordChanged, sessionUser, o
               <button type="button" className="mm-btn outline pf-panel-action" onClick={() => setShowRevoke(true)}><IconLogout /> Sair dos outros aparelhos</button>
             </section>
           </div>
-          <LoginHistory reloadKey={historyKey} onUnauthorized={onLogout} />
+          <LoginHistory reloadKey={historyKey} onUnauthorized={onSessionExpired} />
           <section className="adm-panel" aria-labelledby="pf-danger-title">
             <header className="adm-panel-head"><div><h2 id="pf-danger-title">Zona de risco</h2><p>Ações permanentes sobre a sua conta.</p></div></header>
             <div className="pf-danger">

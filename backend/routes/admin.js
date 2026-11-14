@@ -1,15 +1,15 @@
-import express from 'express';
 import bcrypt from 'bcryptjs';
 import { randomBytes, randomUUID } from 'crypto';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import db from '../db.js';
 import { validatePassword } from '../security.js';
 import { closeUserSockets } from '../socket.js';
-import { ClientError } from '../errors.js';
+import { sendError } from '../errors.js';
 import { changeUserRole, deleteUser } from '../users.js';
 import { isAllowedRole, isValidCpf, isValidEmail, isNonEmptyString, MAX_LENGTHS, normalizeText } from '../validation.js';
+import { createRouter } from '../asyncRouter.js';
 
-const router = express.Router();
+const router = createRouter();
 const adminWriteLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   limit: 60,
@@ -51,9 +51,7 @@ router.patch('/users/:id', adminMutationLimiter, async (req, res) => {
     await changeUserRole(id, role);
     res.json({ ok: true });
   } catch (error) {
-    if (error instanceof ClientError) return res.status(error.status).json({ error: error.message });
-    console.error(error);
-    res.status(500).json({ error: 'Falha ao atualizar usuário' });
+    return sendError(res, error, 'Falha ao atualizar usuário');
   }
 });
 
@@ -135,9 +133,7 @@ router.delete('/users/:id', adminMutationLimiter, async (req, res) => {
     closeUserSockets(id);
     res.json({ ok: true });
   } catch (error) {
-    if (error instanceof ClientError) return res.status(error.status).json({ error: error.message });
-    console.error(error);
-    res.status(500).json({ error: 'Falha ao remover usuário' });
+    return sendError(res, error, 'Falha ao remover usuário');
   }
 });
 

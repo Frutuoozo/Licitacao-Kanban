@@ -1,19 +1,18 @@
-import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { randomBytes } from 'crypto';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import db, { withTransaction } from '../db.js';
 import { verifyToken } from '../middleware/auth.js';
 import { requireCsrf } from '../middleware/csrf.js';
 import { buildAuthCookieOptions, buildCsrfCookieOptions, generateCsrfToken, getJwtSecret, validatePassword } from '../security.js';
-import { isNonEmptyString, MAX_LENGTHS, normalizeText } from '../validation.js';
+import { isNonEmptyString, MAX_LENGTHS } from '../validation.js';
 import { closeUserSockets } from '../socket.js';
-import { ClientError } from '../errors.js';
+import { ClientError, sendError } from '../errors.js';
 import { deleteUser } from '../users.js';
 import { readSettings } from './settings.js';
+import { createRouter } from '../asyncRouter.js';
 
-const router = express.Router();
+const router = createRouter();
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
@@ -49,12 +48,35 @@ const startPageFor = (user) => (START_PAGES.includes(user.start_page) && (user.s
 // Histórico de acessos (aba Segurança do perfil). Registro sem bloquear a resposta: falha ao gravar não impede o login.
 // Tipos: success, first_access (entrou definindo a senha), wrong_password, locked, password_changed, sessions_revoked.
 const LOGIN_HISTORY_DAYS = 180;
+export const LOGIN_HISTORY_MAX_PER_USER = 500;
 function logLoginEvent(req, userId, event) {
   const userAgent = String(req.get('user-agent') || '').slice(0, 255);
   const ip = String(req.ip || '').replace(/^::ffff:/, '').slice(0, 64);
   db.query('INSERT INTO login_events (user_id, event, ip, user_agent) VALUES (?, ?, ?, ?)', [userId, event, ip, userAgent])
-    .then(() => (event === 'success' ? db.query('DELETE FROM login_events WHERE user_id = ? AND created_at < DATE_SUB(NOW(), INTERVAL ? DAY)', [userId, LOGIN_HISTORY_DAYS]) : null))
+    .then(() => trimLoginEvents(userId))
     .catch((error) => console.error('Falha ao registrar acesso:', error.message));
+}
+
+// Teto por usuário: mantém só os LOGIN_HISTORY_MAX_PER_USER registros mais recentes (mesma ordem da aba
+// Segurança). Sem ele, alguém com muitos IPs enchia o histórico de um usuário com senhas erradas dentro
+// dos 180 dias. Com menos registros que o teto, a subconsulta não acha a linha de corte e nada é apagado.
+function trimLoginEvents(userId) {
+  return db.query(
+    `DELETE FROM login_events WHERE user_id = ? AND (created_at, id) < (
+      SELECT created_at, id FROM (
+        SELECT created_at, id FROM login_events WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 1 OFFSET ?
+      ) AS cutoff
+    )`,
+    [userId, userId, LOGIN_HISTORY_MAX_PER_USER - 1]
+  );
+}
+
+// Apaga o histórico com mais de LOGIN_HISTORY_DAYS de todos os usuários (server.js chama ao subir e uma vez
+// por dia). Antes só um login com sucesso limpava, e só daquele usuário: quem apenas errava a senha, ou
+// nunca mais entrou, guardava IP e navegador para sempre.
+export async function pruneLoginEvents() {
+  const [result] = await db.query('DELETE FROM login_events WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)', [LOGIN_HISTORY_DAYS]);
+  return result.affectedRows;
 }
 
 // Preferências pessoais (aba Preferências do perfil). Só entram chaves e valores conhecidos.
@@ -90,9 +112,10 @@ const LOGIN_USER_COLUMNS = `id, username, password_hash, role, first_access, ses
 // Quem tenta entrar não pode distinguir "usuário não existe" de "senha errada": nem pela mensagem,
 // nem pelo tempo de resposta, nem pelo bloqueio após tentativas inválidas.
 
-// Hash de uma senha aleatória (mesmo custo das senhas reais). Quando o usuário não existe, a senha
-// digitada é comparada com ele: a resposta leva o mesmo tempo que uma senha errada de verdade.
-const DUMMY_PASSWORD_HASH = bcrypt.hashSync(randomBytes(32).toString('hex'), 10);
+// Hash de uma senha aleatória, já descartada (custo 10, o mesmo das senhas reais). Quando o usuário não
+// existe, a senha digitada é comparada com ele: a resposta leva o mesmo tempo que uma senha errada de verdade.
+// Fixo no código em vez de gerado com hashSync ao iniciar, o que travava o servidor por ~70 ms.
+const DUMMY_PASSWORD_HASH = '$2a$10$RUmTwVIZx3/6Dn9G/5/eOeAbim7u61COs9jyYYGd1hknoOhGfodDS';
 
 // Bloqueio simulado para nomes que não existem: conta as tentativas na memória e "bloqueia" com as
 // mesmas regras e mensagens dos usuários reais. Limitado a PHANTOM_MAX_ENTRIES nomes (os mais antigos
@@ -100,7 +123,21 @@ const DUMMY_PASSWORD_HASH = bcrypt.hashSync(randomBytes(32).toString('hex'), 10)
 const PHANTOM_MAX_ENTRIES = 5000;
 const phantomAttempts = new Map();
 
-const phantomKey = (username) => normalizeText(username).toLowerCase();
+// Chave dos nomes no bloqueio simulado, calculada pelo próprio MySQL com a collation de users.username:
+// junta exatamente os nomes que o WHERE username = ? junta (maiúsculas, acentos, ß/ss, caracteres invisíveis)
+// e separa os que ele separa (espaço no fim). Uma chave feita em JS divergia do banco, e a diferença
+// revelava quem existe (bloqueia em "joao", tenta "joão"). Se a collation da coluna mudar, mude aqui também.
+export const USERNAME_COLLATION = 'utf8mb4_0900_ai_ci';
+const NAME_KEY_SQL = `HEX(WEIGHT_STRING(CONVERT(? USING utf8mb4) COLLATE ${USERNAME_COLLATION}))`;
+
+// Busca o usuário do login e a chave do nome numa consulta só, exista ele ou não (mesmo trabalho nos dois casos).
+async function findLoginUser(username) {
+  const [[row]] = await db.query(
+    `SELECT ${NAME_KEY_SQL} AS name_key, ${LOGIN_USER_COLUMNS} FROM (SELECT 1) AS one LEFT JOIN users ON users.username = ?`,
+    [username, username]
+  );
+  return { user: row.id == null ? null : row, nameKey: row.name_key };
+}
 
 // Minutos que faltam para o fim de um bloqueio (0 = não está bloqueado).
 function minutesFromSeconds(seconds) {
@@ -111,9 +148,9 @@ const minutesUntil = (date) => minutesFromSeconds(date ? (new Date(date).getTime
 
 // Minutos de bloqueio que ainda restam para `username` (real ou inexistente), lido antes de conferir a senha.
 // Usuário real: locked_seconds já vem calculado pelo MySQL (LOGIN_USER_COLUMNS).
-const lockedMinutesFor = (user, username) => (user
+const lockedMinutesFor = (user, nameKey) => (user
   ? minutesFromSeconds(Number(user.locked_seconds))
-  : minutesUntil(phantomAttempts.get(phantomKey(username))?.lockedUntil));
+  : minutesUntil(phantomAttempts.get(nameKey)?.lockedUntil));
 
 // Mesma regra de contagem para os dois casos: soma 1; ao atingir o limite, zera e bloqueia.
 // Devolve 'failed' (senha errada), 'locking' (esta tentativa bloqueou) ou 'locked' (já estava bloqueado).
@@ -127,8 +164,7 @@ function countFailure(current, settings) {
   return { outcome: 'failed', attempts, lockedUntil: current.lockedUntil };
 }
 
-function phantomFailure(username, settings) {
-  const key = phantomKey(username);
+function phantomFailure(key, settings) {
   const entry = phantomAttempts.get(key) || { attempts: 0, lockedUntil: null };
   const next = countFailure({ ...entry, lockedMinutes: minutesUntil(entry.lockedUntil) }, settings);
   if (next.outcome === 'locked') return next;
@@ -142,13 +178,13 @@ function phantomFailure(username, settings) {
 // durante a contagem: pedidos simultâneos esperam a vez e nenhuma tentativa se perde.
 // Nome inexistente faz as mesmas consultas (que não encontram nenhuma linha) e conta na memória:
 // mesmo trabalho no banco, mesmo tempo de resposta.
-async function registerFailedAttempt(username, settings) {
+async function registerFailedAttempt(username, nameKey, settings) {
   return withTransaction(async (conn) => {
     const [rows] = await conn.query(`SELECT failed_attempts, ${LOCKED_SECONDS_SQL} FROM users WHERE username = ? FOR UPDATE`, [username]);
     const user = rows[0];
     const next = user
       ? countFailure({ attempts: user.failed_attempts || 0, lockedMinutes: minutesFromSeconds(Number(user.locked_seconds)) }, settings)
-      : phantomFailure(username, settings);
+      : phantomFailure(nameKey, settings);
     // O fim do bloqueio é calculado pelo relógio do MySQL (como antes), não pelo do Node: evita erro se os fusos diferirem.
     if (next.outcome === 'locking') {
       await conn.query('UPDATE users SET failed_attempts = 0, locked_until = DATE_ADD(NOW(), INTERVAL ? MINUTE) WHERE username = ?', [settings.lockoutMinutes, username]);
@@ -189,10 +225,6 @@ function setAuthCookies(res, token) {
   res.setHeader('X-CSRF-Token', csrfToken);
 }
 
-function bumpSessionVersion(connection, userId) {
-  return connection.query('UPDATE users SET session_version = session_version + 1 WHERE id = ?', [userId]);
-}
-
 function clearAuthCookies(res) {
   res.clearCookie('auth_token', { path: '/' });
   res.clearCookie('csrf_token', { path: '/' });
@@ -208,13 +240,12 @@ router.post('/login', authIpLimiter, authLimiter, async (req, res) => {
   }
 
   try {
-    const [users] = await db.query(`SELECT ${LOGIN_USER_COLUMNS} FROM users WHERE username = ?`, [username]);
-    const user = users[0];
+    const { user, nameKey } = await findLoginUser(username);
     const settings = await readSettings();
 
     // Bloqueio temporário após tentativas inválidas (configurável em Administração → Segurança).
     // Usuário inexistente segue o mesmo caminho, com o mesmo tempo e as mesmas respostas.
-    const lockedMinutes = lockedMinutesFor(user, username);
+    const lockedMinutes = lockedMinutesFor(user, nameKey);
     if (lockedMinutes) {
       if (user) logLoginEvent(req, user.id, 'locked');
       return res.status(423).json({ error: lockedMessage(lockedMinutes) });
@@ -222,7 +253,7 @@ router.post('/login', authIpLimiter, authLimiter, async (req, res) => {
 
     const passwordIsValid = await bcrypt.compare(password, user ? user.password_hash : DUMMY_PASSWORD_HASH);
     if (!passwordIsValid || !user) {
-      const outcome = await registerFailedAttempt(username, settings);
+      const outcome = await registerFailedAttempt(username, nameKey, settings);
       logFailure(req, user, outcome);
       return sendFailure(res, outcome, settings, 'Usuário ou senha inválidos', startedAt);
     }
@@ -266,16 +297,15 @@ router.post('/first-access', authIpLimiter, authLimiter, async (req, res) => {
     // Usuário inexistente e senha temporária errada têm a mesma resposta e o mesmo tempo, e as
     // tentativas erradas contam para o mesmo bloqueio do login.
     // A senha é conferida antes do estado do primeiro acesso: sem a senha certa, nada revela se o usuário existe.
-    const [users] = await db.query(`SELECT ${LOGIN_USER_COLUMNS} FROM users WHERE username = ?`, [username]);
-    const user = users[0];
+    const { user, nameKey } = await findLoginUser(username);
     const settings = await readSettings();
-    const lockedMinutes = lockedMinutesFor(user, username);
+    const lockedMinutes = lockedMinutesFor(user, nameKey);
     if (lockedMinutes) {
       if (user) logLoginEvent(req, user.id, 'locked');
       return res.status(423).json({ error: lockedMessage(lockedMinutes) });
     }
     if (!await bcrypt.compare(currentPassword, user ? user.password_hash : DUMMY_PASSWORD_HASH) || !user) {
-      const outcome = await registerFailedAttempt(username, settings);
+      const outcome = await registerFailedAttempt(username, nameKey, settings);
       logFailure(req, user, outcome);
       return sendFailure(res, outcome, settings, 'Usuário ou senha temporária inválidos', startedAt);
     }
@@ -349,9 +379,7 @@ router.patch('/preferences', verifyToken, requireCsrf, async (req, res) => {
     });
     res.json(saved);
   } catch (error) {
-    if (error instanceof ClientError) return res.status(error.status).json({ error: error.message });
-    console.error(error);
-    res.status(500).json({ error: 'Falha ao salvar preferências' });
+    return sendError(res, error, 'Falha ao salvar preferências');
   }
 });
 
@@ -435,9 +463,7 @@ router.delete('/account', verifyToken, requireCsrf, passwordLimiter, async (req,
     clearAuthCookies(res);
     res.json({ ok: true });
   } catch (error) {
-    if (error instanceof ClientError) return res.status(error.status).json({ error: error.message });
-    console.error(error);
-    res.status(500).json({ error: 'Falha ao remover conta' });
+    return sendError(res, error, 'Falha ao remover conta');
   }
 });
 

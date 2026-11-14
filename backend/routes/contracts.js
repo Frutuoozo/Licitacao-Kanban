@@ -4,10 +4,11 @@ import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import db, { withTransaction } from '../db.js';
 import { requireEditorOrAdmin } from '../middleware/editor.js';
 import { getIO } from '../socket.js';
-import { ClientError } from '../errors.js';
+import { ClientError, sendError } from '../errors.js';
 import { isoToday, isValidDateString, normalizeText, validateContractPayload } from '../validation.js';
+import { createRouter } from '../asyncRouter.js';
 
-const router = express.Router();
+const router = createRouter();
 
 // Regras de vigência: além do termo de contrato, até 4 aditivos; depois disso, nova contratação.
 // Contratos vencidos também aceitam aditivo (ex.: cadastro de contratos antigos já vencidos),
@@ -131,9 +132,7 @@ async function inTransaction(res, work, { status = 200, socketEvent = 'contract:
     // `extra`: dados só para quem fez a ação (ex.: id do aditivo criado, para anexar o termo em seguida).
     return res.status(status).json(result.extra ? { ...result.contract, ...result.extra } : result.contract);
   } catch (error) {
-    if (error instanceof ClientError) return res.status(error.status).json({ error: error.message });
-    console.error(error);
-    return res.status(500).json({ error: failMessage });
+    return sendError(res, error, failMessage);
   }
 }
 

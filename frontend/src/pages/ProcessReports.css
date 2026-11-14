@@ -39,7 +39,7 @@
 .rp-legend { display: flex; gap: 14px; font-size: 10px; color: var(--lk-muted); white-space: nowrap; }
 .rp-legend span { display: flex; align-items: center; gap: 6px; }
 .rp-legend i { width: 8px; height: 8px; border-radius: 2px; }
-/* Evolução dos processos: 3 séries em ordem fixa (Ativos, Criados, Concluídos). Cores validadas para cada tema:
+/* Evolução dos processos: 3 séries em ordem fixa (Abertos no início do mês, Criados, Concluídos). Cores validadas para cada tema:
    contraste >= 3:1 no fundo e separação para daltonismo; Ativos em cinza (é o contexto do mês). */
 .report-view { --rp-active: #8190a5; --rp-created: #2563eb; --rp-completed: #008300; }
 .lk-dark .report-view { --rp-active: #64748b; --rp-created: #4f8ff7; --rp-completed: #16a34a; }

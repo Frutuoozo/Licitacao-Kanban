@@ -31,7 +31,11 @@ export const verifyToken = (req, res, next) => {
         req.userName = rows[0].username;
         next();
       })
-      .catch(() => res.status(500).json({ error: 'Erro ao verificar sessão' }));
+      // Banco fora do ar, credencial ou certificado inválido: o motivo vai para o log (antes era descartado).
+      .catch((error) => {
+        console.error(`Falha ao verificar sessão em ${req.method} ${req.originalUrl}:`, error);
+        if (!res.headersSent) res.status(500).json({ error: 'Erro ao verificar sessão' });
+      });
   } catch (err) {
     return res.status(401).json({ error: 'Unauthorized!' });
   }

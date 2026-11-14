@@ -8,17 +8,37 @@
 .dm-table .ct-col-number { max-width: 170px; white-space: normal; overflow-wrap: anywhere; }
 .dm-badge { min-width: 0; }
 .lk-dashboard .dm-new:disabled { opacity: .55; cursor: not-allowed; }
-@media (min-width: 1025px) {
-  .ct-toolbar.dm-toolbar { grid-template-columns: minmax(200px, 420px) minmax(max-content, 1fr); }
-  .dm-toolbar .ct-toolbar-actions { grid-column: 2; }
+/* Barra de filtros: mesma grade da de Contratos (busca + Situação, Categoria e Tipo de processo + visualização). */
+/* Entre 1025 e 1500px, Contratos desce os botões para outra linha (lá eles incluem as abas largas). Aqui só
+   sobram os dois botões de visualização, que cabem na mesma linha dos filtros. */
+@media (min-width: 1025px) and (max-width: 1500px) {
+  .ct-toolbar.dm-toolbar { grid-template-columns: repeat(4, minmax(0, 1fr)) auto; }
+  .dm-toolbar .ct-toolbar-actions { grid-column: auto; }
 }
 
-/* Cards: o destaque ao passar o mouse segue a prioridade; a altura acompanha o conteúdo, menor que o de um contrato. */
+/* Cards: faixa lateral e destaque na cor da prioridade (classe urgent/high/moderate/routine); a altura acompanha o conteúdo, menor que o de um contrato.
+   Seis campos (3 linhas de 2): as duas primeiras linhas ganham a divisória de baixo; numa coluna só, todas menos a última. */
 .lk-contracts .contracts-grid.dm-grid { grid-auto-rows: auto; }
 .lk-contracts .dm-card { --contract-state: var(--tone); min-height: 0; }
+/* Faixa lateral na cor da prioridade, no formato da das colunas do quadro (.lk-process-shell .column::before). */
+.lk-contracts .dm-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--contract-state); z-index: 1; }
+.dm-card .contract-info-item:nth-child(-n+4) { border-bottom: 1px solid var(--border); }
+/* Painel lateral: "Aguardando início" no quadro Iniciada, em tom secundário. */
+.ct-detail-highlight strong.dm-info-muted { color: var(--lk-muted); font-weight: 500; font-size: 15px; }
+/* Topo do card: rótulo "Demanda" à esquerda e os botões à direita, na mesma linha (no celular também,
+   sem a margem negativa que os punha ao lado das bolhas). */
+.dm-card .contract-card-top { justify-content: space-between; align-items: center; }
+.dm-card .dm-card-label { margin: 0; }
+@media (max-width: 390px) {
+  .dm-card .contract-info-item:not(:last-child) { border-bottom: 1px solid var(--border); }
+  .dm-card .contract-card-top { flex-direction: row; }
+  .dm-card .contract-card-actions { margin-top: 0; }
+}
 .dm-card .contract-info-item strong .dm-overdue { display: inline; margin: 0 0 0 6px; }
 .dm-card-foot { padding: 12px 16px; }
 .lk-dashboard .dm-card-foot .dm-start { width: 100%; min-height: 38px; font-size: 12px; }
+/* Mesma altura do botão "Iniciar demanda" (38px), para alinhar o quadro de informações. */
+.dm-started-on { display: flex; align-items: center; justify-content: center; min-height: 38px; margin: 0; color: var(--lk-muted); font-size: 12px; }
 .dm-empty { color: var(--lk-muted); font-style: italic; }
 .dm-due { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .dm-overdue { display: block; margin-top: 2px; font-size: 10px; font-weight: 600; color: #dc2626; }
@@ -29,14 +49,14 @@
 .lk-dashboard .dm-start:disabled { opacity: .6; cursor: progress; }
 
 /* Prioridade: a cor sempre acompanha o nome. */
-.dm-priority.urgent, .dm-priority-option.urgent, .dm-card.urgent { --tone: #dc2626; --tone-text: #b91c1c; --tone-soft: #fdeaea; }
-.dm-priority.high, .dm-priority-option.high, .dm-card.high { --tone: #ea580c; --tone-text: #c2410c; --tone-soft: #ffedd5; }
-.dm-priority.moderate, .dm-priority-option.moderate, .dm-card.moderate { --tone: #eab308; --tone-text: #854d0e; --tone-soft: #fef9c3; }
-.dm-priority.routine, .dm-priority-option.routine, .dm-card.routine { --tone: #16a34a; --tone-text: #15803d; --tone-soft: #e3f4e9; }
-.lk-dark .dm-priority.urgent, .lk-dark .dm-priority-option.urgent, .lk-dark .dm-card.urgent { --tone: #f87171; --tone-text: #fca5a5; --tone-soft: #dc262626; }
-.lk-dark .dm-priority.high, .lk-dark .dm-priority-option.high, .lk-dark .dm-card.high { --tone: #fb923c; --tone-text: #fdba74; --tone-soft: #ea580c26; }
-.lk-dark .dm-priority.moderate, .lk-dark .dm-priority-option.moderate, .lk-dark .dm-card.moderate { --tone: #facc15; --tone-text: #fde047; --tone-soft: #eab30826; }
-.lk-dark .dm-priority.routine, .lk-dark .dm-priority-option.routine, .lk-dark .dm-card.routine { --tone: #4ade80; --tone-text: #86efac; --tone-soft: #16a34a26; }
+.dm-priority.urgent, .dm-priority-option.urgent, .dm-card.urgent, .dm-detail-priority.urgent { --tone: #dc2626; --tone-text: #b91c1c; --tone-soft: #fdeaea; }
+.dm-priority.high, .dm-priority-option.high, .dm-card.high, .dm-detail-priority.high { --tone: #ea580c; --tone-text: #c2410c; --tone-soft: #ffedd5; }
+.dm-priority.moderate, .dm-priority-option.moderate, .dm-card.moderate, .dm-detail-priority.moderate { --tone: #eab308; --tone-text: #854d0e; --tone-soft: #fef9c3; }
+.dm-priority.routine, .dm-priority-option.routine, .dm-card.routine, .dm-detail-priority.routine { --tone: #16a34a; --tone-text: #15803d; --tone-soft: #e3f4e9; }
+.lk-dark .dm-priority.urgent, .lk-dark .dm-priority-option.urgent, .lk-dark .dm-card.urgent, .lk-dark .dm-detail-priority.urgent { --tone: #f87171; --tone-text: #fca5a5; --tone-soft: #dc262626; }
+.lk-dark .dm-priority.high, .lk-dark .dm-priority-option.high, .lk-dark .dm-card.high, .lk-dark .dm-detail-priority.high { --tone: #fb923c; --tone-text: #fdba74; --tone-soft: #ea580c26; }
+.lk-dark .dm-priority.moderate, .lk-dark .dm-priority-option.moderate, .lk-dark .dm-card.moderate, .lk-dark .dm-detail-priority.moderate { --tone: #facc15; --tone-text: #fde047; --tone-soft: #eab30826; }
+.lk-dark .dm-priority.routine, .lk-dark .dm-priority-option.routine, .lk-dark .dm-card.routine, .lk-dark .dm-detail-priority.routine { --tone: #4ade80; --tone-text: #86efac; --tone-soft: #16a34a26; }
 .dm-priority { display: inline-flex; align-items: center; height: 26px; padding: 0 12px; border-radius: 13px; background: var(--tone-soft); color: var(--tone-text); font-size: 10px; font-weight: 700; white-space: nowrap; }
 .dm-priority-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .dm-priority-option { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 10px; border: 1px solid var(--lk-border); border-radius: 10px; color: var(--lk-text); font-size: 12px; font-weight: 600; cursor: pointer; transition: border-color .15s, background .15s; }
@@ -84,3 +104,28 @@
 }
 @media (hover: none) { .lk-dashboard .dm-start { min-height: 44px; padding: 0 18px; } }
 @media (prefers-reduced-motion: reduce) { .dm-status-option, .dm-priority-option { transition: none; } }
+
+/* Detalhes da demanda (painel .ct-detail de Contratos): checklist dos itens do processo. */
+.dm-detail-items { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 2px; }
+.dm-detail-items li { display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 4px 0; font-size: 13px; color: var(--lk-text); overflow-wrap: anywhere; }
+.dm-detail-items li.phase { margin-top: 10px; min-height: 0; font-size: 11px; font-weight: 600; color: var(--lk-muted); }
+.dm-detail-items li.phase:first-child { margin-top: 0; }
+.dm-detail-items li.done { color: var(--lk-muted); }
+.dm-detail-check { display: grid; place-items: center; flex-shrink: 0; width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--lk-border); color: #fff; }
+.dm-detail-items li.done .dm-detail-check { background: #16a34a; border-color: #16a34a; }
+.ct-detail-highlight .dm-overdue { margin-top: 0; font-size: 11px; }
+
+/* Detalhes: tipo como etiqueta no cabeçalho, ao lado das bolhas de prioridade e situação. */
+.ct-detail-badges .dm-type-chip { height: 26px; padding: 0 12px; border-radius: 13px; border: 1px solid var(--lk-border); font-size: 11px; font-weight: 600; color: var(--lk-text); }
+.ct-detail-badges .dm-type-chip i { width: 8px; height: 8px; }
+.dm-detail-none { font-size: 13px; color: var(--lk-muted); }
+
+.dm-page .ct-detail-highlight > div:nth-child(3) { animation-delay: .12s; }
+.dm-page .ct-detail-highlight > div:nth-child(4) { animation-delay: .18s; }
+.dm-page .ct-detail-highlight > div:nth-child(5) { animation-delay: .24s; }
+.dm-page .ct-detail-highlight > div:nth-child(6) { animation-delay: .3s; }
+/* Quadros Categoria (prioridade, com a cor dela) e Tipo de processo (com a cor do tipo). */
+.dm-detail-priority strong, .dm-detail-type strong { display: inline-flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+.dm-detail-priority strong i, .dm-detail-type strong i { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.dm-detail-priority strong i { background: var(--tone); }
+.lk-dark .dm-detail-type strong i { box-shadow: 0 0 0 1px #ffffff40; }

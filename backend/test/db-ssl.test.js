@@ -2,6 +2,8 @@
 // Estes testes usam o db.js real contra um MySQL falso em localhost: nenhum banco de verdade é tocado.
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { resolveDbSsl } from '../dbSsl.js';
 import { createCertificateAuthority, startFakeTlsMysql } from './helpers/fakeTlsMysql.js';
 
@@ -56,8 +58,34 @@ test('recusa servidor com certificado do mesmo CA emitido para outro nome', asyn
   await assert.rejects(connectToFakeServer(wrongName, realCa.ca), /does not match certificate's altnames/);
 });
 
-test('no Aiven sem DB_CA_CERT não sobe, e o erro diz o que falta', async () => {
-  await assert.rejects(importDb({ DB_HOST: 'banco.aivencloud.com', DB_PORT: '3306' }), /DB_CA_CERT/);
+// Sem o CA, o db.js não abre nenhuma conexão (a senha não sai sem TLS), mas também não quebra ao ser
+// importado: cada consulta é recusada com a mensagem do que falta. Assim o servidor mostra o aviso de
+// "não foi iniciado" (em vez do stack cru) e os arquivos de teste podem ser pulados em vez de quebrar.
+test('no Aiven sem DB_CA_CERT nenhuma consulta é feita, e o erro diz o que falta', async () => {
+  const pool = await importDb({ DB_HOST: 'banco.aivencloud.com', DB_PORT: '3306' });
+  // Uma tentativa de conexão daria ENOTFOUND (o nome não existe): a recusa vem antes de qualquer rede.
+  await assert.rejects(pool.query('SELECT 1'), /DB_CA_CERT/);
+  await assert.rejects(pool.getConnection(), /DB_CA_CERT/);
+  await pool.end();
+});
+
+test('no Aiven sem DB_CA_CERT o servidor não sobe e explica o motivo', async () => {
+  const server = spawn(process.execPath, ['server.js'], {
+    cwd: fileURLToPath(new URL('..', import.meta.url)),
+    env: { ...process.env, DB_HOST: 'banco.aivencloud.com', DB_PORT: '3306', DB_CA_CERT: '', PORT: '3991' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let output = '';
+  server.stdout.on('data', (chunk) => { output += chunk; });
+  server.stderr.on('data', (chunk) => { output += chunk; });
+  const code = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { server.kill(); reject(new Error(`servidor não encerrou em 15s:\n${output}`)); }, 15000);
+    server.on('exit', (exitCode) => { clearTimeout(timer); resolve(exitCode); });
+  });
+  assert.equal(code, 1);
+  assert.match(output, /O servidor NÃO foi iniciado/);
+  assert.match(output, /DB_CA_CERT/);
+  assert.doesNotMatch(output, /Server is running/);
 });
 
 test('banco local sem DB_CA_CERT continua sem TLS', () => {

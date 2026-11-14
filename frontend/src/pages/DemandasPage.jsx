@@ -1,19 +1,25 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { IconClipboard, IconClose, IconEdit, IconGrid, IconList, IconPlus, IconTrash } from "../icons";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { IconCheck, IconClipboard, IconClose, IconEdit, IconViewCards, IconViewList, IconPlus, IconTrash } from "../icons";
 import { PHASE_COLORS, generateId, orderedTemplateTypeNames, tmplColor, tmplItems } from "../utils";
 import { formatDate } from "../preferences";
 import { useAppSettings } from "../appSettings";
 import { Toast, useToast } from "../components/Toast";
+import { compareDemands } from "../demandOrder";
 import DatePicker from "../components/DatePicker";
-import { RowMenu } from "./ContratosPage";
+import SelectMenu from "../components/SelectMenu";
+import { RowMenu, openableProps } from "./ContratosPage";
 
 // Demandas: todo processo nasce aqui, pendente (ainda não iniciado) ou já iniciado. Só os iniciados
 // aparecem em Processos. Depois de iniciada, a demanda não volta a ser pendente.
 
 const EXIT_MS = 220;
+// Atalhos do calendário de vencimento: prazos de demanda são mais curtos que os de contrato.
+const DUE_SHORTCUTS = [["+3 meses", 3], ["+6 meses", 6], ["+1 ano", 12]];
 const VIEW_KEY = "lk-demands-view";
 const EMPTY_FORM = { status: "pending", priority: "routine", type: "", processNumber: "", dueDate: "", setor: "", title: "", notes: "" };
 const PRIORITIES = [["urgent", "Urgente"], ["high", "Prioritária"], ["moderate", "Moderada"], ["routine", "Rotina"]];
+// Cor da bolinha de cada categoria nos filtros (as mesmas da faixa lateral dos cards).
+const PRIORITY_COLORS = { urgent: "#dc2626", high: "#ea580c", moderate: "#eab308", routine: "#16a34a" };
 const priorityLabel = (priority) => (PRIORITIES.find(([value]) => value === priority) || PRIORITIES[3])[1];
 
 function docsFromTemplate(template) {
@@ -126,7 +132,7 @@ function DemandForm({ editing, templates, collaborators, saving, closing, onClos
                 </label>
                 <label className="contract-field">
                   <span>Data de vencimento *</span>
-                  <DatePicker value={form.dueDate} onChange={(dueDate) => setForm((current) => ({ ...current, dueDate }))} required min={isStarted && editing ? undefined : localToday()} />
+                  <DatePicker value={form.dueDate} onChange={(dueDate) => setForm((current) => ({ ...current, dueDate }))} required min={isStarted && editing ? undefined : localToday()} shortcuts={DUE_SHORTCUTS} />
                 </label>
                 <label className="contract-field">
                   <span>Gestor principal {isStarted ? "*" : "(opcional)"}</span>
@@ -217,7 +223,7 @@ function DemandsTable({ demands, today, isViewer, starting, handlers }) {
         </thead>
         <tbody>
           {demands.map((d) => (
-            <tr key={d.id}>
+            <tr key={d.id} className="ct-row-clickable" {...openableProps(d, handlers.onOpen, `Ver detalhes da demanda ${d.title}`)}>
               <td className="ct-col-number">{d.processNumber || "—"}</td>
               <td data-label="Demanda" className="ct-col-object">
                 <strong>{d.title}</strong>
@@ -245,12 +251,10 @@ function DemandsTable({ demands, today, isViewer, starting, handlers }) {
 
 function DemandCard({ demand, today, isViewer, starting, handlers }) {
   return (
-    <article className={`contract-card dm-card ${demand.priority || "routine"}`}>
+    // Faixa lateral e destaque na cor da prioridade (Urgente, Prioritária, Moderada, Rotina), definida no CSS.
+    <article className={`contract-card dm-card ct-card-clickable ${demand.priority || "routine"}`} {...openableProps(demand, handlers.onOpen, `Ver detalhes da demanda ${demand.title}`)}>
       <div className="contract-card-top">
-        <div className="contract-card-badges">
-          <PriorityBadge demand={demand} />
-          <SituationBadge demand={demand} />
-        </div>
+        <p className="contract-card-kicker dm-card-label">Demanda</p>
         {!isViewer && (
           <div className="contract-card-actions">
             {demandActions(handlers).map((action) => (
@@ -262,20 +266,129 @@ function DemandCard({ demand, today, isViewer, starting, handlers }) {
         )}
       </div>
       <div className="contract-card-title-wrap">
-        <p className="contract-card-kicker">Demanda</p>
+        <p className="contract-card-kicker">Objeto</p>
         <h2 className="contract-card-title" title={demand.title}>{demand.title}</h2>
         {demand.notes && <p className="contract-card-object" title={demand.notes}>{demand.notes}</p>}
       </div>
       <div className="contract-info-grid">
+        <div className="contract-info-item"><span>Prioridade</span><strong>{priorityLabel(demand.priority)}</strong></div>
+        <div className="contract-info-item"><span>Situação</span><strong>{demand.status === "pending" ? "Pendente" : "Iniciada"}</strong></div>
         <div className="contract-info-item"><span>Nº do processo</span><strong title={demand.processNumber || undefined}>{demand.processNumber || "—"}</strong></div>
         <div className="contract-info-item"><span>Tipo</span><strong title={demand.type || undefined}>{demand.type || "—"}</strong></div>
         <div className="contract-info-item"><span>Gestor principal</span><strong title={demand.setor || undefined}>{demand.setor || "Sem gestor"}</strong></div>
         <div className="contract-info-item"><span>Vencimento</span><strong><DueDate demand={demand} today={today} /></strong></div>
       </div>
-      {!isViewer && demand.status === "pending" && (
-        <div className="dm-card-foot"><button type="button" className="dm-start" onClick={() => handlers.onStart(demand)} disabled={starting}>Iniciar demanda</button></div>
+      {/* Rodapé de mesma altura nos dois casos: o quadro de informações fica na mesma linha em pendentes e iniciadas. */}
+      {!isViewer && (
+        <div className="dm-card-foot">
+          {demand.status === "pending"
+            ? <button type="button" className="dm-start" onClick={() => handlers.onStart(demand)} disabled={starting}>Iniciar demanda</button>
+            : <p className="dm-started-on">{demand.startedAt ? `Iniciada em ${formatDate(demand.startedAt)}` : "Demanda iniciada"}</p>}
+        </div>
       )}
     </article>
+  );
+}
+
+// Prazo em palavras, contado em dias a partir de hoje (meio-dia, para o fuso não virar o dia).
+function dueText(dueDate) {
+  if (!dueDate) return "Sem vencimento";
+  const today = new Date(); today.setHours(12, 0, 0, 0);
+  const days = Math.round((new Date(`${String(dueDate).slice(0, 10)}T12:00:00`) - today) / 86400000);
+  if (days < 0) return `Vencida há ${-days} ${days === -1 ? "dia" : "dias"}`;
+  return days === 0 ? "Vence hoje" : days === 1 ? "Vence amanhã" : `Vence em ${days} dias`;
+}
+
+// Distância entre uma data e hoje, em palavras ("há 3 dias", "hoje", "em 2 meses").
+function relativeDay(value) {
+  if (!value) return "";
+  const today = new Date(); today.setHours(12, 0, 0, 0);
+  const date = new Date(`${String(value).slice(0, 10)}T12:00:00`);
+  const days = Math.round((date - today) / 86400000);
+  if (days === 0) return "hoje";
+  const abs = Math.abs(days);
+  const amount = abs < 30 ? `${abs} ${abs === 1 ? "dia" : "dias"}` : abs < 365 ? `${Math.round(abs / 30)} ${Math.round(abs / 30) === 1 ? "mês" : "meses"}` : `${Math.round(abs / 365)} ${Math.round(abs / 365) === 1 ? "ano" : "anos"}`;
+  return days < 0 ? `há ${amount}` : `em ${amount}`;
+}
+
+const EXIT_DETAIL_MS = 220;
+
+// Detalhes da demanda: mesmo painel lateral dos Contratos (classes .ct-detail*), com os dados da demanda.
+function DemandDetails({ demand, isViewer, starting, onClose, handlers }) {
+  const closeRef = useRef(null);
+  const [closing, setClosing] = useState(false);
+  // Toca a animação de saída antes de desmontar o painel; `then` roda depois (ex.: abrir a edição).
+  const requestClose = useCallback((then) => {
+    setClosing(true);
+    setTimeout(() => { onClose(); if (typeof then === "function") then(); }, EXIT_DETAIL_MS);
+  }, [onClose]);
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKey = (event) => { if (event.key === "Escape") requestClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [requestClose]);
+
+  const docs = (demand.docs || []).filter((item) => item && item.name);
+  const regular = docs.filter((item) => item.type !== "phase");
+  const done = regular.filter((item) => item.done).length;
+  const overdue = demand.dueDate && String(demand.dueDate).slice(0, 10) < localToday();
+
+  return (
+    <div className={`ct-detail-overlay ${closing ? "closing" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && requestClose()}>
+      <aside className="ct-detail" role="dialog" aria-modal="true" aria-labelledby="dm-detail-title">
+        <div className="ct-detail-main">
+          <header className="ct-detail-header">
+            <div>
+              <span className="ct-detail-number">{demand.processNumber ? `Nº ${demand.processNumber}` : "Sem número do processo"}</span>
+              <h2 id="dm-detail-title">{demand.title}</h2>
+              <div className="ct-detail-badges"><PriorityBadge demand={demand} /><SituationBadge demand={demand} /><TypeLabel demand={demand} className="dm-type-chip" /></div>
+            </div>
+            <button type="button" className="ct-detail-close" ref={closeRef} onClick={() => requestClose()} aria-label="Fechar detalhes"><IconClose /></button>
+          </header>
+
+          <div className="ct-detail-body">
+            <section className="ct-detail-highlight">
+              <div><span>Vencimento</span><strong>{formatDate(demand.dueDate)}</strong><small className={overdue ? "dm-overdue" : ""}>{dueText(demand.dueDate)}</small></div>
+              <div><span>Gestor principal</span><strong>{demand.setor || "Sem gestor"}</strong></div>
+              <div><span>Cadastrada</span><strong>{formatDate(demand.createdAt)}</strong><small>{relativeDay(demand.createdAt)}</small></div>
+              {demand.status === "pending"
+                ? <div><span>Iniciada</span><strong className="dm-info-muted">Aguardando início</strong></div>
+                : <div><span>Iniciada</span><strong>{formatDate(demand.startedAt)}</strong><small>{relativeDay(demand.startedAt)}</small></div>}
+              <div className={`dm-detail-priority ${demand.priority || "routine"}`}><span>Categoria</span><strong><i aria-hidden="true" />{priorityLabel(demand.priority)}</strong></div>
+              <div className="dm-detail-type"><span>Tipo de processo</span><strong><i aria-hidden="true" style={{ background: demand.typeColor || "var(--lk-muted)" }} />{demand.type || "—"}</strong></div>
+            </section>
+
+            <section className="ct-detail-section">
+              <h3>Observações</h3>
+              {demand.notes ? <p className="ct-detail-text">{demand.notes}</p> : <p className="dm-detail-none">Sem observações.</p>}
+            </section>
+
+            <section className="ct-detail-section">
+              <h3>Itens do processo</h3>
+              {regular.length > 0 && <p className="ct-detail-text">{done} de {regular.length} {regular.length === 1 ? "item concluído" : "itens concluídos"}.</p>}
+              {docs.length > 0 ? (
+                <ul className="dm-detail-items">
+                  {docs.map((item) => item.type === "phase"
+                    ? <li key={item.id} className="phase">{item.name}</li>
+                    : <li key={item.id} className={item.done ? "done" : ""}><span className="dm-detail-check" aria-hidden="true">{item.done && <IconCheck />}</span>{item.name}<span className="lk-sr">{item.done ? " (concluído)" : " (pendente)"}</span></li>)}
+                </ul>
+              ) : <p className="ct-detail-text">Nenhum item cadastrado.</p>}
+            </section>
+          </div>
+
+          {!isViewer && (
+            <footer className="ct-detail-footer">
+              <button type="button" className="ct-detail-delete" onClick={() => requestClose(() => handlers.onDelete(demand))}><IconTrash /> Excluir</button>
+              <div className="ct-detail-footer-main">
+                {demand.status === "pending" && <button type="button" className="ct-detail-secondary" onClick={() => requestClose(() => handlers.onStart(demand))} disabled={starting}>Iniciar demanda</button>}
+                <button type="button" className="ct-detail-edit" onClick={() => requestClose(() => handlers.onEdit(demand))}><IconEdit /> Editar</button>
+              </div>
+            </footer>
+          )}
+        </div>
+      </aside>
+    </div>
   );
 }
 
@@ -284,6 +397,8 @@ export default function DemandasPage({ demands, templates, collaborators, loadin
   const { settings } = useAppSettings();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
   const [formOpen, setFormOpen] = useState(false);
   const [formClosing, setFormClosing] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -292,6 +407,7 @@ export default function DemandasPage({ demands, templates, collaborators, loadin
   const [starting, setStarting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [detailId, setDetailId] = useState(null);
   const [view, setView] = useState(() => {
     try { return localStorage.getItem(VIEW_KEY) === "cards" ? "cards" : "list"; } catch { return "list"; }
   });
@@ -363,13 +479,24 @@ export default function DemandasPage({ demands, templates, collaborators, loadin
     const q = search.trim().toLocaleLowerCase("pt-BR");
     return demands
       .filter((d) => statusFilter === "all" || d.status === statusFilter)
+      .filter((d) => priorityFilter === "all" || (d.priority || "routine") === priorityFilter)
+      .filter((d) => typeFilter === "all" || (d.type || "") === typeFilter)
       .filter((d) => !q || [d.title, d.processNumber, d.type, d.setor, d.notes].some((value) => (value || "").toLocaleLowerCase("pt-BR").includes(q)))
-      // Pendentes primeiro; dentro de cada situação, o vencimento mais próximo.
-      .sort((a, b) => (a.status === b.status ? 0 : a.status === "pending" ? -1 : 1) || String(a.dueDate || "9999").localeCompare(String(b.dueDate || "9999")));
-  }, [demands, search, statusFilter]);
+      // Urgente em cima, Rotina embaixo; na mesma prioridade, pendentes e o vencimento mais próximo primeiro.
+      .sort(compareDemands);
+  }, [demands, search, statusFilter, priorityFilter, typeFilter]);
+  // Tipos que aparecem nas demandas, em ordem alfabética (o seletor só oferece o que dá resultado).
+  const typeOptions = useMemo(() => {
+    const colors = new Map();
+    demands.forEach((d) => { if (d.type && !colors.has(d.type)) colors.set(d.type, d.typeColor || null); });
+    return [...colors.keys()].sort((a, b) => a.localeCompare(b, "pt-BR")).map((name) => ({ value: name, label: name, color: colors.get(name) || undefined }));
+  }, [demands]);
 
   const pendingCount = demands.filter((d) => d.status === "pending").length;
-  const handlers = { onEdit: openEdit, onDelete: requestDelete, onStart: requestStart };
+  const handlers = { onEdit: openEdit, onDelete: requestDelete, onStart: requestStart, onOpen: (demand) => setDetailId(demand.id) };
+  // Lido da lista a cada render: o painel mostra a versão atual (edições e tempo real) e some se a demanda for excluída.
+  const detailDemand = detailId ? demands.find((d) => d.id === detailId) : null;
+  const closeDetails = useCallback(() => setDetailId(null), []);
   const today = localToday();
   const hasTemplates = orderedTemplateTypeNames(templates).length > 0;
 
@@ -406,15 +533,19 @@ export default function DemandasPage({ demands, templates, collaborators, loadin
           <span>Buscar demanda</span>
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Título, número, tipo, gestor..." />
         </label>
+        <SelectMenu label="Situação" value={statusFilter} onChange={setStatusFilter} options={[
+          { value: "all", label: "Todas", count: loading ? undefined : demands.length },
+          { value: "pending", label: "Pendentes", count: loading ? undefined : pendingCount },
+          { value: "active", label: "Iniciadas", count: loading ? undefined : demands.length - pendingCount },
+        ]} />
+        <SelectMenu label="Categoria" value={priorityFilter} onChange={setPriorityFilter}
+          options={[{ value: "all", label: "Todas" }, ...PRIORITIES.map(([value, label]) => ({ value, label, color: PRIORITY_COLORS[value] }))]} />
+        <SelectMenu label="Tipo de processo" value={typeFilter} onChange={setTypeFilter}
+          options={[{ value: "all", label: "Todos" }, ...typeOptions]} />
         <div className="ct-toolbar-actions">
-          <div className="ct-view-toggle ct-scope-toggle" role="group" aria-label="Situação das demandas">
-            {[["all", "Todas", demands.length], ["pending", "Pendentes", pendingCount], ["active", "Iniciadas", demands.length - pendingCount]].map(([value, label, count]) => (
-              <button type="button" key={value} className={statusFilter === value ? "active" : ""} aria-pressed={statusFilter === value} onClick={() => setStatusFilter(value)}>{label} <span className="ct-toggle-count">{loading ? "—" : count}</span></button>
-            ))}
-          </div>
           <div className="ct-view-toggle ct-icon-toggle" role="group" aria-label="Visualização">
-            <button type="button" className={view === "list" ? "active" : ""} aria-pressed={view === "list"} aria-label="Lista" title="Lista" onClick={() => changeView("list")}><IconList /></button>
-            <button type="button" className={view === "cards" ? "active" : ""} aria-pressed={view === "cards"} aria-label="Cards" title="Cards" onClick={() => changeView("cards")}><IconGrid /></button>
+            <button type="button" className={view === "list" ? "active" : ""} aria-pressed={view === "list"} aria-label="Lista" title="Lista" onClick={() => changeView("list")}><IconViewList /></button>
+            <button type="button" className={view === "cards" ? "active" : ""} aria-pressed={view === "cards"} aria-label="Cards" title="Cards" onClick={() => changeView("cards")}><IconViewCards /></button>
           </div>
         </div>
       </section>
@@ -443,6 +574,10 @@ export default function DemandasPage({ demands, templates, collaborators, loadin
               : `${filtered.length} de ${demands.length} demandas`}</span>
           </footer>
         </section>
+      )}
+
+      {detailDemand && (
+        <DemandDetails key={detailDemand.id} demand={detailDemand} isViewer={isViewer} starting={starting} onClose={closeDetails} handlers={handlers} />
       )}
 
       {formOpen && (

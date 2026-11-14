@@ -2,7 +2,7 @@
 
 **Sistema completo para gerenciamento de processos licitatórios**
 
-🌐 **Site atual:** https://Frutuoozo.github.io/Licitacao-Kanban
+🌐 **Site atual:** https://licitkanbancrcpi.vercel.app
 
 ---
 

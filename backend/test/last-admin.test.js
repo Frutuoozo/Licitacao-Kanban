@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import bcrypt from 'bcryptjs';
 import db from '../db.js';
 
-const PORT = 3996;
+const PORT = 3994; // cada arquivo com a sua porta (auth-csrf usa 3996)
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 const BACKEND_DIR = fileURLToPath(new URL('..', import.meta.url));
 const PASSWORD = 'SenhaCerta#1';

@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import dotenv from 'dotenv';
 import { parse } from 'cookie';
-import authRouter from './routes/auth.js';
+import authRouter, { pruneLoginEvents } from './routes/auth.js';
 import processesRouter from './routes/processes.js';
 import templatesRouter from './routes/templates.js';
 import contractsRouter from './routes/contracts.js';
@@ -41,8 +41,9 @@ app.use(cors({ origin: CORS_ORIGINS, credentials: true, methods: ['GET', 'POST',
 app.use(compression());
 app.use(express.json({ limit: '100kb' }));
 
-// Site e API em domínios diferentes (Vercel x Render): o site não consegue ler o cookie csrf_token
-// da API. Por isso o token também segue no cabeçalho X-CSRF-Token, visível só para origens liberadas no CORS.
+// O site lê o cookie csrf_token quando está no mesmo domínio da API (em produção, pelo proxy da Vercel; no
+// local, localhost). O token também segue no cabeçalho X-CSRF-Token, visível só para origens liberadas no
+// CORS, como reserva para quando o site chama a API em outro domínio (ex.: direto no Render).
 app.use((req, res, next) => {
   const csrfCookie = parse(req.headers.cookie || '').csrf_token;
   if (csrfCookie) res.setHeader('X-CSRF-Token', csrfCookie);
@@ -164,7 +165,7 @@ async function runMigrations() {
   if (roleType && !roleType.includes('editor')) {
     await db.query(`UPDATE users SET role = 'editor' WHERE role = 'user'`);
     await db.query(`ALTER TABLE users MODIFY COLUMN role ENUM('admin', 'editor', 'viewer') NOT NULL DEFAULT 'viewer'`);
-    console.log('Migration 006: ENUM role atualizado para admin, editor, viewer.');
+    console.log('Migration 007: ENUM role atualizado para admin, editor, viewer.');
   }
 
   // Migration 008: contratos ativos com cadastro manual
@@ -367,6 +368,8 @@ async function waitForDatabase() {
   }
 }
 
+const LOGIN_EVENTS_PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
 // Só abre a porta depois que o banco respondeu e todas as migrations rodaram.
 // Se algo falhar, encerra com código 1: melhor não subir do que subir com o banco incompleto.
 async function start() {
@@ -378,6 +381,13 @@ async function start() {
     console.error(error);
     process.exit(1);
   }
+  // Limpeza do histórico de acessos: falhar aqui não impede o servidor de subir.
+  const prune = () => pruneLoginEvents()
+    .then((removed) => { if (removed) console.log(`Histórico de acessos: ${removed} registro(s) antigo(s) apagado(s).`); })
+    .catch((error) => console.error('Falha ao limpar o histórico de acessos:', error.message));
+  await prune();
+  setInterval(prune, LOGIN_EVENTS_PRUNE_INTERVAL_MS).unref();
+
   httpServer.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
   });

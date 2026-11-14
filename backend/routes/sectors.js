@@ -1,10 +1,10 @@
-import express from 'express';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import db from '../db.js';
 import { requireAdmin } from '../middleware/admin.js';
 import { isNonEmptyString, MAX_LENGTHS, normalizeText } from '../validation.js';
+import { createRouter } from '../asyncRouter.js';
 
-const router = express.Router();
+const router = createRouter();
 const sectorWriteLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   limit: 30,

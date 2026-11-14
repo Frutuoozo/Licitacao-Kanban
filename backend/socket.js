@@ -22,14 +22,21 @@ export function initSocket(httpServer) {
       if (users.length === 0) return next(new Error('Unauthorized'));
       if ((decoded.ver ?? 0) !== (users[0].session_version || 0)) return next(new Error('Unauthorized'));
       socket.userId = decoded.id;
+      socket.tokenExpiresAt = decoded.exp ? decoded.exp * 1000 : null;
       next();
     } catch {
       next(new Error('Unauthorized'));
     }
   });
 
+  // O token só é conferido na entrada: sem isto, um socket aberto seguia recebendo os avisos depois de o
+  // login (8 h) vencer. Fecha o transporte no vencimento, como em closeUserSockets: o cliente tenta voltar
+  // com o mesmo cookie e a entrada recusa o token vencido.
   io.on('connection', (socket) => {
-    socket.on('disconnect', () => {});
+    if (!socket.tokenExpiresAt) return;
+    const expiry = setTimeout(() => socket.conn.close(), Math.max(0, socket.tokenExpiresAt - Date.now()));
+    expiry.unref();
+    socket.on('disconnect', () => clearTimeout(expiry));
   });
 
   return io;

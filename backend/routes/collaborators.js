@@ -1,7 +1,7 @@
-import express from 'express';
 import db from '../db.js';
+import { createRouter } from '../asyncRouter.js';
 
-const router = express.Router();
+const router = createRouter();
 
 // GET /api/collaborators  — todos os usuários autenticados podem listar.
 // O CPF fica de fora de propósito: só admin o recebe, em /api/admin/collaborators.

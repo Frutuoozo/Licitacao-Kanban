@@ -1,14 +1,14 @@
-import express from 'express';
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import db, { withTransaction } from '../db.js';
 import { getIO } from '../socket.js';
 import { requireEditorOrAdmin } from '../middleware/editor.js';
-import { ClientError } from '../errors.js';
+import { ClientError, sendError } from '../errors.js';
 import { isAllowedStatus, isPastDate, MAX_LENGTHS, missingDemandField, normalizeText, sanitizeProcessDoc, validateProcessPayload } from '../validation.js';
+import { createRouter } from '../asyncRouter.js';
 
 const PAST_DUE_MESSAGE = 'A data de vencimento não pode estar no passado.';
 
-const router = express.Router();
+const router = createRouter();
 const processWriteLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   limit: 120,
@@ -43,11 +43,13 @@ async function readItems(conn, processId) {
 // GET all processes (active and archived)
 router.get('/', async (req, res) => {
   try {
-    const [processes] = await db.query(
-      'SELECT id, title, processNumber, setor, type, typeColor, status, due_date, created_at, updated_at, archived_at, started_at, notes, priority FROM processes'
-    );
-    const [items] = await db.query('SELECT id, process_id, type, name, is_done, bg_color FROM process_items ORDER BY order_index ASC');
-    
+    // As duas consultas vão juntas (cada uma numa conexão do pool): esperar uma para mandar a outra somava
+    // uma ida e volta inteira ao banco a cada carregamento do quadro.
+    const [[processes], [items]] = await Promise.all([
+      db.query('SELECT id, title, processNumber, setor, type, typeColor, status, due_date, created_at, updated_at, archived_at, started_at, notes, priority FROM processes'),
+      db.query('SELECT id, process_id, type, name, is_done, bg_color FROM process_items ORDER BY order_index ASC'),
+    ]);
+
     // Group items by process_id
     const itemsByProcess = {};
     items.forEach(item => {
@@ -159,9 +161,7 @@ router.put('/:id', requireEditorOrAdmin, processWriteLimiter, async (req, res) =
     getIO()?.emit('process:updated', saved);
     res.json({ success: true });
   } catch (error) {
-    if (error instanceof ClientError) return res.status(error.status).json({ error: error.message });
-    console.error(error);
-    res.status(500).json({ error: 'Failed to update process' });
+    return sendError(res, error, 'Failed to update process');
   }
 });
 
@@ -189,9 +189,7 @@ router.put('/:id/start', requireEditorOrAdmin, processWriteLimiter, async (req, 
     getIO()?.emit('process:started', started);
     res.json({ success: true, ...started });
   } catch (error) {
-    if (error instanceof ClientError) return res.status(error.status).json({ error: error.message });
-    console.error(error);
-    res.status(500).json({ error: 'Failed to start process' });
+    return sendError(res, error, 'Failed to start process');
   }
 });
 

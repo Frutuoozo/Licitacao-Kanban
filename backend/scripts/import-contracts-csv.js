@@ -32,7 +32,7 @@ function parseCsv(text) {
     }
   }
 
-  if (value || row.length) {22
+  if (value || row.length) {
     row.push(value.trim());
     if (row.some((cell) => cell !== '')) rows.push(row);
   }
