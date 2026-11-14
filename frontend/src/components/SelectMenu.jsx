@@ -5,7 +5,9 @@ import "./SelectMenu.css";
 // Seletor com lista própria (no lugar do <select> nativo, cuja lista é desenhada pelo navegador).
 // options: [{ value, label, color?, count? }] — `color` mostra uma bolinha antes do texto; `count`, uma
 // etiqueta à direita. Teclado como num seletor nativo: setas, Home/End, Enter/Espaço, Esc e Tab.
-export default function SelectMenu({ label, value, onChange, options }) {
+// placeholder: texto (em cinza) quando o valor não é nenhuma opção; fieldClassName: classe do campo
+// (ct-field nos filtros, contract-field nos formulários); disabled: campo travado.
+export default function SelectMenu({ label, value, onChange, options, placeholder, fieldClassName = "ct-field", disabled = false }) {
   const id = useId();
   const wrapRef = useRef(null);
   const triggerRef = useRef(null);
@@ -13,7 +15,7 @@ export default function SelectMenu({ label, value, onChange, options }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const selectedIndex = options.findIndex((option) => option.value === value);
-  const current = options[selectedIndex] || options[0];
+  const current = selectedIndex >= 0 ? options[selectedIndex] : placeholder === undefined ? options[0] : null;
   // Se alguma opção tem bolinha de cor, as sem cor ganham um espaço do mesmo tamanho, para os textos alinharem.
   const hasColors = options.some((option) => option.color);
 
@@ -46,14 +48,14 @@ export default function SelectMenu({ label, value, onChange, options }) {
   };
 
   return (
-    <div className="ct-field sm-field" ref={wrapRef}>
+    <div className={`${fieldClassName} sm-field`} ref={wrapRef}>
       <span id={`${id}-label`}>{label}</span>
-      <button type="button" ref={triggerRef} className={`sm-trigger ${open ? "open" : ""}`}
+      <button type="button" ref={triggerRef} className={`sm-trigger ${open ? "open" : ""}`} disabled={disabled}
         aria-haspopup="listbox" aria-expanded={open} aria-labelledby={`${id}-label ${id}-value`}
         onClick={() => (open ? close() : openMenu())} onKeyDown={onTriggerKey}>
         <span id={`${id}-value`} className="sm-value">
           {current?.color && <i className="sm-dot" style={{ background: current.color }} aria-hidden="true" />}
-          {current?.label}
+          {current ? current.label : <span className="sm-placeholder">{placeholder}</span>}
         </span>
         <svg className="sm-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
       </button>

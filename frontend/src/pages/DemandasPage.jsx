@@ -119,13 +119,10 @@ function DemandForm({ editing, templates, collaborators, saving, closing, onClos
                   <span>Título da demanda *</span>
                   <input value={form.title} onChange={update("title")} maxLength={255} placeholder="Ex.: Compra de cadeiras" />
                 </label>
-                <label className="contract-field">
-                  <span>Tipo de processo *</span>
-                  <select value={form.type} onChange={update("type")} disabled={locked && isStarted}>
-                    {typeOptions.length === 0 && <option value="">Cadastre os modelos em Administração</option>}
-                    {typeOptions.map((name) => <option key={name} value={name}>{name}</option>)}
-                  </select>
-                </label>
+                <SelectMenu fieldClassName="contract-field" label="Tipo de processo *" value={form.type} disabled={locked && isStarted}
+                  onChange={(type) => setForm((current) => ({ ...current, type }))}
+                  placeholder={typeOptions.length ? "Selecione o tipo" : "Cadastre os modelos em Administração"}
+                  options={typeOptions.map((name) => ({ value: name, label: name, color: templates[name] ? tmplColor(name, templates[name]) : undefined }))} />
                 <label className="contract-field">
                   <span>Número do processo {isStarted ? "*" : "(opcional)"}</span>
                   <input value={form.processNumber} onChange={(event) => setForm((current) => ({ ...current, processNumber: event.target.value.replace(/[^0-9./-]/g, "") }))} maxLength={100} placeholder="Ex.: 001/2026" />
@@ -134,13 +131,10 @@ function DemandForm({ editing, templates, collaborators, saving, closing, onClos
                   <span>Data de vencimento *</span>
                   <DatePicker value={form.dueDate} onChange={(dueDate) => setForm((current) => ({ ...current, dueDate }))} required min={isStarted && editing ? undefined : localToday()} shortcuts={DUE_SHORTCUTS} />
                 </label>
-                <label className="contract-field">
-                  <span>Gestor principal {isStarted ? "*" : "(opcional)"}</span>
-                  <select value={form.setor} onChange={update("setor")}>
-                    <option value="">{collaborators.length ? "Selecione o gestor" : "Nenhum colaborador cadastrado"}</option>
-                    {managerOptions(collaborators, form.setor).map((name) => <option key={name} value={name}>{name}</option>)}
-                  </select>
-                </label>
+                <SelectMenu fieldClassName="contract-field" label={`Gestor principal ${isStarted ? "*" : "(opcional)"}`} value={form.setor}
+                  onChange={(setor) => setForm((current) => ({ ...current, setor }))}
+                  placeholder={collaborators.length ? "Selecione o gestor" : "Nenhum colaborador cadastrado"}
+                  options={[...(isStarted ? [] : [{ value: "", label: "Sem gestor" }]), ...managerOptions(collaborators, form.setor).map((name) => ({ value: name, label: name }))]} />
                 <label className="contract-field contract-field-wide">
                   <span>Observação</span>
                   <textarea value={form.notes} onChange={update("notes")} maxLength={2000} rows={4} placeholder="Informações úteis sobre a demanda" />
@@ -185,13 +179,9 @@ function StartDialog({ demand, collaborators, busy, onCancel, onConfirm, notify 
           </label>
         )}
         {missing.setor && (
-          <label className="contract-field dm-start-field">
-            <span>Gestor principal *</span>
-            <select value={setor} onChange={(event) => setSetor(event.target.value)} autoFocus={!missing.processNumber}>
-              <option value="">{collaborators.length ? "Selecione o gestor" : "Nenhum colaborador cadastrado"}</option>
-              {collaborators.map((c) => <option key={c.id} value={c.nome}>{c.nome}</option>)}
-            </select>
-          </label>
+          <SelectMenu fieldClassName="contract-field dm-start-field" label="Gestor principal *" value={setor} onChange={setSetor}
+            placeholder={collaborators.length ? "Selecione o gestor" : "Nenhum colaborador cadastrado"}
+            options={collaborators.map((c) => ({ value: c.nome, label: c.nome }))} />
         )}
         <div className="contract-delete-actions">
           <button type="button" className="btn-cancel-lg" onClick={onCancel} disabled={busy}>Cancelar</button>
@@ -246,6 +236,66 @@ function DemandsTable({ demands, today, isViewer, starting, handlers }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+// Esqueleto de carregamento (skeleton screen): o formato da tabela ou dos cards em blocos, no lugar do
+// "Carregando…". As larguras variam por linha para não parecer uma grade repetida.
+const SKELETON_ROWS = 6;
+const skWidth = (row, base, spread) => `${base + ((row * 37) % spread)}%`;
+const Sk = ({ w = "100%", h, className = "" }) => <span className={`sk ${className}`} style={{ width: w, height: h }} />;
+
+function DemandsSkeleton({ view, isViewer }) {
+  const rows = Array.from({ length: SKELETON_ROWS }, (_, i) => i);
+  return (
+    <section className={view === "list" ? "ct-list" : "ct-cards-section"} aria-busy="true">
+      <p className="lk-sr" role="status">Carregando demandas</p>
+      {view === "list" ? (
+        <div className="ct-table-wrap" aria-hidden="true">
+          <table className="ct-table dm-table dm-skeleton">
+            <thead>
+              <tr>
+                <th>Processo</th><th>Demanda</th><th>Prioridade</th><th>Tipo</th><th>Gestor principal</th><th>Vencimento</th><th>Situação</th>
+                {!isViewer && <th className="ct-col-action">Ação</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row}>
+                  <td><Sk w="72px" /></td>
+                  <td><Sk w={skWidth(row, 55, 40)} /><Sk w={skWidth(row, 30, 30)} h="8px" className="sk-sub" /></td>
+                  <td><Sk w="68px" h="22px" className="sk-pill" /></td>
+                  <td><Sk w={skWidth(row, 50, 40)} /></td>
+                  <td><Sk w={skWidth(row, 45, 45)} /></td>
+                  <td><Sk w="70px" /></td>
+                  <td><Sk w="64px" h="22px" className="sk-pill" /></td>
+                  {!isViewer && <td className="ct-col-action"><Sk w="28px" h="28px" className="sk-icon" /></td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="contracts-grid dm-grid" aria-hidden="true">
+          {rows.map((row) => (
+            <article className="contract-card dm-card sk-card" key={row}>
+              <div className="contract-card-top"><Sk w="58px" h="9px" />{!isViewer && <Sk w="52px" h="24px" className="sk-icon" />}</div>
+              <div className="contract-card-title-wrap">
+                <Sk w="44px" h="8px" />
+                <Sk w={skWidth(row, 50, 40)} h="14px" className="sk-title" />
+                <Sk w={skWidth(row, 35, 40)} h="9px" className="sk-sub" />
+              </div>
+              <div className="contract-info-grid">
+                {Array.from({ length: 6 }, (_, cell) => (
+                  <div className="contract-info-item" key={cell}><Sk w="48px" h="8px" /><Sk w={skWidth(row + cell, 40, 45)} className="sk-sub" /></div>
+                ))}
+              </div>
+              {!isViewer && <div className="dm-card-foot"><Sk h="38px" className="sk-button" /></div>}
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -551,11 +601,7 @@ export default function DemandasPage({ demands, templates, collaborators, loadin
       </section>
 
       {loading ? (
-        <div className="ct-state">
-          <span className="contracts-spinner" />
-          <h2>Carregando demandas</h2>
-          <p>Aguarde enquanto buscamos os dados cadastrados.</p>
-        </div>
+        <DemandsSkeleton view={view} isViewer={isViewer} />
       ) : filtered.length === 0 ? (
         <div className="ct-state">
           <div className="contracts-state-icon"><IconClipboard /></div>

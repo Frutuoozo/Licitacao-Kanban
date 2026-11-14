@@ -10,6 +10,11 @@
   outline: none; border-color: var(--lk-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--lk-blue) 12%, transparent);
 }
 .sm-value { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sm-placeholder { color: var(--lk-muted); font-weight: 400; }
+.lk-dashboard .sm-trigger:disabled { cursor: not-allowed; opacity: .6; }
+.lk-dashboard .sm-trigger:disabled:hover { border-color: var(--lk-border); }
+/* Nos formulários (gaveta de cadastro), o campo segue a altura dos outros campos (40px). */
+.ct-form-drawer .contract-field .sm-trigger, .contract-delete-modal .contract-field .sm-trigger { height: 40px; font-size: 13px; }
 .sm-chevron { flex-shrink: 0; color: var(--lk-muted); transition: transform .18s ease; }
 .sm-trigger.open .sm-chevron { transform: rotate(180deg); }
 .sm-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
