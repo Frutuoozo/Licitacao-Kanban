@@ -31,7 +31,6 @@ const SETTINGS_SCHEMA = {
   passwordExpiryEnabled: { type: 'bool', default: false },
   passwordExpiryDays: { type: 'number', options: PASSWORD_DAYS_OPTIONS, default: 90 },
 };
-export const SETTINGS_DEFAULTS = Object.fromEntries(Object.entries(SETTINGS_SCHEMA).map(([key, def]) => [key, def.default]));
 
 export async function readSettings(conn = db) {
   const [rows] = await conn.query('SELECT setting_key, setting_value FROM app_settings');

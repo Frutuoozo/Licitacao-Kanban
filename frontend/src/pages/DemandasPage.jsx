@@ -8,6 +8,7 @@ import { compareDemands } from "../demandOrder";
 import DatePicker from "../components/DatePicker";
 import SelectMenu from "../components/SelectMenu";
 import { RowMenu, openableProps } from "./ContratosPage";
+import { SKELETON_ROWS, Sk, skWidth } from "../components/Skeleton";
 
 // Demandas: todo processo nasce aqui, pendente (ainda não iniciado) ou já iniciado. Só os iniciados
 // aparecem em Processos. Depois de iniciada, a demanda não volta a ser pendente.
@@ -239,12 +240,56 @@ function DemandsTable({ demands, today, isViewer, starting, handlers }) {
   );
 }
 
-// Esqueleto de carregamento (skeleton screen): o formato da tabela ou dos cards em blocos, no lugar do
-// "Carregando…". As larguras variam por linha para não parecer uma grade repetida.
-const SKELETON_ROWS = 6;
-const skWidth = (row, base, spread) => `${base + ((row * 37) % spread)}%`;
-const Sk = ({ w = "100%", h, className = "" }) => <span className={`sk ${className}`} style={{ width: w, height: h }} />;
+// Versão para impressão (botão "Imprimir"): cabeçalho com a marca, filtros aplicados (só se houver) e a tabela das demandas filtradas,
+// sempre de Urgente a Rotina (compareDemands), qualquer que seja a ordem da tela. Fica escondida na tela; na impressão, só ela aparece (regras @media print em DemandasPage.css).
+function DemandsPrintReport({ demands: list, filterSummary, today }) {
+  const demands = [...list].sort(compareDemands);
+  const overdue = (d) => Boolean(d.dueDate) && String(d.dueDate).slice(0, 10) < today;
+  return (
+    <div className="dm-print" aria-hidden="true">
+      <header className="dm-print-header">
+        <div className="dm-print-brand">
+          <strong><span>Licit</span>Kanban</strong>
+          <small>Gestão inteligente de licitações</small>
+        </div>
+        <img className="dm-print-logo" src="/image/LogoCRCPI.png" alt="" />
+        <div className="dm-print-title">
+          <h2>Relatório de Demandas</h2>
+          <small>Emitido em {new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</small>
+        </div>
+      </header>
 
+      {filterSummary && <p className="dm-print-filters"><b>Filtros:</b> {filterSummary}</p>}
+
+      <table className="dm-print-table">
+        <colgroup>
+          <col style={{ width: "13%" }} /><col style={{ width: "30%" }} /><col style={{ width: "10%" }} /><col style={{ width: "14%" }} />
+          <col style={{ width: "14%" }} /><col style={{ width: "10%" }} /><col style={{ width: "9%" }} />
+        </colgroup>
+        <thead>
+          <tr><th>Nº do processo</th><th>Demanda</th><th>Prioridade</th><th>Tipo</th><th>Gestor principal</th><th>Vencimento</th><th>Situação</th></tr>
+        </thead>
+        <tbody>
+          {demands.map((d) => (
+            <tr key={d.id}>
+              <td className="dm-print-number">{d.processNumber || <span className="dm-print-muted">Sem número</span>}</td>
+              <td><strong>{d.title}</strong>{d.notes && <small>{d.notes}</small>}</td>
+              <td><span className={`dm-print-priority ${d.priority || "routine"}`}>{priorityLabel(d.priority)}</span></td>
+              <td>{d.type || <span className="dm-print-muted">—</span>}</td>
+              <td>{d.setor || <span className="dm-print-muted">Sem gestor</span>}</td>
+              <td className="dm-print-date">{formatDate(d.dueDate)}{overdue(d) && <em>Vencida</em>}</td>
+              <td><span className={`dm-print-status ${d.status === "pending" ? "pending" : "active"}`}>{d.status === "pending" ? "Pendente" : "Iniciada"}</span></td>
+            </tr>
+          ))}
+          {demands.length === 0 && <tr><td colSpan="7" className="dm-print-muted">Nenhuma demanda encontrada com os filtros selecionados.</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Esqueleto de carregamento (skeleton screen): o formato da tabela ou dos cards em blocos, no lugar do
+// "Carregando…" (blocos em components/Skeleton.jsx).
 function DemandsSkeleton({ view, isViewer }) {
   const rows = Array.from({ length: SKELETON_ROWS }, (_, i) => i);
   return (
@@ -549,10 +594,17 @@ export default function DemandasPage({ demands, templates, collaborators, loadin
   const closeDetails = useCallback(() => setDetailId(null), []);
   const today = localToday();
   const hasTemplates = orderedTemplateTypeNames(templates).length > 0;
+  const printFilterSummary = [
+    search.trim() && `Busca: "${search.trim()}"`,
+    statusFilter !== "all" && `Situação: ${statusFilter === "pending" ? "Pendentes" : "Iniciadas"}`,
+    priorityFilter !== "all" && `Categoria: ${priorityLabel(priorityFilter)}`,
+    typeFilter !== "all" && `Tipo: ${typeFilter}`,
+  ].filter(Boolean).join("  •  ");
 
   return (
     <div className="lk-contracts dm-page">
       <h1 className="lk-sr">Demandas</h1>
+      {!loading && <DemandsPrintReport demands={filtered} filterSummary={printFilterSummary} today={today} />}
       <header className={`ct-header ${isViewer ? "lk-menu-bar" : ""}`}>
         <button className="lk-menu" aria-label="Abrir navegação" onClick={onOpenMenu}>☰</button>
         {!isViewer && (
@@ -593,6 +645,8 @@ export default function DemandasPage({ demands, templates, collaborators, loadin
         <SelectMenu label="Tipo de processo" value={typeFilter} onChange={setTypeFilter}
           options={[{ value: "all", label: "Todos" }, ...typeOptions]} />
         <div className="ct-toolbar-actions">
+          <button type="button" className="ct-header-export dm-print-button" onClick={() => window.print()} disabled={loading || filtered.length === 0}
+            title="Imprime ou salva em PDF as demandas exibidas, com os filtros atuais">Imprimir</button>
           <div className="ct-view-toggle ct-icon-toggle" role="group" aria-label="Visualização">
             <button type="button" className={view === "list" ? "active" : ""} aria-pressed={view === "list"} aria-label="Lista" title="Lista" onClick={() => changeView("list")}><IconViewList /></button>
             <button type="button" className={view === "cards" ? "active" : ""} aria-pressed={view === "cards"} aria-label="Cards" title="Cards" onClick={() => changeView("cards")}><IconViewCards /></button>

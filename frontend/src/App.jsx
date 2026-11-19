@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
 import { io } from "socket.io-client";
 import {
-  DEFAULT_TEMPLATES, normalizeTemplatesFromApi,
+  normalizeTemplatesFromApi,
   orderedTemplateTypeNames, normalizeDocs,
 } from "./utils";
 import AppSidebar from "./components/AppSidebar";
@@ -58,7 +58,7 @@ export default function App() {
   const [archived, setArchived] = useState([]);
   // Demandas ainda não iniciadas: fora do quadro, do calendário, dos relatórios e dos indicadores.
   const [pendingDemands, setPendingDemands] = useState([]);
-  const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
+  const [templates, setTemplates] = useState({});
   const [sectors, setSectors] = useState([]);
   const [collaborators, setCollaborators] = useState([]);
   const [activeTab, setActiveTab] = useState("board");
@@ -400,7 +400,6 @@ export default function App() {
   }, [columns, processTypeOrder]);
 
   const processPage = (<ProcessosPage
-                onDashboard={() => setActiveSection("dashboard")}
                 onOpenMenu={() => setSidebarOpen(true)}
                 loading={processLoading} error={processError}
                 columns={columns} archived={archived} templates={templates} sortedColumns={sortedColumns}
@@ -1035,7 +1034,7 @@ export default function App() {
         .contract-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--contract-state) 42%, var(--border)); box-shadow: 0 13px 32px rgba(0,0,0,.13); }
         .contract-card-regular { --contract-state: var(--green); }
         .contract-card-soon { --contract-state: #eab308; }
-        .contract-card-urgent, .contract-card-expired { --contract-state: var(--red); }
+        .contract-card-expired { --contract-state: var(--red); }
         .contract-card-no-date { --contract-state: var(--muted); }
         .contract-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 14px 16px 0; }
         .contract-card-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }

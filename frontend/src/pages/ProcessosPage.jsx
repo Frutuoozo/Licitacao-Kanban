@@ -838,7 +838,7 @@ export function DashboardDetails({ columns, archived, sortedColumns = [] }) {
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function ProcessosPage({
-  columns, archived, templates, sortedColumns, onDashboard, onOpenMenu, loading, error,
+  columns, archived, templates, sortedColumns, onOpenMenu, loading, error,
   activeTab, setActiveTab,
   onOpenDemands, updateDocs,
   deleteColumn, renameColumn, archiveColumn,

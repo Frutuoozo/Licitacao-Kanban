@@ -27,7 +27,7 @@ describe('cadastros com data impossível', () => {
   test('contrato com vencimento 31/04 é recusado', () => {
     const result = validateContractPayload({
       processName: 'Teste', objectDescription: 'Objeto', processNumber: '001/2026', contractValue: 10,
-      dueDate: '2026-04-31', fiscalEffective: 'Maria', modality: 'Pregão Eletrônico', lawType: 'new',
+      dueDate: '2026-04-31', fiscalEffective: 'Maria', modality: 'Pregão Eletrônico', lawType: 'new', contractorCnpj: '11222333000181', startDate: '2026-01-01', pcaProject: 'Projeto 12', pcaAccount: '3.3.90.39',
     });
     assert.equal(result, 'Data de vencimento inválida');
   });

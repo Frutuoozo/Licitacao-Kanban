@@ -157,7 +157,7 @@ describe('um relógio só, mesmo com o Node em outro fuso', { skip: testDbSkip |
   test('encerrar contrato sem data usa o dia de hoje em Teresina, não o do fuso do Node', async () => {
     const created = await call('POST', '/contracts', {
       processName: `${PREFIX}contrato`, objectDescription: 'Objeto', processNumber: '001/2026', contractValue: 10,
-      dueDate: '2030-01-01', fiscalEffective: 'Maria', modality: 'Pregão Eletrônico', lawType: 'new',
+      dueDate: '2030-01-01', fiscalEffective: 'Maria', modality: 'Pregão Eletrônico', lawType: 'new', contractorCnpj: '11222333000181', startDate: '2026-01-01', pcaProject: 'Projeto 12', pcaAccount: '3.3.90.39',
     });
     assert.equal(created.status, 201);
     useNodeTimezone(AHEAD);

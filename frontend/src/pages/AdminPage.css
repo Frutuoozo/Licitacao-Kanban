@@ -37,7 +37,6 @@
 .adm-legend .adm-access { margin: 0 4px 0 6px; font-size: 10px; }
 
 .adm-settings { transition: box-shadow .3s, border-color .3s; }
-.adm-settings.highlight { border-color: #93c5fd; box-shadow: 0 0 0 4px #2563eb1f; }
 .adm-settings-list { list-style: none; margin: 0; padding: 0; }
 .adm-settings-list li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; }
 .adm-settings-list li + li { border-top: 1px solid var(--lk-border); }
@@ -62,7 +61,6 @@
 .adm-drawer-subtitle { margin-top: 6px; font-size: 12px; color: var(--lk-muted); }
 .adm-drawer-body .admin-section { padding: 0; }
 .adm-drawer-body .admin-section-title { display: none; }
-.adm-subtabs { margin-bottom: 18px; }
 
 @media (max-width: 1500px) { .adm-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 1200px) { .adm-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

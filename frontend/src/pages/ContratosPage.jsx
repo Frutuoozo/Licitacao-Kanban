@@ -13,13 +13,17 @@ import {
   IconTrash,
   IconUnarchive,
   IconUser,
+  IconUsers,
+  IconClipboard,
 } from "../icons";
 import { authFetch, API_URL } from "../authFetch";
 import { useAppSettings } from "../appSettings";
-import { formatDate as formatPreferredDate, formatDateTime, usePreferences } from "../preferences";
+import { formatDate as formatPreferredDate, usePreferences } from "../preferences";
 import DatePicker from "../components/DatePicker";
 import { downloadCsv, printTable } from "../exportTable";
 import "./ContratosPage.css";
+import { SKELETON_ROWS, Sk, skWidth } from "../components/Skeleton";
+import { formatCnpj, isValidCnpj } from "../contractFields";
 
 // O leitor de PDF (PDF.js) só é baixado quando um documento é aberto.
 const PdfViewer = lazy(() => import("../components/PdfViewer"));
@@ -35,6 +39,12 @@ const EMPTY_FORM = {
   fiscalSubstitute: "",
   modality: "",
   lawType: "new",
+  contractorCnpj: "",
+  contractorEmail: "",
+  contractorPhone: "",
+  startDate: "",
+  pcaProject: "",
+  pcaAccount: "",
 };
 
 const LAW_INFO = {
@@ -187,16 +197,19 @@ function matchesVigencia(contract, filter) {
 
 // Exporta os contratos exibidos no formato escolhido nas Preferências (CSV ou PDF).
 function exportContracts(contracts, format) {
-  const header = ["Nº do processo", "Processo", "Objeto", "Modalidade", "Lei", "Fiscal efetivo", "Fiscal substituto", "Vencimento", "Valor", "Aditivos", "Situação", "Encerrado em", "Motivo do encerramento"];
+  const header = ["Nº do processo", "Empresa", "CNPJ", "E-mail", "Telefone", "Objeto", "Modalidade", "Lei", "Fiscal efetivo", "Fiscal substituto",
+    "Início da vigência", "Vencimento", "Valor", "Aditivos", "Situação", "Encerrado em", "Motivo do encerramento", "Projeto PCA", "Conta contábil"];
   const rows = contracts.map((c) => [
-    c.processNumber, c.processName, c.objectDescription, c.modality, (LAW_INFO[c.lawType] || LAW_INFO.new).label,
-    c.fiscalEffective, c.fiscalSubstitute || "", formatNumericDate(c.dueDate),
+    c.processNumber, c.processName, c.contractorCnpj ? formatCnpj(c.contractorCnpj) : "", c.contractorEmail || "", c.contractorPhone || "",
+    c.objectDescription, c.modality, (LAW_INFO[c.lawType] || LAW_INFO.new).label,
+    c.fiscalEffective, c.fiscalSubstitute || "", c.startDate ? formatNumericDate(c.startDate) : "", formatNumericDate(c.dueDate),
     c.valueVariable ? "Variável" : Number(c.contractValue).toLocaleString("pt-BR", { minimumFractionDigits: 2 }), `${c.amendmentCount || 0}/${MAX_AMENDMENTS}`,
-    getContractStatus(c).label, c.closedAt ? formatNumericDate(c.closedAt) : "", c.closedReason || "",
+    getContractStatus(c).label, c.closedAt ? formatNumericDate(c.closedAt) : "", c.closedReason || "", c.pcaProject || "", c.pcaAccount || "",
   ]);
   if (format === "pdf") {
-    // No PDF ficam as colunas que cabem numa folha deitada.
-    const pick = [0, 1, 3, 5, 7, 8, 9, 10];
+    // No PDF ficam as colunas que cabem numa folha deitada (as mesmas de antes: nº, empresa, modalidade, fiscal,
+    // vencimento, valor, aditivos e situação).
+    const pick = [0, 1, 6, 8, 11, 12, 13, 14];
     const ok = printTable({ title: "Contratos", subtitle: "Contratos exibidos com os filtros atuais", header: pick.map((i) => header[i]), rows: rows.map((row) => pick.map((i) => row[i])) });
     if (!ok) window.alert("O navegador bloqueou a janela do PDF. Permita pop-ups para este site e tente de novo.");
     return;
@@ -324,12 +337,12 @@ function ContractCard({ contract, canEdit, handlers, onOpen }) {
   const law = LAW_INFO[contract.lawType] || LAW_INFO.new;
 
   return (
-    <article className={`contract-card contract-card-${status.css} ct-card-clickable`} {...openableProps(contract, onOpen, `Ver detalhes do contrato ${contract.processName}`)}>
+    <article className={`contract-card contract-card-${status.css} ct-card-clickable${status.key === "regular" || status.renewable ? ` ct-stripe ct-stripe-${status.tone}` : ""}`} {...openableProps(contract, onOpen, `Ver detalhes do contrato ${contract.processName}`)}>
       <div className="contract-card-top">
-        <div className="contract-card-badges">
-          <span className={`ct-badge ${status.tone}`}>{status.label}</span>
-          <span className={`contract-law-badge contract-law-${contract.lawType}`}>{law.label}</span>
-        </div>
+        <p className="contract-card-kicker ct-card-label">
+          Processo
+          {contract.documentCount > 0 && <span className="ct-doc-flag" title={`${contract.documentCount} ${contract.documentCount === 1 ? "documento anexado" : "documentos anexados"}`}><IconFileText /> {contract.documentCount}</span>}
+        </p>
         {canEdit && (
           <div className="contract-card-actions">
             {contractActions(contract, handlers).map((action) => (
@@ -342,10 +355,6 @@ function ContractCard({ contract, canEdit, handlers, onOpen }) {
       </div>
 
       <div className="contract-card-title-wrap">
-        <p className="contract-card-kicker">
-          Processo
-          {contract.documentCount > 0 && <span className="ct-doc-flag" title={`${contract.documentCount} ${contract.documentCount === 1 ? "documento anexado" : "documentos anexados"}`}><IconFileText /> {contract.documentCount}</span>}
-        </p>
         <h2 className="contract-card-title" title={contract.processName}>{contract.processName}</h2>
         <p className="contract-card-object" title={contract.objectDescription}>{contract.objectDescription}</p>
       </div>
@@ -367,6 +376,14 @@ function ContractCard({ contract, canEdit, handlers, onOpen }) {
           <span>Vencimento · Aditivos</span>
           <strong>{formatDate(contract.dueDate)} · {status.amendments}/{MAX_AMENDMENTS}</strong>
         </div>
+        <div className="contract-info-item">
+          <span>Situação</span>
+          <strong>{status.label}</strong>
+        </div>
+        <div className="contract-info-item">
+          <span>Lei</span>
+          <strong>{law.label}</strong>
+        </div>
       </div>
 
       <div className="contract-inspection">
@@ -383,6 +400,67 @@ function ContractCard({ contract, canEdit, handlers, onOpen }) {
         </div>
       </div>
     </article>
+  );
+}
+
+// Esqueleto de carregamento (skeleton screen) no formato da tabela ou dos cards, no lugar do "Carregando contratos".
+function ContractsSkeleton({ view, canEdit }) {
+  const rows = Array.from({ length: SKELETON_ROWS }, (_, i) => i);
+  return (
+    <section className={view === "list" ? "ct-list" : "ct-cards-section"} aria-busy="true">
+      <p className="lk-sr" role="status">Carregando contratos</p>
+      {view === "list" ? (
+        <div className="ct-table-wrap" aria-hidden="true">
+          <table className="ct-table ct-skeleton">
+            <thead>
+              <tr>
+                <th>Contrato</th><th>Objeto</th><th>Fiscal</th><th>Vigência</th><th>Valor</th><th>Situação</th>
+                {canEdit && <th className="ct-col-action">Ação</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row}>
+                  <td><Sk w="120px" /></td>
+                  <td><Sk w={skWidth(row, 50, 40)} /><Sk w={skWidth(row, 35, 40)} h="8px" className="sk-sub" /></td>
+                  <td><Sk w={skWidth(row, 45, 45)} /></td>
+                  <td><Sk w="80px" /></td>
+                  <td><Sk w="90px" /></td>
+                  <td><Sk w="96px" h="24px" className="sk-pill" /><Sk w="60px" h="8px" className="sk-sub" /></td>
+                  {canEdit && <td className="ct-col-action"><Sk w="28px" h="28px" className="sk-icon" /></td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="contracts-grid" aria-hidden="true">
+          {rows.map((row) => (
+            <article className="contract-card sk-card" key={row}>
+              <div className="contract-card-top"><Sk w="58px" h="9px" />{canEdit && <Sk w="132px" h="28px" className="sk-icon" />}</div>
+              <div className="contract-card-title-wrap">
+                <Sk w={skWidth(row, 50, 40)} h="14px" className="sk-title" />
+                <Sk w={skWidth(row, 70, 25)} h="9px" className="sk-sub" />
+                <Sk w={skWidth(row, 40, 30)} h="9px" className="sk-sub" />
+              </div>
+              <div className="contract-info-grid">
+                {Array.from({ length: 6 }, (_, cell) => (
+                  <div className="contract-info-item" key={cell}><Sk w="56px" h="8px" /><Sk w={skWidth(row + cell, 40, 45)} className="sk-sub" /></div>
+                ))}
+              </div>
+              <div className="contract-inspection">
+                <div className="contract-inspection-title"><Sk w="90px" h="9px" /></div>
+                <div className="contract-inspection-grid">
+                  {[0, 1].map((cell) => (
+                    <div key={cell}><Sk w="70px" h="8px" /><Sk w={skWidth(row + cell, 45, 40)} className="sk-sub" /></div>
+                  ))}
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -581,33 +659,14 @@ function useWideScreen(query = "(min-width: 1100px)") {
   return wide;
 }
 
-const HISTORY_TITLES = {
-  created: "Termo de contrato",
-  edited: "Contrato editado",
-  closed: "Contrato encerrado",
-  reopened: "Contrato reaberto",
-  document: "Documento",
-};
-
-// Formata valores do histórico de edição conforme o campo alterado.
-function formatChangeValue(field, value) {
-  if (field === "valueVariable") return value === true || value === "true" ? "Sim" : "Não";
-  if (value === "" || value === null || value === undefined) return "—";
-  if (field === "dueDate") return formatDate(value);
-  if (field === "contractValue") return formatMoney(value);
-  if (field === "lawType") return (LAW_INFO[value] || LAW_INFO.new).label;
-  return String(value);
-}
-
-// Histórico e documentos do contrato, recarregados sempre que o contrato muda.
+// Registros (aditivos) e documentos do contrato, recarregados sempre que o contrato muda. O histórico não aparece
+// mais no painel, mas os aditivos dele dão as abas de documentos de cada termo aditivo.
 function useContractRecords(contract) {
   const [events, setEvents] = useState(null);
   const [documents, setDocuments] = useState([]);
-  const [error, setError] = useState("");
   const refreshKey = `${contract.updatedAt}-${contract.amendmentCount}-${contract.closedAt}-${contract.documentCount}`;
   useEffect(() => {
     let live = true;
-    setError("");
     Promise.all([
       authFetch(`${API_URL}/api/contracts/${contract.id}/history`).then((res) => { if (!res.ok) throw new Error(); return res.json(); }),
       authFetch(`${API_URL}/api/contracts/${contract.id}/documents`).then((res) => (res.ok ? res.json() : [])),
@@ -617,74 +676,57 @@ function useContractRecords(contract) {
         setEvents(Array.isArray(history) ? history : []);
         setDocuments(Array.isArray(docs) ? docs : []);
       })
-      .catch(() => { if (live) setError("Não foi possível carregar o histórico."); });
+      .catch(() => { if (live) setEvents([]); });
     return () => { live = false; };
   }, [contract.id, refreshKey]);
-  return { events, documents, error };
+  return { events, documents };
 }
 
-function ContractHistory({ events, error }) {
-  if (error) return <p className="ct-history-empty">{error}</p>;
-  if (events === null) return <p className="ct-history-empty">Carregando histórico…</p>;
-  if (events.length === 0) return <p className="ct-history-empty">Nenhum registro no histórico.</p>;
-
-  // Mais recente primeiro.
+// Blocos de informação do painel do contrato: cartão com título e campos em grade, separados por linhas finas.
+function DetailCard({ icon, title, children }) {
   return (
-    <ol className="ct-history">
-      {[...events].reverse().map((event) => {
-        const title = event.type === "amendment" ? `${event.amendmentNumber}º aditivo` : HISTORY_TITLES[event.type] || "Registro";
-        const stamp = new Date(event.createdAt);
-        return (
-          <li key={event.id} className={`ct-history-item ${event.type}`}>
-            <span className="ct-history-dot" aria-hidden="true" />
-            <div className="ct-history-content">
-              <div className="ct-history-head">
-                <strong>{title}</strong>
-                <time dateTime={event.eventDate}>{formatDate(event.eventDate)}</time>
-              </div>
-              {event.type === "created" && event.newDueDate && (
-                <p>Vigência até {formatDate(event.newDueDate)} · {event.newValueVariable ? "Valor variável" : formatMoney(event.newValue)}</p>
-              )}
-              {event.type === "amendment" && (
-                <>
-                  <p>Vencimento: {formatDate(event.previousDueDate)} → <b>{formatDate(event.newDueDate)}</b></p>
-                  {(() => {
-                    const before = event.previousValueVariable ? "Variável" : formatMoney(event.previousValue);
-                    const after = event.newValueVariable ? "Variável" : formatMoney(event.newValue);
-                    return before !== after
-                      ? <p>Valor: {before} → <b>{after}</b></p>
-                      : <p>Valor mantido: {after}</p>;
-                  })()}
-                </>
-              )}
-              {event.type === "edited" && (
-                <ul className="ct-history-changes">
-                  {event.changes.map((change) => (
-                    <li key={change.field}>
-                      <span>{change.label}:</span> {formatChangeValue(change.field, change.from)} → <b>{formatChangeValue(change.field, change.to)}</b>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {event.notes && event.type === "document" && <p>{event.notes}</p>}
-              {event.notes && event.type !== "created" && event.type !== "document" && <p className="ct-history-notes">“{event.notes}”</p>}
-              <small>
-                {event.userName ? `${event.userName} · ` : ""}
-                {Number.isFinite(stamp.getTime()) ? formatDateTime(stamp.toISOString(), "") : ""}
-              </small>
-            </div>
-          </li>
-        );
-      })}
-    </ol>
+    <section className="ct-detail-section ct-detail-card">
+      <h3>{icon}{title}</h3>
+      <dl className="ct-detail-fields">{children}</dl>
+    </section>
   );
+}
+
+// Campo vazio aparece como "Não informado", em tom apagado.
+function DetailField({ label, wide, mono, children }) {
+  const empty = children === null || children === undefined || children === "" || children === false;
+  return (
+    <div className={`ct-detail-field ${wide ? "ct-detail-wide" : ""}`}>
+      <dt>{label}</dt>
+      <dd className={empty ? "is-empty" : mono ? "is-mono" : undefined}>{empty ? "Não informado" : children}</dd>
+    </div>
+  );
+}
+
+// Duração da vigência em anos e meses ("1 ano e 3 meses"); menos de um mês vira dias.
+function periodLength(start, end) {
+  const a = parseLocalDate(start);
+  const b = parseLocalDate(end);
+  if (!a || !b || b < a) return "";
+  let months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+  if (b.getDate() < a.getDate()) months -= 1;
+  if (months < 1) {
+    const days = Math.round((b - a) / 86400000);
+    return `${days} ${days === 1 ? "dia" : "dias"}`;
+  }
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+  const parts = [];
+  if (years) parts.push(`${years} ${years === 1 ? "ano" : "anos"}`);
+  if (rest) parts.push(`${rest} ${rest === 1 ? "mês" : "meses"}`);
+  return parts.join(" e ");
 }
 
 function ContractDetails({ contract, canEdit, onClose, handlers, onContractChange }) {
   const closeRef = useRef(null);
   const wide = useWideScreen();
   const [viewerOpen, setViewerOpen] = useState(false);
-  const { events, documents, error: recordsError } = useContractRecords(contract);
+  const { events, documents } = useContractRecords(contract);
   const amendmentEvents = (events || []).filter((event) => event.type === "amendment");
   const [closing, setClosing] = useState(false);
   // Toca a animação de saída antes de desmontar o painel.
@@ -720,10 +762,6 @@ function ContractDetails({ contract, canEdit, onClose, handlers, onContractChang
           <div>
             <span className="ct-detail-number">{contract.processNumber}</span>
             <h2 id="ct-detail-title">{contract.processName}</h2>
-            <div className="ct-detail-badges">
-              <span className={`ct-badge ${status.tone}`}>{status.label}</span>
-              <span className={`contract-law-badge contract-law-${contract.lawType}`}>{law.label}</span>
-            </div>
           </div>
           <button type="button" className="ct-detail-close" ref={closeRef} onClick={() => requestClose()} aria-label="Fechar detalhes"><IconClose /></button>
         </header>
@@ -763,33 +801,42 @@ function ContractDetails({ contract, canEdit, onClose, handlers, onContractChang
             </section>
           )}
 
-          <section className="ct-detail-section">
-            <h3>Objeto</h3>
-            <p className="ct-detail-text">{contract.objectDescription || "—"}</p>
-          </section>
+          <DetailCard icon={<IconUsers />} title="Contratada">
+            <DetailField label="Empresa" wide>{contract.processName}</DetailField>
+            <DetailField label="CNPJ" mono>{contract.contractorCnpj && formatCnpj(contract.contractorCnpj)}</DetailField>
+            <DetailField label="Telefone">{contract.contractorPhone
+              && <a href={`tel:${contract.contractorPhone.replace(/[^\d+]/g, "")}`}>{contract.contractorPhone}</a>}</DetailField>
+            <DetailField label="E-mail" wide>{contract.contractorEmail
+              && <a href={`mailto:${contract.contractorEmail}`}>{contract.contractorEmail}</a>}</DetailField>
+          </DetailCard>
 
-          <section className="ct-detail-section">
-            <h3>Informações do processo</h3>
-            <dl className="ct-detail-grid">
-              <div><dt>Nº do processo</dt><dd>{contract.processNumber || "—"}</dd></div>
-              <div><dt>Modalidade</dt><dd>{contract.modality || "—"}</dd></div>
-              <div><dt>Lei aplicável</dt><dd>{law.label} ({law.short})</dd></div>
-              <div><dt>Situação</dt><dd>{status.label}</dd></div>
-            </dl>
-          </section>
+          <DetailCard icon={<IconFileText />} title="Contrato">
+            <DetailField label="Objeto" wide><span className="ct-detail-prose">{contract.objectDescription}</span></DetailField>
+            <DetailField label="Vigência" wide>
+              {contract.startDate ? (
+                <span className="ct-detail-period">
+                  <time dateTime={contract.startDate}>{formatDate(contract.startDate)}</time>
+                  <span aria-hidden="true">→</span><span className="lk-sr">a</span>
+                  <time dateTime={contract.dueDate}>{formatDate(contract.dueDate)}</time>
+                  {periodLength(contract.startDate, contract.dueDate) && <small>{periodLength(contract.startDate, contract.dueDate)}</small>}
+                </span>
+              ) : contract.dueDate && <>até {formatDate(contract.dueDate)} <small className="ct-detail-note">início não informado</small></>}
+            </DetailField>
+            <DetailField label="Nº do processo" mono>{contract.processNumber}</DetailField>
+            <DetailField label="Modalidade">{contract.modality}</DetailField>
+            <DetailField label="Lei aplicável">{law.label} <small className="ct-detail-note">{law.short}</small></DetailField>
+            <DetailField label="Situação"><span className={`ct-detail-status tone-${status.tone}`}>{status.label}</span></DetailField>
+          </DetailCard>
 
-          <section className="ct-detail-section">
-            <h3>Fiscalização</h3>
-            <dl className="ct-detail-grid">
-              <div><dt>Fiscal efetivo</dt><dd>{contract.fiscalEffective || "—"}</dd></div>
-              <div><dt>Fiscal substituto</dt><dd>{contract.fiscalSubstitute || "Não informado"}</dd></div>
-            </dl>
-          </section>
+          <DetailCard icon={<IconClipboard />} title="PCA">
+            <DetailField label="Projeto">{contract.pcaProject}</DetailField>
+            <DetailField label="Conta contábil" mono>{contract.pcaAccount}</DetailField>
+          </DetailCard>
 
-          <section className="ct-detail-section">
-            <h3>Histórico</h3>
-            <ContractHistory events={events} error={recordsError} />
-          </section>
+          <DetailCard icon={<IconUser />} title="Fiscalização">
+            <DetailField label="Fiscal efetivo">{contract.fiscalEffective}</DetailField>
+            <DetailField label="Fiscal substituto">{contract.fiscalSubstitute}</DetailField>
+          </DetailCard>
         </div>
 
         {canEdit && (
@@ -981,14 +1028,36 @@ function ContractFormModal({ editing, form, setForm, modalities, collaborators, 
 
             <section className="contract-form-section">
               <div className="contract-form-section-title">
-                <IconFileText />
-                <div><strong>Informações do processo</strong><span>Identificação e objeto contratado</span></div>
+                <IconUsers />
+                <div><strong>Contratada</strong><span>Empresa e contato</span></div>
               </div>
               <div className="contract-form-grid">
                 <label className="contract-field contract-field-wide">
-                  <span>Nome do processo *</span>
-                  <input value={form.processName} onChange={update("processName")} maxLength={255} required autoFocus placeholder="Ex.: Manutenção preventiva dos equipamentos" />
+                  <span>Nome da empresa *</span>
+                  <input value={form.processName} onChange={update("processName")} maxLength={255} required autoFocus placeholder="Ex.: Nordeste Telecom Ltda." />
                 </label>
+                <label className="contract-field">
+                  <span>CNPJ *</span>
+                  <input value={form.contractorCnpj} required onChange={(event) => setForm((current) => ({ ...current, contractorCnpj: formatCnpj(event.target.value) }))}
+                    inputMode="numeric" autoComplete="off" placeholder="00.000.000/0000-00" />
+                </label>
+                <label className="contract-field">
+                  <span>Telefone</span>
+                  <input type="tel" value={form.contractorPhone} onChange={update("contractorPhone")} maxLength={20} placeholder="(86) 3222-0000" />
+                </label>
+                <label className="contract-field contract-field-wide">
+                  <span>E-mail</span>
+                  <input type="email" value={form.contractorEmail} onChange={update("contractorEmail")} maxLength={254} placeholder="contato@empresa.com.br" />
+                </label>
+              </div>
+            </section>
+
+            <section className="contract-form-section">
+              <div className="contract-form-section-title">
+                <IconFileText />
+                <div><strong>Contrato</strong><span>Objeto e identificação do processo</span></div>
+              </div>
+              <div className="contract-form-grid">
                 <label className="contract-field contract-field-wide">
                   <span>Descrição do objeto *</span>
                   <textarea value={form.objectDescription} onChange={update("objectDescription")} maxLength={2000} required rows={4} placeholder="Descreva de forma objetiva o que foi contratado" />
@@ -1008,7 +1077,7 @@ function ContractFormModal({ editing, form, setForm, modalities, collaborators, 
                     <input value={form.modality} onChange={update("modality")} maxLength={120} required placeholder="Cadastre as modalidades em Administração" />
                   )}
                 </label>
-                <label className="contract-field">
+                <label className="contract-field contract-field-wide">
                   <span>Lei aplicável *</span>
                   <select value={form.lawType} onChange={update("lawType")} required>
                     <option value="new">Lei nova — 14.133/21</option>
@@ -1018,27 +1087,55 @@ function ContractFormModal({ editing, form, setForm, modalities, collaborators, 
               </div>
             </section>
 
-            <section className="contract-form-section">
+            <section className="contract-form-section ct-form-highlight">
               <div className="contract-form-section-title">
                 <IconCalendar />
-                <div><strong>Contrato e vigência</strong><span>Valor total e prazo atual</span></div>
+                <div><strong>Vigência e valor</strong><span>Prazo atual e valor total</span></div>
               </div>
               <div className="contract-form-grid">
-                <label className={`contract-field ${form.valueVariable ? "ct-field-disabled" : ""}`}>
-                  <span>Valor do contrato {form.valueVariable ? "" : "*"}</span>
-                  <div className="contract-money-field">
-                    <span>R$</span>
-                    <input value={form.valueVariable ? "" : form.contractValue} onChange={update("contractValue")} inputMode="decimal"
-                      required={!form.valueVariable} disabled={form.valueVariable} placeholder={form.valueVariable ? "Variável" : "0,00"} />
-                  </div>
+                <label className="contract-field">
+                  <span>Início da vigência *</span>
+                  <DatePicker value={form.startDate} onChange={(startDate) => setForm((current) => ({ ...current, startDate }))} required />
                 </label>
                 <label className="contract-field">
                   <span>Vencimento *</span>
                   <DatePicker value={form.dueDate} onChange={(dueDate) => setForm((current) => ({ ...current, dueDate }))} required />
                 </label>
-                <label className="ct-checkbox contract-field-wide">
-                  <input type="checkbox" checked={form.valueVariable} onChange={(event) => setForm((current) => ({ ...current, valueVariable: event.target.checked }))} />
-                  <span>Valor variável <em>— sem valor definido</em></span>
+                {/* Valor e a chave "Variável" no mesmo quadro: com a chave ligada, o valor some e fica o aviso. */}
+                <div className={`contract-field contract-field-wide ct-value-field ${form.valueVariable ? "is-variable" : ""}`}>
+                  <div className="ct-value-head">
+                    <label htmlFor="ct-contract-value">Valor do contrato {form.valueVariable ? "" : "*"}</label>
+                    <label className="ct-switch">
+                      <input type="checkbox" role="switch" checked={form.valueVariable}
+                        onChange={(event) => setForm((current) => ({ ...current, valueVariable: event.target.checked }))} />
+                      <span>Variável</span>
+                    </label>
+                  </div>
+                  {form.valueVariable ? (
+                    <p className="ct-value-variable">Sem valor definido</p>
+                  ) : (
+                    <div className="contract-money-field">
+                      <span>R$</span>
+                      <input id="ct-contract-value" value={form.contractValue} onChange={update("contractValue")} inputMode="decimal" required placeholder="0,00" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section className="contract-form-section">
+              <div className="contract-form-section-title">
+                <IconClipboard />
+                <div><strong>PCA</strong><span>Plano de Contratações Anual</span></div>
+              </div>
+              <div className="contract-form-grid">
+                <label className="contract-field">
+                  <span>Projeto *</span>
+                  <input value={form.pcaProject} onChange={update("pcaProject")} maxLength={255} required placeholder="Nome ou código do projeto" />
+                </label>
+                <label className="contract-field">
+                  <span>Conta contábil *</span>
+                  <input value={form.pcaAccount} onChange={update("pcaAccount")} maxLength={120} required placeholder="Ex.: 3.3.90.39" />
                 </label>
               </div>
             </section>
@@ -1368,6 +1465,12 @@ export default function ContratosAtivos({ isViewer, onUnauthorized, onOpenMenu }
       fiscalSubstitute: contract.fiscalSubstitute || "",
       modality: contract.modality,
       lawType: contract.lawType,
+      contractorCnpj: formatCnpj(contract.contractorCnpj),
+      contractorEmail: contract.contractorEmail || "",
+      contractorPhone: contract.contractorPhone || "",
+      startDate: contract.startDate || "",
+      pcaProject: contract.pcaProject || "",
+      pcaAccount: contract.pcaAccount || "",
     });
     setTermFile(null);
     setFormError("");
@@ -1396,6 +1499,18 @@ export default function ContratosAtivos({ isViewer, onUnauthorized, onOpenMenu }
     const contractValue = form.valueVariable && !String(form.contractValue).trim() ? "" : moneyInputToNumber(form.contractValue);
     if (!form.valueVariable && (!Number.isFinite(contractValue) || contractValue < 0)) {
       setFormError("Informe um valor de contrato válido.");
+      return;
+    }
+    if (!isValidCnpj(form.contractorCnpj)) {
+      setFormError("CNPJ inválido. Confira os 14 números.");
+      return;
+    }
+    if (!form.startDate) {
+      setFormError("Informe o início da vigência.");
+      return;
+    }
+    if (form.dueDate && form.startDate > form.dueDate) {
+      setFormError("O início da vigência não pode ser depois do vencimento.");
       return;
     }
 
@@ -1642,11 +1757,7 @@ export default function ContratosAtivos({ isViewer, onUnauthorized, onOpenMenu }
       </section>
 
       {loading ? (
-        <div className="ct-state">
-          <span className="contracts-spinner" />
-          <h2>Carregando contratos</h2>
-          <p>Aguarde enquanto buscamos os dados cadastrados.</p>
-        </div>
+        <ContractsSkeleton view={view} canEdit={canEdit} />
       ) : filteredContracts.length === 0 ? (
         <div className="ct-state">
           <div className="contracts-state-icon"><IconFileText /></div>

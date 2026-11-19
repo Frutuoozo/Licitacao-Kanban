@@ -91,7 +91,7 @@ if (!sourceArg) {
 
   rows.forEach((row, index) => {
     const contract = rowToContract(row);
-    const validated = validateContractPayload(contract);
+    const validated = validateContractPayload(contract, { legacyImport: true }); // as planilhas antigas não têm CNPJ, vigência nem PCA
     if (typeof validated === 'string') invalid.push({ line: index + 3, processNumber: contract.processNumber, error: validated });
     else valid.push(validated.data);
   });

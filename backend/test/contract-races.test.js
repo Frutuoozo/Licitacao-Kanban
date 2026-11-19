@@ -55,7 +55,7 @@ const call = async (method, path, body) => {
 const createContract = async () => {
   const res = await call('POST', '/contracts', {
     processName: `${NAME_PREFIX}${crypto.randomUUID().slice(0, 8)}`, objectDescription: 'Objeto de teste', processNumber: '001/2026',
-    contractValue: 1000, dueDate: '2030-01-01', fiscalEffective: 'Maria', modality: 'Pregão Eletrônico', lawType: 'new',
+    contractValue: 1000, dueDate: '2030-01-01', fiscalEffective: 'Maria', modality: 'Pregão Eletrônico', lawType: 'new', contractorCnpj: '11222333000181', startDate: '2026-01-01', pcaProject: 'Projeto 12', pcaAccount: '3.3.90.39',
   });
   assert.equal(res.status, 201);
   return res.body.id;

@@ -50,6 +50,12 @@ function serializeContract(row) {
     fiscalSubstitute: row.fiscal_substitute || '',
     modality: row.modality,
     lawType: row.law_type,
+    contractorCnpj: row.contractor_cnpj || '',
+    contractorEmail: row.contractor_email || '',
+    contractorPhone: row.contractor_phone || '',
+    startDate: formatDate(row.start_date),
+    pcaProject: row.pca_project || '',
+    pcaAccount: row.pca_account || '',
     closedAt: formatDate(row.closed_at),
     closedReason: row.closed_reason || '',
     amendmentCount: Number(row.amendment_count) || 0,
@@ -85,6 +91,7 @@ function serializeEvent(row) {
 const contractSelect = `
   SELECT c.id, c.process_name, c.object_description, c.process_number, c.contract_value, c.value_variable,
          c.due_date, c.fiscal_effective, c.fiscal_substitute, c.modality, c.law_type,
+         c.contractor_cnpj, c.contractor_email, c.contractor_phone, c.start_date, c.pca_project, c.pca_account,
          c.closed_at, c.closed_reason, c.created_at, c.updated_at,
          (SELECT COUNT(*) FROM contract_events e WHERE e.contract_id = c.id AND e.type = 'amendment') AS amendment_count,
          (SELECT COUNT(*) FROM contract_documents d WHERE d.contract_id = c.id) AS document_count
@@ -137,7 +144,7 @@ async function inTransaction(res, work, { status = 200, socketEvent = 'contract:
 }
 
 const EDIT_LABELS = {
-  processName: 'Nome do processo',
+  processName: 'Nome da empresa',
   objectDescription: 'Objeto',
   processNumber: 'Nº do processo',
   contractValue: 'Valor do contrato',
@@ -147,6 +154,12 @@ const EDIT_LABELS = {
   fiscalSubstitute: 'Fiscal substituto',
   modality: 'Modalidade',
   lawType: 'Lei aplicável',
+  contractorCnpj: 'CNPJ',
+  contractorEmail: 'E-mail',
+  contractorPhone: 'Telefone',
+  startDate: 'Início da vigência',
+  pcaProject: 'Projeto do PCA',
+  pcaAccount: 'Conta contábil',
 };
 
 // Todos os usuários autenticados podem visualizar os contratos.
@@ -186,10 +199,12 @@ router.post('/', requireEditorOrAdmin, contractWriteLimiter, (req, res) => {
     await conn.query(
       `INSERT INTO contracts
        (id, process_name, object_description, process_number, contract_value, value_variable, due_date,
-        fiscal_effective, fiscal_substitute, modality, law_type)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        fiscal_effective, fiscal_substitute, modality, law_type,
+        contractor_cnpj, contractor_email, contractor_phone, start_date, pca_project, pca_account)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, c.processName, c.objectDescription, c.processNumber, c.contractValue, c.valueVariable ? 1 : 0, c.dueDate,
-        c.fiscalEffective, c.fiscalSubstitute, c.modality, c.lawType]
+        c.fiscalEffective, c.fiscalSubstitute, c.modality, c.lawType,
+        c.contractorCnpj, c.contractorEmail, c.contractorPhone, c.startDate, c.pcaProject, c.pcaAccount]
     );
     await logEvent(conn, req, id, {
       type: 'created', newDueDate: c.dueDate, newValue: c.contractValue, newValueVariable: c.valueVariable ? 1 : 0, notes: 'Termo de contrato',
@@ -218,10 +233,12 @@ router.put('/:id', requireEditorOrAdmin, contractWriteLimiter, (req, res) => {
     await conn.query(
       `UPDATE contracts
        SET process_name = ?, object_description = ?, process_number = ?, contract_value = ?, value_variable = ?,
-           due_date = ?, fiscal_effective = ?, fiscal_substitute = ?, modality = ?, law_type = ?
+           due_date = ?, fiscal_effective = ?, fiscal_substitute = ?, modality = ?, law_type = ?,
+           contractor_cnpj = ?, contractor_email = ?, contractor_phone = ?, start_date = ?, pca_project = ?, pca_account = ?
        WHERE id = ?`,
       [c.processName, c.objectDescription, c.processNumber, c.contractValue, c.valueVariable ? 1 : 0, c.dueDate,
-        c.fiscalEffective, c.fiscalSubstitute, c.modality, c.lawType, req.params.id]
+        c.fiscalEffective, c.fiscalSubstitute, c.modality, c.lawType,
+        c.contractorCnpj, c.contractorEmail, c.contractorPhone, c.startDate, c.pcaProject, c.pcaAccount, req.params.id]
     );
     if (changes.length > 0) await logEvent(conn, req, req.params.id, { type: 'edited', changes });
     return { contract: await fetchContract(conn, req.params.id) };

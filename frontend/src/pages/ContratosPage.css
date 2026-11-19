@@ -106,6 +106,28 @@
 .lk-contracts .contract-card-expired { --contract-state: #94a3b8; }
 .lk-kpi.gray { --tone: #94a3b8; }
 .lk-contracts .contract-card-no-date { --contract-state: var(--lk-muted); }
+/* Faixa lateral só nos cards "Ativo" (verde) e "Para renovação" (roxo), no mesmo formato da de Demandas (.dm-card::before). */
+.lk-contracts .contract-card.ct-stripe-green { --stripe: #16a34a; }
+.lk-contracts .contract-card.ct-stripe-purple { --stripe: #7c3aed; }
+.lk-dark .lk-contracts .contract-card.ct-stripe-green { --stripe: #4ade80; }
+.lk-dark .lk-contracts .contract-card.ct-stripe-purple { --stripe: #a78bfa; }
+/* Topo do card sem os balões de status/lei: rótulo "Processo" à esquerda e os botões à direita, na mesma linha
+   (no celular também, sem a margem negativa que punha os botões ao lado dos balões) — igual a .dm-card. */
+.lk-contracts .contract-card .contract-card-top { justify-content: space-between; align-items: center; }
+.lk-contracts .contract-card .ct-card-label { margin: 0; }
+@media (max-width: 390px) {
+  .lk-contracts .contract-card .contract-card-top { flex-direction: row; }
+  .lk-contracts .contract-card .contract-card-actions { margin-top: 0; }
+}
+/* Situação e lei na planilha do card (3ª linha): as duas primeiras linhas ganham a divisória de baixo;
+   numa coluna só (≤390px), todas menos a última. */
+.lk-contracts .contract-card .contract-info-item:nth-child(-n+4) { border-bottom: 1px solid var(--border); }
+@media (max-width: 390px) {
+  .lk-contracts .contract-card .contract-info-item:not(:last-child) { border-bottom: 1px solid var(--border); }
+}
+/* Esqueleto de carregamento (ContractsSkeleton): linhas da tabela com a altura das de verdade. */
+.ct-skeleton td { height: 58px; }
+.lk-contracts .contract-card.ct-stripe::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--stripe); z-index: 1; }
 .lk-contracts .contract-card-title-wrap { flex: 1; }
 .lk-contracts .contract-card-title { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font: 600 15px/1.35 'Manrope', sans-serif; }
 .lk-contracts .contract-card-object { font-size: 12px; }
@@ -249,6 +271,39 @@
   .ct-detail-highlight, .ct-detail-grid { grid-template-columns: 1fr; }
   .ct-detail-footer button { flex: 1; min-height: 44px; }
 }
+/* Blocos de informação do painel (DetailCard/DetailField): cartão com cabeçalho e campos em grade, separados por
+   linhas finas (o fundo da grade aparece no espaço de 1px entre os campos). */
+.ct-detail-section + .ct-detail-section.ct-detail-card { margin-top: 16px; padding-top: 0; border-top: 1px solid var(--lk-border); }
+.ct-detail-section.ct-detail-card { border: 1px solid var(--lk-border); border-radius: 12px; background: var(--lk-surface); overflow: hidden; }
+.ct-detail-card h3 { display: flex; align-items: center; gap: 8px; margin: 0; padding: 11px 16px; border-bottom: 1px solid var(--lk-border); background: var(--lk-soft); }
+.ct-detail-card h3 svg { width: 14px; height: 14px; flex-shrink: 0; color: #2563eb; }
+.lk-dark .ct-detail-card h3 svg { color: #7eb2ff; }
+.ct-detail-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; margin: 0; background: var(--lk-border); }
+.ct-detail-field { min-width: 0; padding: 12px 16px; background: var(--lk-surface); }
+.ct-detail-field.ct-detail-wide { grid-column: 1 / -1; }
+.ct-detail-field dt { font-size: 11px; font-weight: 500; color: var(--lk-muted); }
+.ct-detail-field dd { margin: 4px 0 0; font-size: 14px; font-weight: 600; line-height: 1.45; color: var(--lk-text); overflow-wrap: anywhere; }
+.ct-detail-field dd.is-empty { font-size: 13px; font-weight: 400; font-style: italic; color: var(--lk-muted); }
+.ct-detail-field dd.is-mono { font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+.ct-detail-field dd a { color: #2563eb; text-decoration: none; }
+.ct-detail-field dd a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.lk-dark .ct-detail-field dd a { color: #7eb2ff; }
+.ct-detail-prose { display: block; font-weight: 500; line-height: 1.6; white-space: pre-wrap; }
+.ct-detail-period { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-variant-numeric: tabular-nums; }
+.ct-detail-period > span[aria-hidden] { color: var(--lk-muted); font-weight: 400; }
+.ct-detail-period small, .ct-detail-note { padding: 1px 8px; border-radius: 999px; background: var(--lk-soft); border: 1px solid var(--lk-border); color: var(--lk-muted); font-size: 11px; font-weight: 500; white-space: nowrap; }
+.ct-detail-note { margin-left: 4px; }
+.ct-detail-status { display: inline-flex; align-items: center; gap: 7px; }
+.ct-detail-status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.ct-detail-status.tone-purple { color: #7c3aed; }
+.lk-dark .ct-detail-status.tone-green { color: #4ade80; }
+.lk-dark .ct-detail-status.tone-purple { color: #c4b5fd; }
+.lk-dark .ct-detail-status.tone-amber { color: #fbbf24; }
+.lk-dark .ct-detail-status.tone-gray { color: #a5afbd; }
+@media (max-width: 480px) {
+  .ct-detail-fields { grid-template-columns: minmax(0, 1fr); }
+  .ct-detail-field.ct-detail-wide { grid-column: auto; }
+}
 @media (prefers-reduced-motion: reduce) { .ct-detail, .ct-detail-overlay, .ct-detail-header > div, .ct-detail-body > section, .ct-detail-footer, .ct-detail-highlight > div { animation: none !important; } }
 
 .lk-contracts .contract-field-hint { margin: -4px 0 0; font-size: 11px; color: var(--lk-muted); }
@@ -259,10 +314,13 @@
 .ct-form-drawer .contract-form-header { padding: 24px; }
 .ct-form-drawer .contract-form-header > div, .ct-form-drawer .contract-form-section, .ct-form-drawer .contract-form-footer { animation: ctRise .4s cubic-bezier(.16, 1, .3, 1) backwards; } /* "both" manteria a seção como referência do calendário (position: fixed) e ele abriria fora da tela. */
 .ct-form-drawer .contract-form-header > div { animation-delay: .08s; }
+/* Uma seção depois da outra (Contratada, Contrato, Vigência e valor, PCA, Fiscalização). */
 .ct-form-drawer .contract-form-section:nth-of-type(1) { animation-delay: .14s; }
-.ct-form-drawer .contract-form-section:nth-of-type(2) { animation-delay: .2s; }
-.ct-form-drawer .contract-form-section:nth-of-type(3) { animation-delay: .26s; }
-.ct-form-drawer .contract-form-footer { animation-delay: .3s; }
+.ct-form-drawer .contract-form-section:nth-of-type(2) { animation-delay: .18s; }
+.ct-form-drawer .contract-form-section:nth-of-type(3) { animation-delay: .22s; }
+.ct-form-drawer .contract-form-section:nth-of-type(4) { animation-delay: .26s; }
+.ct-form-drawer .contract-form-section:nth-of-type(5) { animation-delay: .3s; }
+.ct-form-drawer .contract-form-footer { animation-delay: .34s; }
 .ct-form-drawer .contract-form-header h2 { font: 700 20px/28px 'Manrope', sans-serif; }
 .ct-form-drawer .contract-form-eyebrow { color: #2563eb; }
 .lk-dashboard .ct-form-drawer .contract-form-header .icon-btn { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--lk-border); border-radius: 10px; color: var(--lk-muted); }
@@ -296,13 +354,13 @@
 .ct-form-drawer .contract-field input, .ct-form-drawer .contract-field select { height: 40px; padding: 0 12px; }
 .ct-form-drawer .contract-field textarea { padding: 10px 12px; line-height: 1.6; }
 .ct-form-drawer .contract-field input:focus, .ct-form-drawer .contract-field select:focus, .ct-form-drawer .contract-field textarea:focus { border-color: #2563eb; box-shadow: 0 0 0 3px #2563eb1f; }
-/* "Contrato e vigência" vira os dois destaques (Valor / Vencimento) do detalhe. */
-.ct-form-drawer .contract-form-section:nth-of-type(2) .contract-form-grid { gap: 12px; }
-.ct-form-drawer .contract-form-section:nth-of-type(2) .contract-field { padding: 14px 16px; border: 1px solid var(--lk-border); border-radius: 12px; background: var(--lk-soft); text-transform: uppercase; }
-.ct-form-drawer .contract-form-section:nth-of-type(2) .contract-field input { height: 36px; border-color: transparent; background: transparent; padding-left: 0; font: 700 18px/26px 'Manrope', sans-serif; text-transform: none; }
-.ct-form-drawer .contract-form-section:nth-of-type(2) .contract-field input:focus { border-color: transparent; box-shadow: inset 0 -2px 0 #2563eb; border-radius: 0; }
-.ct-form-drawer .contract-form-section:nth-of-type(2) .contract-money-field > span { left: 0; font: 700 18px 'Manrope', sans-serif; color: var(--lk-text); text-transform: none; }
-.ct-form-drawer .contract-form-section:nth-of-type(2) .contract-money-field input { padding-left: 32px; }
+/* "Vigência e valor" vira os destaques (Valor / Vencimento) do detalhe; o "Valor variável" fica ao lado do valor. */
+.ct-form-drawer .contract-form-section.ct-form-highlight .contract-form-grid { gap: 12px; }
+.ct-form-drawer .contract-form-section.ct-form-highlight .contract-field { padding: 14px 16px; border: 1px solid var(--lk-border); border-radius: 12px; background: var(--lk-soft); text-transform: uppercase; }
+.ct-form-drawer .contract-form-section.ct-form-highlight .contract-field input { height: 36px; border-color: transparent; background: transparent; padding-left: 0; font: 700 18px/26px 'Manrope', sans-serif; text-transform: none; }
+.ct-form-drawer .contract-form-section.ct-form-highlight .contract-field input:focus { border-color: transparent; box-shadow: inset 0 -2px 0 #2563eb; border-radius: 0; }
+.ct-form-drawer .contract-form-section.ct-form-highlight .contract-money-field > span { left: 0; font: 700 18px 'Manrope', sans-serif; color: var(--lk-text); text-transform: none; }
+.ct-form-drawer .contract-form-section.ct-form-highlight .contract-money-field input { padding-left: 32px; }
 /* Rodapé igual ao do painel de detalhes: ação secundária à esquerda, principal à direita, com ícones e sem sombra. */
 .ct-form-drawer .contract-form-footer { justify-content: space-between; gap: 10px; padding: 16px 24px; background: var(--lk-soft); border-top: 1px solid var(--lk-border); }
 .lk-contracts .ct-form-drawer .contract-form-footer button { box-shadow: none; transform: none; font-size: 13px; font-weight: 600; }
@@ -322,29 +380,6 @@
 .ct-amend-meter span { height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--lk-border) 80%, transparent); }
 .ct-amend-meter span.used { background: #2563eb; }
 .ct-detail-closed { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #eef0f3; color: #475569; font-size: 12px; line-height: 1.5; }
-
-.ct-history { list-style: none; margin: 0; padding: 0; position: relative; }
-.ct-history::before { content: ""; position: absolute; top: 6px; bottom: 6px; left: 5px; width: 2px; background: var(--lk-border); border-radius: 2px; }
-.ct-history-item { position: relative; display: flex; gap: 14px; padding-bottom: 16px; }
-.ct-history-item:last-child { padding-bottom: 0; }
-.ct-history-dot { position: relative; z-index: 1; flex-shrink: 0; width: 12px; height: 12px; margin-top: 3px; border: 2px solid var(--lk-surface); border-radius: 50%; background: var(--lk-muted); box-shadow: 0 0 0 1px var(--lk-border); }
-.ct-history-item.created .ct-history-dot { background: #16a34a; }
-.ct-history-item.amendment .ct-history-dot { background: #2563eb; }
-.ct-history-item.edited .ct-history-dot { background: #94a3b8; }
-.ct-history-item.closed .ct-history-dot { background: #94a3b8; }
-.ct-history-item.reopened .ct-history-dot { background: #7c3aed; }
-.ct-history-content { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--lk-border); border-radius: 10px; background: var(--lk-soft); font-size: 12px; line-height: 1.5; }
-.ct-history-head { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 2px; }
-.ct-history-head strong { font-weight: 700; }
-.ct-history-head time { flex-shrink: 0; font-size: 11px; color: var(--lk-muted); font-variant-numeric: tabular-nums; }
-.ct-history-content p { margin: 2px 0 0; overflow-wrap: anywhere; }
-.ct-history-content b { font-weight: 600; }
-.ct-history-changes { margin: 4px 0 0; padding-left: 16px; }
-.ct-history-changes li { overflow-wrap: anywhere; }
-.ct-history-changes span { color: var(--lk-muted); }
-.ct-history-notes { font-style: italic; color: var(--lk-muted); }
-.ct-history-content small { display: block; margin-top: 6px; font-size: 10px; color: var(--lk-muted); }
-.ct-history-empty { font-size: 12px; color: var(--lk-muted); }
 
 /* Rodapé do detalhe com mais ações */
 .ct-detail-footer-main { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
@@ -373,6 +408,25 @@
 /* Valor variável */
 .ct-field-note { margin-top: 2px; font-size: 11px; font-weight: 500; text-transform: none; color: var(--lk-muted); }
 .ct-field-disabled .contract-money-field input:disabled { opacity: .6; cursor: not-allowed; background: var(--lk-soft); }
+/* Valor do contrato com a chave "Variável" no canto do quadro (formulário de contrato). */
+.ct-value-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 22px; }
+.ct-value-head > label:first-child { cursor: text; }
+.ct-form-drawer .ct-value-field .ct-switch { display: inline-flex; align-items: center; gap: 8px; color: var(--lk-muted); font-size: 11px; font-weight: 600; text-transform: none; letter-spacing: 0; cursor: pointer; user-select: none; }
+.ct-form-drawer .ct-value-field.is-variable .ct-switch { color: #2563eb; }
+.ct-form-drawer .contract-form-section.ct-form-highlight .ct-value-field .ct-switch input {
+  appearance: none; position: relative; flex-shrink: 0; width: 34px; height: 20px; margin: 0; padding: 0;
+  border: 0; border-radius: 999px; background: color-mix(in srgb, var(--lk-muted) 35%, var(--lk-border)); cursor: pointer; transition: background .18s;
+}
+.ct-form-drawer .contract-form-section.ct-form-highlight .ct-value-field .ct-switch input::before {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 3px #0f172a40; transition: transform .18s;
+}
+.ct-form-drawer .contract-form-section.ct-form-highlight .ct-value-field .ct-switch input:checked { background: #2563eb; }
+.ct-form-drawer .contract-form-section.ct-form-highlight .ct-value-field .ct-switch input:checked::before { transform: translateX(14px); }
+.ct-form-drawer .contract-form-section.ct-form-highlight .ct-value-field .ct-switch input:focus { box-shadow: none; border-radius: 999px; }
+.ct-form-drawer .contract-form-section.ct-form-highlight .ct-value-field .ct-switch input:focus-visible { box-shadow: 0 0 0 3px #2563eb40; }
+.ct-value-variable { display: flex; align-items: center; height: 36px; margin: 0; color: var(--lk-muted); font: 600 15px/1 'Manrope', sans-serif; text-transform: none; }
+@media (prefers-reduced-motion: reduce) { .ct-value-field .ct-switch input, .ct-value-field .ct-switch input::before { transition: none !important; } }
 .ct-checkbox em { font-style: normal; color: var(--lk-muted); font-weight: 400; }
 
 /* ── Documentos: visualizador ao lado das informações ── */

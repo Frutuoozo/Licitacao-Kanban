@@ -98,6 +98,21 @@ const OBJECTS = ['Fornecimento de material de expediente', 'Prestação de servi
   'Capacitação de servidores', 'Fornecimento de coffee break', 'Serviços de correio e malote', 'Outsourcing de impressão',
   'Desenvolvimento de sistemas', 'Hospedagem em nuvem', 'Fornecimento de mobiliário', 'Reforma do auditório',
   'Instalação de usina solar', 'Plano de saúde dos colaboradores', 'Fornecimento de uniformes'];
+// CNPJ válido e fixo por empresa (mesma empresa, mesmo CNPJ), sem gastar o gerador aleatório.
+const companyCnpj = (index) => {
+  const base = `${pad(11 + index, 2)}${pad((index * 7919) % 1000000, 6)}0001`.split('').map(Number);
+  const check = (digits) => {
+    const weights = digits.length === 12 ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    const rest = weights.reduce((total, weight, i) => total + digits[i] * weight, 0) % 11;
+    return rest < 2 ? 0 : 11 - rest;
+  };
+  base.push(check(base));
+  base.push(check(base));
+  return base.join('');
+};
+const PCA_PROJECTS = ['Manutenção da sede', 'Modernização da TI', 'Comunicação institucional', 'Capacitação de servidores',
+  'Fiscalização do exercício profissional', 'Eventos institucionais', 'Gestão documental'];
+const PCA_ACCOUNTS = ['6.3.1.3.01.01.019', '6.3.1.3.01.02.006', '6.3.1.3.02.01.001', '6.3.1.3.02.01.033', '6.3.1.3.02.02.010'];
 const COMPANIES = ['Alfa Serviços Ltda', 'Beta Comércio e Representações', 'Gama Tecnologia S.A.', 'Delta Engenharia',
   'Ômega Soluções', 'Piauí Limpeza e Conservação', 'Teresina Locadora', 'Nordeste Telecom', 'Parnaíba Gráfica',
   'Delta Viagens e Turismo', 'Sol do Norte Energia', 'Rio Poti Segurança', 'Cajuína Eventos', 'Serra Azul Climatização',
@@ -314,13 +329,24 @@ async function main() {
       eventRows.push([id, 'reopened', isoDate(reopened), null, null, null, null, null, 'Reaberto após conferência.', null, admin.id, admin.username, null, null, sqlDateTime(atHour(reopened))]);
     }
     const effective = pick(activeNames);
-    contracts.push([id, `${pick(COMPANIES)}`, `${pick(OBJECTS)} para o Conselho, conforme termo de referência.`,
+    const company = pick(COMPANIES);
+    const companyIndex = COMPANIES.indexOf(company);
+    // Contratada, início da vigência (data do termo de contrato, nunca depois do vencimento) e PCA (obrigatórios); ~30% sem telefone.
+    const details = [
+      companyCnpj(companyIndex), `contato@${slug(company).replace(/^\.+|\.+$/g, '')}.com.br`,
+      chance(0.7) ? `(86) 3${pad(int(100, 999), 3)}-${pad(int(0, 9999), 4)}` : null,
+      // Vencimento puxado para trás (vencidos) pode cair antes do termo: aí a vigência começa 1 ano antes do vencimento.
+      isoDate(created <= due ? created : addDays(due, -365)),
+      pick(PCA_PROJECTS), pick(PCA_ACCOUNTS),
+    ];
+    contracts.push([id, company, `${pick(OBJECTS)} para o Conselho, conforme termo de referência.`,
       `90796071100002${pad(int(10, 99))}.${pad(int(1, 999), 6)}/${created.getFullYear()}-${pad(int(10, 99))}`,
       value.toFixed(2), isoDate(due), effective, chance(0.8) ? pick(activeNames.filter((n) => n !== effective)) : null,
       pick(MODALITIES.slice(0, 18)), chance(0.75) ? 'new' : 'old', sqlDateTime(created),
-      closedAt ? isoDate(closedAt) : null, closedReason, variable]);
+      closedAt ? isoDate(closedAt) : null, closedReason, variable, ...details]);
   }
-  await insert('contracts', ['id', 'process_name', 'object_description', 'process_number', 'contract_value', 'due_date', 'fiscal_effective', 'fiscal_substitute', 'modality', 'law_type', 'created_at', 'closed_at', 'closed_reason', 'value_variable'], contracts);
+  await insert('contracts', ['id', 'process_name', 'object_description', 'process_number', 'contract_value', 'due_date', 'fiscal_effective', 'fiscal_substitute', 'modality', 'law_type', 'created_at', 'closed_at', 'closed_reason', 'value_variable',
+    'contractor_cnpj', 'contractor_email', 'contractor_phone', 'start_date', 'pca_project', 'pca_account'], contracts);
   await insert('contract_events', ['contract_id', 'type', 'event_date', 'amendment_number', 'previous_due_date', 'new_due_date', 'previous_value', 'new_value', 'notes', 'changes', 'user_id', 'user_name', 'previous_value_variable', 'new_value_variable', 'created_at'], eventRows);
 
   // ── Anexos (≥30): termo de contrato em 20 contratos e termo de aditivo nos primeiros aditivos ──

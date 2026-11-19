@@ -16,6 +16,9 @@ const MAX_LENGTHS = {
   genericText: 500,
   contractObject: 2000,
   processNotes: 2000,
+  contractorPhone: 20, // contracts.contractor_phone
+  pcaProject: 255, // contracts.pca_project
+  pcaAccount: 120, // contracts.pca_account
 };
 
 export function isNonEmptyString(value, maxLength) {
@@ -57,6 +60,23 @@ export function isValidEmail(value) {
 
 export function isValidCpf(value) {
   return typeof value === 'string' && /^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(value.trim());
+}
+
+// CNPJ: 14 dígitos (sem máscara), dígitos verificadores certos e não todos iguais.
+export function isValidCnpj(digits) {
+  if (typeof digits !== 'string' || !/^\d{14}$/.test(digits) || /^(\d)\1{13}$/.test(digits)) return false;
+  const checkDigit = (length) => {
+    const weights = length === 12 ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    const sum = weights.reduce((total, weight, i) => total + Number(digits[i]) * weight, 0);
+    const rest = sum % 11;
+    return rest < 2 ? 0 : 11 - rest;
+  };
+  return checkDigit(12) === Number(digits[12]) && checkDigit(13) === Number(digits[13]);
+}
+
+// Telefone de contato: texto livre curto (dígitos, espaço, parênteses, + e -) com pelo menos 8 dígitos.
+function isValidPhone(value) {
+  return value.length <= MAX_LENGTHS.contractorPhone && /^[0-9()+\-\s]+$/.test(value) && value.replace(/\D/g, '').length >= 8;
 }
 
 export function isHexColor(value) {
@@ -151,7 +171,9 @@ export function missingDemandField({ processNumber, dueDate, type, status }) {
   return null;
 }
 
-export function validateContractPayload(payload) {
+// legacyImport: só para a importação de planilhas antigas (scripts/import-contracts-csv.js), que não têm CNPJ,
+// início da vigência nem PCA.
+export function validateContractPayload(payload, { legacyImport = false } = {}) {
   if (!payload || typeof payload !== 'object') return 'Payload inválido';
 
   const processName = normalizeText(payload.processName);
@@ -162,6 +184,14 @@ export function validateContractPayload(payload) {
   const modality = normalizeText(payload.modality);
   const lawType = normalizeText(payload.lawType);
   const dueDate = normalizeText(payload.dueDate);
+  // CNPJ, início da vigência e PCA obrigatórios; e-mail e telefone opcionais (vazio vira null).
+  const rawCnpj = normalizeText(payload.contractorCnpj);
+  const contractorCnpj = rawCnpj.replace(/[.\/\-\s]/g, '');
+  const contractorEmail = normalizeText(payload.contractorEmail);
+  const contractorPhone = normalizeText(payload.contractorPhone);
+  const startDate = normalizeText(payload.startDate);
+  const pcaProject = normalizeText(payload.pcaProject);
+  const pcaAccount = normalizeText(payload.pcaAccount);
   const valueVariable = payload.valueVariable === true;
   // Valor variável: sem valor definido; o número é opcional (guardado como 0 se não informado).
   const rawValue = payload.contractValue;
@@ -169,7 +199,7 @@ export function validateContractPayload(payload) {
     ? 0
     : Number(rawValue);
 
-  if (!isNonEmptyString(processName, MAX_LENGTHS.title)) return 'Nome do processo obrigatório';
+  if (!isNonEmptyString(processName, MAX_LENGTHS.title)) return 'Nome da empresa obrigatório';
   if (!isNonEmptyString(objectDescription, MAX_LENGTHS.contractObject)) return 'Descrição do objeto obrigatória';
   if (!isNonEmptyString(processNumber, MAX_LENGTHS.contractProcessNumber)) return 'Número do processo obrigatório';
   if (!Number.isFinite(contractValue) || contractValue < 0 || contractValue > 9999999999999.99) {
@@ -180,6 +210,19 @@ export function validateContractPayload(payload) {
   if (fiscalSubstitute.length > MAX_LENGTHS.name) return 'Nome do fiscal substituto muito longo';
   if (!isNonEmptyString(modality, MAX_LENGTHS.modality)) return 'Modalidade obrigatória';
   if (!['old', 'new'].includes(lawType)) return 'Lei do contrato inválida';
+  if (!legacyImport) {
+    if (!contractorCnpj) return 'CNPJ obrigatório';
+    if (!startDate) return 'Início da vigência obrigatório';
+    if (!pcaProject) return 'Projeto do PCA obrigatório';
+    if (!pcaAccount) return 'Conta contábil obrigatória';
+  }
+  if (contractorCnpj && !isValidCnpj(contractorCnpj)) return 'CNPJ inválido';
+  if (contractorEmail && !isValidEmail(contractorEmail)) return 'E-mail da contratada inválido';
+  if (contractorPhone && !isValidPhone(contractorPhone)) return 'Telefone da contratada inválido';
+  if (startDate && !isValidDateString(startDate)) return 'Data de início da vigência inválida';
+  if (startDate && startDate > dueDate) return 'O início da vigência não pode ser depois do vencimento';
+  if (pcaProject.length > MAX_LENGTHS.pcaProject) return 'Projeto do PCA muito longo';
+  if (pcaAccount.length > MAX_LENGTHS.pcaAccount) return 'Conta contábil muito longa';
 
   return {
     ok: true,
@@ -194,6 +237,12 @@ export function validateContractPayload(payload) {
       fiscalSubstitute: fiscalSubstitute || null,
       modality,
       lawType,
+      contractorCnpj: contractorCnpj || null,
+      contractorEmail: contractorEmail || null,
+      contractorPhone: contractorPhone || null,
+      startDate: startDate || null,
+      pcaProject: pcaProject || null,
+      pcaAccount: pcaAccount || null,
     },
   };
 }

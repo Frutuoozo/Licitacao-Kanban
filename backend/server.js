@@ -19,6 +19,7 @@ import { requireAdmin } from './middleware/admin.js';
 import { requireCsrf } from './middleware/csrf.js';
 import db from './db.js';
 import { migrateDemandPriority, migrateDemands } from './demandsMigration.js';
+import { migrateContractDetails } from './contractDetailsMigration.js';
 import { initSocket } from './socket.js';
 import { CORS_ORIGINS, configureClientIp } from './config.js';
 import { getJwtSecret } from './security.js';
@@ -347,6 +348,9 @@ async function runMigrations() {
 
   // Migration 022: prioridade da demanda; os processos existentes ficam como rotina.
   if (await migrateDemandPriority(db)) console.log('Migration 022: coluna priority adicionada em processes.');
+
+  // Migration 023: contratada (CNPJ, e-mail, telefone), início da vigência e PCA no contrato; todos opcionais.
+  if (await migrateContractDetails(db)) console.log('Migration 023: dados da contratada, vigência e PCA adicionados em contracts.');
 }
 
 // Erros de rede ao conectar no MySQL (banco ainda ligando, reiniciando ou fora do ar): vale tentar de novo.

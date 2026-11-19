@@ -43,10 +43,9 @@ html.lk-theme-dark, html.lk-theme-dark body { background: #111827; }
 .lk-dark .ct-detail-delete:hover, .lk-dark .mm-btn.danger:hover, .lk-dark .mm-icon-btn.danger,
 .lk-dark .ct-row-menu-list button.danger:hover, .lk-dark .ct-viewer-actions button.danger:hover:not(:disabled) { background: #dc26261f; border-color: #dc262680; color: #f87171; }
 .lk-dark .mm-btn.outline, .lk-dark .mm-dashed, .lk-dark .ct-file-drop.has-file { border-color: #2563eb66; }
-.lk-dark .lk-sidebar .lk-sidebar-bottom > button.lk-signout:hover, .lk-dark .lk-sidebar .lk-user-logout:hover { background: #dc26261f; color: #f87171; }
+.lk-dark .lk-sidebar .lk-sidebar-bottom > button.lk-signout:hover { background: #dc26261f; color: #f87171; }
 .lk-dark .lk-sidebar .lk-sidebar-bottom > button.lk-signout:hover svg { color: #f87171; }
 .lk-dark .adm-switch { background: #374151; }
-.lk-dark .lk-dashboard .pf-logout:hover { border-color: #dc262680; color: #f87171; }
 
 /* Menus suspensos, dicas e painéis com branco fixo */
 .lk-dark .ct-row-menu-list, .lk-dark .rp-menu, .lk-dark .mm-color-menu, .lk-dark .ct-managers-tip, .lk-dark .rp-tooltip { background: #1f2937; border-color: #374151; box-shadow: var(--lk-shadow); }
@@ -128,7 +127,7 @@ html.lk-theme-dark, html.lk-theme-dark body { background: #111827; }
 /* Bordas de hover azul-claro ficam fortes demais no escuro */
 .lk-dark .adm-card-action:hover, .lk-dark .ct-managers-lists li button:hover { border-color: #2563eb88; }
 .lk-dark .dp-popover .dp-link.strong:hover { background: #2563eb2e; color: #93c5fd; }
-.lk-dark .pf-logout:hover, .lk-dark .ct-viewer-actions button.danger:hover:not(:disabled) { border-color: #dc262680; color: #f87171; }
+.lk-dark .ct-viewer-actions button.danger:hover:not(:disabled) { border-color: #dc262680; color: #f87171; }
 /* Campos dos modais antigos estavam presos ao esquema claro */
 .lk-dark.lk-process-shell :is(.doc-input, .select-field) { color-scheme: dark !important; }
 

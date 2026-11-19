@@ -71,7 +71,7 @@ const process = (over = {}) => ({
 });
 const contract = (over = {}) => ({
   processName: `${PREFIX}${crypto.randomUUID().slice(0, 8)}`, objectDescription: 'Objeto', processNumber: '001/2026', contractValue: 10,
-  dueDate: '2030-01-01', fiscalEffective: 'Maria', modality: 'Pregão Eletrônico', lawType: 'new', ...over,
+  dueDate: '2030-01-01', fiscalEffective: 'Maria', modality: 'Pregão Eletrônico', lawType: 'new', contractorCnpj: '11222333000181', startDate: '2026-01-01', pcaProject: 'Projeto 12', pcaAccount: '3.3.90.39', ...over,
 });
 
 describe('limites de tamanho iguais aos das colunas', { skip: testDbSkip || false }, () => {

@@ -1,5 +1,3 @@
-import { useState, useEffect } from "react";
-
 export const TYPE_COLORS = {
   "Aquisições":           "#e05500",
   "Dispensa sem Disputa": "#f07020",
@@ -12,24 +10,6 @@ export const TYPE_COLORS = {
 };
 
 export const COLUMN_ORDER = ["Aquisições", "Dispensa sem Disputa", "Dispensa com Disputa", "Inexigibilidade", "Renovação Antiga", "Renovação Nova", "Publicação", "Pregão Eletrônico"];
-
-export const DEFAULT_TEMPLATE_ITEMS = {};
-
-export const CARD_COLORS = [
-  { label: "Padrão",         value: null },
-  { label: "Azul",           value: "#1e88e5" },
-  { label: "Verde",          value: "#43a047" },
-  { label: "Verde Claro",    value: "#66bb6a" },
-  { label: "Verde Escuro",   value: "#2e7d32" },
-  { label: "Amarelo",        value: "#f9a825" },
-  { label: "Vermelho",       value: "#e53935" },
-  { label: "Roxo",           value: "#8e24aa" },
-  { label: "Ciano",          value: "#00acc1" },
-  { label: "Laranja",        value: "#fb8c00" },
-  { label: "Laranja Claro",  value: "#ffb74d" },
-  { label: "Laranja Escuro", value: "#e65100" },
-  { label: "Âmbar",          value: "#ffc107" },
-];
 
 export const PHASE_COLORS = ["#1e88e5","#8e24aa","#43a047","#66bb6a","#2e7d32","#f9a825","#e53935","#00acc1","#fb8c00","#ffb74d","#e65100","#ffc107"];
 
@@ -88,33 +68,11 @@ export function normalizeTemplatesFromApi(raw) {
   return result;
 }
 
-export const DEFAULT_TEMPLATES = (() => {
-  const out = {};
-  let ord = 0;
-  for (const name of COLUMN_ORDER) {
-    if (!DEFAULT_TEMPLATE_ITEMS[name]) continue;
-    out[name] = { items: DEFAULT_TEMPLATE_ITEMS[name].map(normalizeTemplateLine), color: TYPE_COLORS[name] || "#30363d", order: ord++ };
-  }
-  for (const name of Object.keys(DEFAULT_TEMPLATE_ITEMS)) {
-    if (out[name]) continue;
-    out[name] = { items: DEFAULT_TEMPLATE_ITEMS[name].map(normalizeTemplateLine), color: TYPE_COLORS[name] || "#30363d", order: ord++ };
-  }
-  return out;
-})();
-
 export function generateId() {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
   const bytes = new Uint8Array(16);
   window.crypto.getRandomValues(bytes);
   return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
-}
-
-export function useStorage(key, defaultValue) {
-  const [state, setState] = useState(() => {
-    try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : defaultValue; } catch { return defaultValue; }
-  });
-  useEffect(() => { try { localStorage.setItem(key, JSON.stringify(state)); } catch {} }, [key, state]);
-  return [state, setState];
 }
 
 export function normalizeDocs(docs) {
