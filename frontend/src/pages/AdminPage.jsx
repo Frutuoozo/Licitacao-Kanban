@@ -1,15 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { IconTrash, IconEdit, IconClose, IconPlus } from "../icons";
+import { IconTrash, IconEdit, IconClose, IconPlus, IconUsers, IconShield, IconGrid, IconClipboard, IconFileText, IconCheck, IconEye, IconLock, IconLogout } from "../icons";
 import { authFetch, API_URL } from "../authFetch";
 import { formatDateTime } from "../preferences";
 import { DEFAULT_SETTINGS, useAppSettings } from "../appSettings";
 import "./AdminPage.css";
 import ModelsManager from "./ModelsManager";
+import { orderedTemplateTypeNames } from "../utils";
+import { attentionItems } from "../adminAttention";
+import SelectMenu from "../components/SelectMenu";
+import { Toast, useToast } from "../components/Toast";
 
 
 // ── Seção Usuários ────────────────────────────────────────────────────────────
 
-function UsersSection({ currentUserId, onUnauthorized, onSelfDemoted }) {
+// intent (ações rápidas do painel): { type: "new" } abre o cadastro de usuário; { type: "reset", userId } abre a senha temporária.
+function UsersSection({ currentUserId, onUnauthorized, onSelfDemoted, intent }) {
   const { settings: { confirmBeforeDelete: confirmDelete } } = useAppSettings();
   const [users, setUsers]     = useState([]);
   const [loading, setLoading] = useState(true);
@@ -46,6 +51,13 @@ function UsersSection({ currentUserId, onUnauthorized, onSelfDemoted }) {
   }, [onUnauthorized]);
 
   useEffect(() => { load(); }, [load]);
+  const intentDone = useRef(false);
+  useEffect(() => {
+    if (!intent || intentDone.current) return;
+    if (intent.type === "new") { intentDone.current = true; setShowModal(true); return; }
+    const target = users.find((u) => u.id === intent.userId);
+    if (target) { intentDone.current = true; setResetUser(target); setResetPassword(""); setResetPasswordConfirm(""); setResetErr(""); }
+  }, [intent, users]);
 
   const patchRole = (id, role) => {
     authFetch(`${API_URL}/api/admin/users/${id}`, {
@@ -460,7 +472,8 @@ const PERMISSIONS = [
   { role: "editor", label: "Editor", access: ["total", "total", "read", "none"] },
   { role: "viewer", label: "Visualizador", access: ["read", "read", "read", "none"] },
 ];
-const ACCESS_LABEL = { total: "Total", edit: "Editar", read: "Leitura", none: "—" };
+const ACCESS_LABEL = { total: "Total", edit: "Editar", read: "Leitura", none: "Sem acesso" };
+const ACCESS_ICON = { total: <IconCheck />, edit: <IconEdit />, read: <IconEye /> };
 const SESSION_OPTIONS = [15, 30, 60, 120];
 const LOCKOUT_ATTEMPTS = [3, 5, 10];
 const LOCKOUT_MINUTES = [5, 15, 30, 60];
@@ -595,7 +608,60 @@ function SecurityView({ draft, setDraft, changed, saving, saveMessage, onSave, o
   );
 }
 
-export default function AdminPage({ currentUserId, onUnauthorized, onSelfDemoted, sectors, onSectorsChange, templates, saveTemplates, onOpenMenu }) {
+// ── Painel: atividade de acesso e ações rápidas ──────────────────────────────
+
+const EVENT_LABELS = {
+  success: ["entrou", "ok"], first_access: ["primeiro acesso", "ok"], wrong_password: ["errou a senha", "warn"],
+  locked: ["conta bloqueada", "bad"], password_changed: ["trocou a senha", "info"], sessions_revoked: ["encerrou outras sessões", "info"],
+  unlocked: ["conta desbloqueada pelo admin", "info"], admin_sessions_revoked: ["sessões encerradas pelo admin", "info"],
+};
+
+// "agora", "há 12 min", "há 3 h", "ontem, 18:40" ou "12/11, 09:05".
+function relativeTime(value, now = new Date()) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const minutes = Math.round((now - date) / 60000);
+  if (minutes < 1) return "agora";
+  if (minutes < 60) return `há ${minutes} min`;
+  if (minutes < 6 * 60) return `há ${Math.round(minutes / 60)} h`;
+  const time = date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === now.toDateString()) return `hoje, ${time}`;
+  if (date.toDateString() === yesterday.toDateString()) return `ontem, ${time}`;
+  return `${date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}, ${time}`;
+}
+
+// Escolha do usuário para "Senha temporária" e "Encerrar sessões" (ações rápidas do topo).
+function UserActionModal({ mode, users, currentUserId, busy, error, onClose, onConfirm }) {
+  const options = users.filter((u) => mode !== "revoke" || u.id !== currentUserId);
+  const [userId, setUserId] = useState("");
+  const revoke = mode === "revoke";
+  return (
+    <div className="contract-modal-overlay" onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}>
+      <form className="contract-delete-modal ct-close-modal adm-action-modal" role="dialog" aria-modal="true" aria-labelledby="adm-action-title"
+        onSubmit={(event) => { event.preventDefault(); const user = options.find((u) => u.id === userId); if (user) onConfirm(user); }}>
+        <div className={`contract-delete-icon ${revoke ? "" : "reopen"}`}>{revoke ? <IconLogout /> : <IconLock />}</div>
+        <h2 id="adm-action-title">{revoke ? "Encerrar sessões de um usuário" : "Emitir senha temporária"}</h2>
+        <p>{revoke
+          ? "O usuário sai do sistema em todos os aparelhos e precisa entrar de novo. A senha continua a mesma."
+          : "Escolha o usuário. Na próxima tela você define a senha temporária, que ele troca no próximo acesso."}</p>
+        {error && <div className="contract-form-error">{error}</div>}
+        <div className="ct-close-fields">
+          <SelectMenu label="Usuário *" fieldClassName="contract-field" value={userId} onChange={setUserId} placeholder="Selecione o usuário"
+            options={options.map((u) => ({ value: u.id, label: u.username }))} />
+        </div>
+        <div className="contract-delete-actions">
+          <button type="button" className="btn-cancel-lg" onClick={onClose} disabled={busy}>Cancelar</button>
+          <button type="submit" className={revoke ? "btn-danger" : "btn-confirm"} disabled={busy || !userId}>
+            {busy ? "Aguarde..." : revoke ? "Encerrar sessões" : "Continuar"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+export default function AdminPage({ currentUserId, onUnauthorized, onSelfDemoted, sectors, onSectorsChange, templates, saveTemplates, onOpenMenu, onNavigate }) {
   const { settings, setSettings } = useAppSettings();
   const [drawer, setDrawer] = useState(null);
   const [users, setUsers] = useState([]);
@@ -615,6 +681,61 @@ export default function AdminPage({ currentUserId, onUnauthorized, onSelfDemoted
       .catch(() => {});
   }, [onUnauthorized]);
   useEffect(() => { loadUsers(); }, [loadUsers]);
+  // Quantidade de modalidades, para o cartão (recarrega quando o painel de modalidades fecha).
+  const [modalityCount, setModalityCount] = useState(null);
+  const loadModalities = useCallback(() => {
+    authFetch(`${API_URL}/api/contract-modalities`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (Array.isArray(data)) setModalityCount(data.length); })
+      .catch(() => {});
+  }, []);
+  useEffect(() => { loadModalities(); }, [loadModalities]);
+
+  // Dados do "Precisa de atenção" (contratos e colaboradores) e da atividade de acesso.
+  const [contracts, setContracts] = useState([]);
+  const [collaborators, setCollaborators] = useState([]);
+  const [events, setEvents] = useState(null);
+  const loadEvents = useCallback(() => {
+    authFetch(`${API_URL}/api/admin/login-events?limit=10`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setEvents(Array.isArray(data) ? data : []))
+      .catch(() => setEvents([]));
+  }, []);
+  useEffect(() => {
+    loadEvents();
+    authFetch(`${API_URL}/api/contracts`).then((res) => (res.ok ? res.json() : null)).then((data) => { if (Array.isArray(data)) setContracts(data); }).catch(() => {});
+    authFetch(`${API_URL}/api/admin/collaborators`).then((res) => (res.ok ? res.json() : null)).then((data) => { if (Array.isArray(data)) setCollaborators(data); }).catch(() => {});
+  }, [loadEvents]);
+
+  const { toast, notify, closeToast } = useToast();
+  const [usersIntent, setUsersIntent] = useState(null);
+  const [actionModal, setActionModal] = useState(null); // "password" | "revoke"
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const openUsers = (intent = null) => { setUsersIntent(intent); setDrawer("users"); };
+  const postUserAction = async (user, path) => {
+    const res = await authFetch(`${API_URL}/api/admin/users/${user.id}/${path}`, { method: "POST" });
+    if (res.status === 401) { onUnauthorized(); return false; }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Não foi possível concluir.");
+    return true;
+  };
+  const unlockUser = async (user) => {
+    try {
+      if (await postUserAction(user, "unlock")) { notify("ok", "Conta desbloqueada", user.username); loadUsers(); loadEvents(); }
+    } catch (error) { notify("error", "Não foi possível desbloquear", error.message); }
+  };
+  const confirmAction = async (user) => {
+    if (actionModal === "password") { setActionModal(null); openUsers({ type: "reset", userId: user.id }); return; }
+    setActionBusy(true); setActionError("");
+    try {
+      if (await postUserAction(user, "revoke-sessions")) {
+        setActionModal(null);
+        notify("ok", "Sessões encerradas", `${user.username} precisa entrar de novo.`);
+        loadEvents();
+      }
+    } catch (error) { setActionError(error.message); } finally { setActionBusy(false); }
+  };
 
   const roleCount = (role) => users.filter((user) => user.role === role).length;
   const [view, setView] = useState("main");
@@ -642,7 +763,7 @@ export default function AdminPage({ currentUserId, onUnauthorized, onSelfDemoted
   const goToSecurity = () => { setSaveMessage(null); setView("security"); window.scrollTo({ top: 0 }); };
 
   const modalitiesDrawer = drawer === "modalities" && (
-    <AdminDrawer title="Modalidades de contrato" subtitle="Modalidades disponíveis ao cadastrar um contrato." onClose={() => setDrawer(null)}>
+    <AdminDrawer title="Modalidades de contrato" subtitle="Modalidades disponíveis ao cadastrar um contrato." onClose={() => { setDrawer(null); loadModalities(); }}>
       <ModalidadesSection onUnauthorized={onUnauthorized} />
     </AdminDrawer>
   );
@@ -660,34 +781,139 @@ export default function AdminPage({ currentUserId, onUnauthorized, onSelfDemoted
     );
   }
 
-  const cards = [
-    { key: "users", tone: "blue", title: "Perfis de acesso", text: "Usuários e o nível de acesso de cada um.", action: "Gerenciar usuários", onClick: () => setDrawer("users") },
-    { key: "sectors", tone: "purple", title: "Setores", text: "Organize setores responsáveis.", action: "Gerenciar setores", onClick: () => setDrawer("sectors") },
-    { key: "security", tone: "green", title: "Segurança", text: "Senha, sessões, bloqueio e autenticação.", action: "Configurar segurança", onClick: goToSecurity },
-    { key: "models", tone: "lilac", title: "Modelos", text: "Tipos de processo, fases e documentos padrão.", action: "Gerenciar modelos", onClick: () => { setView("models"); window.scrollTo({ top: 0 }); } },
-    { key: "modalities", tone: "amber", title: "Modalidades de contrato", text: "Dispensa, Pregão, Leilão e outras modalidades.", action: "Gerenciar modalidades", onClick: () => setDrawer("modalities") },
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const adminCount = roleCount("admin");
+  const templateCount = orderedTemplateTypeNames(templates || {}).length;
+  const openModels = () => { setView("models"); window.scrollTo({ top: 0 }); };
+  // Cartões em dois grupos; cada um mostra um número que resume a área e é inteiro clicável.
+  const groups = [
+    { title: "Acesso e segurança", tiles: [
+      { key: "users", tone: "blue", icon: <IconUsers />, title: "Usuários e perfis", text: "Quem acessa o sistema e o nível de acesso de cada um.",
+        stat: users.length ? plural(users.length, "usuário", "usuários") : "—", note: users.length ? plural(adminCount, "administrador", "administradores") : "", onClick: () => setDrawer("users") },
+      { key: "security", tone: "green", icon: <IconShield />, title: "Segurança", text: "Senha, sessões, bloqueio de login e troca periódica de senha.",
+        stat: settings.lockoutEnabled ? `Bloqueio após ${settings.lockoutAttempts}` : "Sem bloqueio", note: settings.sessionTimeoutEnabled ? `Sessão de ${settings.sessionTimeoutMinutes} min` : "Sessão sem limite", onClick: goToSecurity },
+    ] },
+    { title: "Cadastros", tiles: [
+      { key: "sectors", tone: "purple", icon: <IconGrid />, title: "Setores", text: "Setores responsáveis pelos processos.",
+        stat: plural((sectors || []).length, "setor", "setores"), onClick: () => setDrawer("sectors") },
+      { key: "models", tone: "lilac", icon: <IconClipboard />, title: "Modelos", text: "Tipos de processo, fases e documentos padrão.",
+        stat: plural(templateCount, "modelo", "modelos"), onClick: openModels },
+      { key: "modalities", tone: "amber", icon: <IconFileText />, title: "Modalidades", text: "Dispensa, Pregão, Leilão e outras modalidades de contrato.",
+        stat: modalityCount === null ? "—" : plural(modalityCount, "modalidade", "modalidades"), onClick: () => setDrawer("modalities") },
+    ] },
   ];
+
+  const attention = attentionItems({ contracts, collaborators, users, settings, today: new Date() });
+  const lastLoginByUser = new Map(users.map((u) => [u.id, u.lastLoginAt]));
+  const dormantUsers = users.filter((u) => !u.firstAccess && (!u.lastLoginAt || (Date.now() - new Date(u.lastLoginAt)) / 86400000 >= 30));
+  const runAttention = (item) => (item.action === "contracts" ? onNavigate?.("contratos") : openUsers());
 
   return (
     // Reaproveita o visual das páginas novas (lk-contracts): cabeçalho, painel lateral e modais.
     <div className="lk-contracts adm-page">
-      <h1 className="lk-sr">Administração</h1>
-      <header className="ct-header lk-menu-bar">
+      <header className="ct-header adm-header">
         <button className="lk-menu" aria-label="Abrir navegação" onClick={onOpenMenu}>☰</button>
+        <div className="ct-header-text">
+          <h1>Administração</h1>
+          <p>Gerencie acessos, cadastros e regras do sistema.</p>
+        </div>
+        {/* Ações rápidas. */}
+        <div className="adm-quick">
+          <button type="button" className="ct-header-export" onClick={() => { setActionError(""); setActionModal("password"); }}><IconLock /> Senha temporária</button>
+          <button type="button" className="ct-header-export" onClick={() => { setActionError(""); setActionModal("revoke"); }}><IconLogout /> Encerrar sessões</button>
+          <button type="button" className="ct-new-button" onClick={() => openUsers({ type: "new" })}><IconPlus /> Novo usuário</button>
+        </div>
       </header>
 
-      <section className="adm-cards" aria-label="Áreas de administração">
-        {cards.map((card) => (
-          <article className="adm-card" key={card.key}>
-            <div className="adm-card-head">
-              <span className={`adm-card-icon ${card.tone}`} aria-hidden="true"><i /></span>
-              <h2>{card.title}</h2>
+      <div className="adm-groups">
+        {groups.map((group) => (
+          <section className="adm-group" key={group.title} aria-label={group.title}>
+            <h2 className="adm-group-title">{group.title}</h2>
+            <div className="adm-tiles" style={{ "--adm-cols": group.tiles.length }}>
+              {group.tiles.map((tile) => (
+                <button type="button" className={`adm-tile ${tile.tone}`} key={tile.key} onClick={tile.onClick}>
+                  <span className="adm-tile-top">
+                    <span className="adm-tile-icon" aria-hidden="true">{tile.icon}</span>
+                    <svg className="adm-tile-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></svg>
+                  </span>
+                  <strong className="adm-tile-title">{tile.title}</strong>
+                  <span className="adm-tile-text">{tile.text}</span>
+                  <span className="adm-tile-stat"><b>{tile.stat}</b>{tile.note && <small>{tile.note}</small>}</span>
+                </button>
+              ))}
             </div>
-            <p>{card.text}</p>
-            <button type="button" className="adm-card-action" onClick={card.onClick}>{card.action}</button>
-          </article>
+          </section>
         ))}
-      </section>
+      </div>
+
+      <div className="adm-grid adm-grid-even">
+        <section className="adm-panel adm-attention" aria-labelledby="adm-attention-title">
+          <header className="adm-panel-head">
+            <div>
+              <h2 id="adm-attention-title">Precisa de atenção</h2>
+              <p>Pendências de cadastro e de acesso, para resolver.</p>
+            </div>
+          </header>
+          {attention.length === 0 ? (
+            <p className="adm-all-good"><IconCheck /> Nada pendente. Está tudo em dia.</p>
+          ) : (
+            <ul className="adm-attention-list">
+              {attention.map((item) => (
+                <li key={item.key} className={item.action === "unlock" ? "is-alert" : ""}>
+                  <div className="adm-attention-row">
+                    <b>{item.count}</b>
+                    <span>{item.label}</span>
+                    {item.action !== "unlock" && <button type="button" className="adm-link" onClick={() => runAttention(item)}>Ver</button>}
+                  </div>
+                  {item.action === "unlock" && (
+                    <ul className="adm-locked">
+                      {item.users.map((u) => (
+                        <li key={u.id}>
+                          <span><strong>{u.username}</strong> · libera sozinha em {u.lockedMinutes} min</span>
+                          <button type="button" className="adm-link" onClick={() => unlockUser(u)}>Desbloquear</button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="adm-panel adm-activity" aria-labelledby="adm-activity-title">
+          <header className="adm-panel-head">
+            <div>
+              <h2 id="adm-activity-title">Atividade de acesso</h2>
+              <p>Últimos acessos e tentativas de todos os usuários.</p>
+            </div>
+          </header>
+          {events === null ? <p className="adm-muted-line">Carregando…</p>
+            : events.length === 0 ? <p className="adm-muted-line">Nenhum acesso registrado ainda.</p>
+            : (
+              <ul className="adm-events">
+                {events.map((event) => {
+                  const [label, tone] = EVENT_LABELS[event.event] || [event.event, "info"];
+                  return (
+                    <li key={event.id}>
+                      <i className={`adm-event-dot ${tone}`} aria-hidden="true" />
+                      <strong>{event.username}</strong>
+                      <span className={`adm-event-label ${tone}`}>{label}</span>
+                      <time dateTime={event.createdAt} title={new Date(event.createdAt).toLocaleString("pt-BR")}>{relativeTime(event.createdAt)}</time>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          {dormantUsers.length > 0 && (
+            <p className="adm-dormant">
+              <b>Sem entrar há 30+ dias:</b>{" "}
+              {dormantUsers.slice(0, 6).map((u) => `${u.username}${lastLoginByUser.get(u.id) ? "" : " (nunca entrou)"}`).join(", ")}
+              {dormantUsers.length > 6 && ` e mais ${dormantUsers.length - 6}`}
+            </p>
+          )}
+        </section>
+      </div>
 
       <div className="adm-grid">
         <section className="adm-panel adm-permissions" aria-labelledby="adm-perm-title">
@@ -696,7 +922,6 @@ export default function AdminPage({ currentUserId, onUnauthorized, onSelfDemoted
               <h2 id="adm-perm-title">Permissões de acesso</h2>
               <p>O que cada perfil pode visualizar e alterar.</p>
             </div>
-            <button type="button" className="ct-new-button adm-panel-btn" onClick={() => setDrawer("users")}><IconPlus /> Novo usuário</button>
           </header>
           <div className="adm-table-wrap">
             <table className="adm-table">
@@ -712,7 +937,7 @@ export default function AdminPage({ currentUserId, onUnauthorized, onSelfDemoted
                     </td>
                     {perm.access.map((level, i) => (
                       <td key={i} data-label={["Processos", "Contratos", "Colaboradores", "Admin"][i]}>
-                        <span className={`adm-access ${level}`}>{ACCESS_LABEL[level]}</span>
+                        <span className={`adm-access ${level}`}>{ACCESS_ICON[level]}{ACCESS_LABEL[level]}</span>
                       </td>
                     ))}
                   </tr>
@@ -720,17 +945,17 @@ export default function AdminPage({ currentUserId, onUnauthorized, onSelfDemoted
               </tbody>
             </table>
           </div>
-          <p className="adm-legend">
-            <span className="adm-access total">Total</span> criar, alterar e excluir ·
-            <span className="adm-access read">Leitura</span> só visualizar ·
-            <span className="adm-access none">—</span> sem acesso
-          </p>
+          <ul className="adm-legend">
+            <li><span className="adm-access total">{ACCESS_ICON.total}Total</span> criar, alterar e excluir</li>
+            <li><span className="adm-access read">{ACCESS_ICON.read}Leitura</span> só visualizar</li>
+            <li><span className="adm-access none">Sem acesso</span> não aparece no menu</li>
+          </ul>
         </section>
 
         <section className="adm-panel adm-settings" aria-labelledby="adm-settings-title">
           <header className="adm-panel-head">
             <div>
-              <h2 id="adm-settings-title">Configurações administrativas</h2>
+              <h2 id="adm-settings-title">Configurações gerais</h2>
               <p>Ajustes gerais que afetam todo o sistema.</p>
             </div>
           </header>
@@ -758,17 +983,19 @@ export default function AdminPage({ currentUserId, onUnauthorized, onSelfDemoted
             </li>
           </ul>
           <footer className="adm-settings-foot">
-            {saveMessage && <p className={`adm-save-msg ${saveMessage.type}`} role="status">{saveMessage.text}</p>}
+            <p className={`adm-save-msg ${saveMessage && !changed ? saveMessage.type : changed ? "pending" : ""}`} role="status">
+              {changed ? "Há alterações não salvas." : saveMessage ? saveMessage.text : "Tudo salvo."}
+            </p>
             <button type="button" className="ct-new-button adm-save" onClick={saveSettings} disabled={!changed || saving}>
-              {saving ? "Salvando..." : changed ? "Salvar configurações" : "Configurações salvas"}
+              {saving ? "Salvando..." : "Salvar"}
             </button>
           </footer>
         </section>
       </div>
 
       {drawer === "users" && (
-        <AdminDrawer title="Usuários e perfis" subtitle="Crie usuários, defina o perfil de acesso e redefina senhas." onClose={() => { setDrawer(null); loadUsers(); }}>
-          <UsersSection currentUserId={currentUserId} onUnauthorized={onUnauthorized} onSelfDemoted={onSelfDemoted} />
+        <AdminDrawer title="Usuários e perfis" subtitle="Crie usuários, defina o perfil de acesso e redefina senhas." onClose={() => { setDrawer(null); setUsersIntent(null); loadUsers(); loadEvents(); }}>
+          <UsersSection currentUserId={currentUserId} onUnauthorized={onUnauthorized} onSelfDemoted={onSelfDemoted} intent={usersIntent} />
         </AdminDrawer>
       )}
       {drawer === "sectors" && (
@@ -777,6 +1004,9 @@ export default function AdminPage({ currentUserId, onUnauthorized, onSelfDemoted
         </AdminDrawer>
       )}
       {modalitiesDrawer}
+      {actionModal && <UserActionModal mode={actionModal} users={users} currentUserId={currentUserId} busy={actionBusy} error={actionError}
+        onClose={() => setActionModal(null)} onConfirm={confirmAction} />}
+      <Toast toast={toast} onClose={closeToast} />
     </div>
   );
 }

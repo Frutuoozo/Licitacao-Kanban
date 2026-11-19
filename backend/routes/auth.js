@@ -46,7 +46,8 @@ const START_PAGES = ['dashboard', 'processos:board', 'processos:calendar', 'proc
 const startPageFor = (user) => (START_PAGES.includes(user.start_page) && (user.start_page !== 'admin' || user.role === 'admin') ? user.start_page : 'dashboard');
 
 // Histórico de acessos (aba Segurança do perfil). Registro sem bloquear a resposta: falha ao gravar não impede o login.
-// Tipos: success, first_access (entrou definindo a senha), wrong_password, locked, password_changed, sessions_revoked.
+// Tipos: success, first_access (entrou definindo a senha), wrong_password, locked, password_changed, sessions_revoked
+// (o próprio usuário encerrou as outras sessões). Feitos pelo administrador (routes/admin.js): unlocked, admin_sessions_revoked.
 const LOGIN_HISTORY_DAYS = 180;
 export const LOGIN_HISTORY_MAX_PER_USER = 500;
 function logLoginEvent(req, userId, event) {

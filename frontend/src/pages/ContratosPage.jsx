@@ -1,4 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import SelectMenu from "../components/SelectMenu";
 import {
   IconArchive,
   IconCalendar,
@@ -15,12 +17,13 @@ import {
   IconUser,
   IconUsers,
   IconClipboard,
+  IconPrinter,
 } from "../icons";
 import { authFetch, API_URL } from "../authFetch";
 import { useAppSettings } from "../appSettings";
 import { formatDate as formatPreferredDate, usePreferences } from "../preferences";
 import DatePicker from "../components/DatePicker";
-import { downloadCsv, printTable } from "../exportTable";
+import { downloadCsv, printStackedBars, printTable } from "../exportTable";
 import "./ContratosPage.css";
 import { SKELETON_ROWS, Sk, skWidth } from "../components/Skeleton";
 import { formatCnpj, isValidCnpj } from "../contractFields";
@@ -175,6 +178,12 @@ function formatShortDate(value) {
   if (!date) return "—";
   const long = formatPreferredDate(String(value).slice(0, 10));
   return long.includes("/") ? date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : long;
+}
+
+// Valor do filtro "Status" que corresponde à situação do contrato.
+function statusFilterKey(status) {
+  if (status.key === "near") return status.renewable ? "renewal" : "newContract";
+  return status.key; // regular | closed
 }
 
 function matchesVigencia(contract, filter) {
@@ -1191,7 +1200,8 @@ const MANAGER_SERIES = [
   { key: "substituto", label: "Gestor substituto", color: "#d97706" },
 ];
 
-function ManagersView({ contracts, loading, onOpenContract }) {
+// actionsSlot: espaço no topo da página onde fica o botão "Exportar" desta aba (exporta os gestores exibidos).
+function ManagersView({ contracts, loading, onOpenContract, actionsSlot, exportFormat }) {
   const [managerScope, setManagerScope] = useState("active");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
@@ -1226,9 +1236,25 @@ function ManagersView({ contracts, loading, onOpenContract }) {
   const axisMax = Math.ceil(maxTotal / step) * step;
   const ticks = Array.from({ length: axisMax / step + 1 }, (_, i) => i * step);
   const selectedRow = rows.find((row) => row.name === selected);
+  const scopeLabel = { active: "Contratos vigentes", all: "Todos os contratos", closed: "Contratos encerrados" }[managerScope];
+  const exportManagers = () => {
+    const header = ["Gestor", "Gestor principal", "Gestor substituto", "Total"];
+    const data = visible.map((row) => [row.name, row.principal.length, row.substituto.length, row.total]);
+    if (exportFormat === "csv") { downloadCsv(`gestores-${new Date().toISOString().slice(0, 10)}.csv`, header, data); return; }
+    // PDF: o próprio gráfico (barras empilhadas de principal e substituto), na ordem da tela.
+    printStackedBars({
+      title: "Contratos por gestor", subtitle: `${scopeLabel}${q ? ` · busca: "${search.trim()}"` : ""}`, series: MANAGER_SERIES,
+      rows: visible.map((row) => ({ label: row.name, values: { principal: row.principal.length, substituto: row.substituto.length } })),
+    });
+  };
 
   return (
     <div className="ct-managers">
+      {actionsSlot && createPortal(
+        <button type="button" className="ct-new-button" onClick={exportManagers} disabled={loading || visible.length === 0}
+          title={`Exporta os gestores exibidos em ${exportFormat.toUpperCase()}. O formato muda em Meu perfil › Preferências.`}>
+          {exportFormat === "pdf" ? <IconPrinter /> : <IconFileText />} Exportar {exportFormat.toUpperCase()}
+        </button>, actionsSlot)}
       <section className="lk-kpis ct-kpis" aria-label="Resumo dos gestores">
         {[
           ["GESTORES COM CONTRATOS", rows.length, "blue", "Colaboradores que são gestores principais ou substitutos"],
@@ -1376,22 +1402,24 @@ function ManagersView({ contracts, loading, onOpenContract }) {
 
 export default function ContratosAtivos({ isViewer, onUnauthorized, onOpenMenu }) {
   const exportFormat = usePreferences().preferences.exportFormat === "pdf" ? "pdf" : "csv";
+  const [headerSlot, setHeaderSlot] = useState(null);
   const [contracts, setContracts] = useState([]);
   const [modalities, setModalities] = useState([]);
   const [collaborators, setCollaborators] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [modalityFilter, setModalityFilter] = useState("all");
-  const [vigenciaFilter, setVigenciaFilter] = useState("all");
+  // Status, modalidade e vigência aceitam várias opções (lista vazia = todas); o contrato aparece se atender a qualquer uma.
+  const [statusFilter, setStatusFilter] = useState([]);
+  const [modalityFilter, setModalityFilter] = useState([]);
+  const [vigenciaFilter, setVigenciaFilter] = useState([]);
   const [scope, setScope] = useState("active");
   const [pageTab, setPageTab] = useState("contracts");
   const changeScope = (next) => {
     setScope(next);
     // Os filtros de status/vigência mudam de sentido entre as abas.
-    setStatusFilter("all");
-    setVigenciaFilter("all");
+    setStatusFilter([]);
+    setVigenciaFilter([]);
   };
   const [view, setView] = useState(() => {
     try { return localStorage.getItem(VIEW_KEY) === "cards" ? "cards" : "list"; } catch { return "list"; }
@@ -1591,12 +1619,9 @@ export default function ContratosAtivos({ isViewer, onUnauthorized, onOpenMenu }
         const status = getContractStatus(contract);
         if (scope === "renewal" && !(status.key === "near" && status.renewable)) return false;
         if ((scope === "active" || scope === "closed") && (status.key === "closed") !== (scope === "closed")) return false;
-        if (statusFilter === "regular" && status.key !== "regular") return false;
-        if (statusFilter === "renewal" && !(status.key === "near" && status.renewable)) return false;
-        if (statusFilter === "newContract" && !(status.key === "near" && !status.renewable)) return false;
-        if (statusFilter === "closed" && status.key !== "closed") return false;
-        if (modalityFilter !== "all" && contract.modality !== modalityFilter) return false;
-        if (!matchesVigencia(contract, vigenciaFilter)) return false;
+        if (statusFilter.length > 0 && !statusFilter.includes(statusFilterKey(status))) return false;
+        if (modalityFilter.length > 0 && !modalityFilter.includes(contract.modality)) return false;
+        if (vigenciaFilter.length > 0 && !vigenciaFilter.some((filter) => matchesVigencia(contract, filter))) return false;
         if (!query) return true;
         return [contract.processName, contract.objectDescription, contract.processNumber,
           contract.fiscalEffective, contract.fiscalSubstitute, contract.modality]
@@ -1682,7 +1707,9 @@ export default function ContratosAtivos({ isViewer, onUnauthorized, onOpenMenu }
           ))}
         </nav>
         <div className="ct-header-actions">
-          <button type="button" className="ct-header-export" onClick={() => exportContracts(filteredContracts, exportFormat)} disabled={filteredContracts.length === 0} title={`Exporta os contratos exibidos (com os filtros atuais) em ${exportFormat.toUpperCase()}. O formato muda em Meu perfil › Preferências.`}>Exportar {exportFormat.toUpperCase()}</button>
+          {/* Na aba Gestores, o Exportar é desenhado pela própria aba neste espaço (exporta os gestores). */}
+          {pageTab === "managers" && <span className="ct-header-slot" ref={setHeaderSlot} />}
+          {pageTab === "contracts" && <button type="button" className="ct-new-button" onClick={() => exportContracts(filteredContracts, exportFormat)} disabled={filteredContracts.length === 0} title={`Exporta os contratos exibidos (com os filtros atuais) em ${exportFormat.toUpperCase()}. O formato muda em Meu perfil › Preferências.`}>{exportFormat === "pdf" ? <IconPrinter /> : <IconFileText />} Exportar {exportFormat.toUpperCase()}</button>}
           {canEdit && <button type="button" className="ct-new-button" onClick={openAdd}><IconPlus /> Novo contrato</button>}
         </div>
       </header>
@@ -1695,7 +1722,7 @@ export default function ContratosAtivos({ isViewer, onUnauthorized, onOpenMenu }
       )}
 
       {pageTab === "managers" ? (
-        <ManagersView contracts={contracts} loading={loading} onOpenContract={openDetails} />
+        <ManagersView contracts={contracts} loading={loading} onOpenContract={openDetails} actionsSlot={headerSlot} exportFormat={exportFormat} />
       ) : (
       <>
       <section className="lk-kpis ct-kpis" aria-label="Resumo dos contratos">
@@ -1718,30 +1745,17 @@ export default function ContratosAtivos({ isViewer, onUnauthorized, onOpenMenu }
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Número, fiscal ou objeto..." />
         </label>
         {(scope === "all" || scope === "active") && (
-          <label className="ct-field">
-            <span>Status</span>
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-              <option value="all">Todos</option>
-              <option value="regular">Ativos</option>
-              <option value="renewal">Para renovação</option>
-              <option value="newContract">Nova contratação</option>
-              {scope === "all" && <option value="closed">Encerrados</option>}
-            </select>
-          </label>
+          <SelectMenu multiple label="Status" value={statusFilter} onChange={setStatusFilter} options={[
+            { value: "all", label: "Todos" },
+            { value: "regular", label: "Ativos" },
+            { value: "renewal", label: "Para renovação" },
+            { value: "newContract", label: "Nova contratação" },
+            ...(scope === "all" ? [{ value: "closed", label: "Encerrados" }] : []),
+          ]} />
         )}
-        <label className="ct-field">
-          <span>Vigência</span>
-          <select value={vigenciaFilter} onChange={(event) => setVigenciaFilter(event.target.value)}>
-            {VIGENCIA_FILTERS[scope].map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
-        </label>
-        <label className="ct-field">
-          <span>Modalidade</span>
-          <select value={modalityFilter} onChange={(event) => setModalityFilter(event.target.value)}>
-            <option value="all">Todas</option>
-            {modalityOptions.map((name) => <option key={name} value={name}>{name}</option>)}
-          </select>
-        </label>
+        <SelectMenu multiple label="Vigência" value={vigenciaFilter} onChange={setVigenciaFilter} options={VIGENCIA_FILTERS[scope]} />
+        <SelectMenu multiple label="Modalidade" value={modalityFilter} onChange={setModalityFilter}
+          options={[{ value: "all", label: "Todas" }, ...modalityOptions.map((name) => ({ value: name, label: name }))]} />
         <div className="ct-toolbar-actions">
           <div className="ct-view-toggle ct-scope-toggle" role="group" aria-label="Situação dos contratos">
             <button type="button" className={scope === "all" ? "active" : ""} aria-pressed={scope === "all"} onClick={() => changeScope("all")}>Todos <span className="ct-toggle-count">{loading ? "—" : contracts.length}</span></button>

@@ -1,4 +1,4 @@
-import { nextOptionIndex } from "./selectMenuKeys";
+import { nextOptionIndex, toggleSelection } from "./selectMenuKeys";
 
 // Navegação pelo teclado na lista do SelectMenu, igual à de um seletor nativo.
 test("seta para baixo vai para a próxima opção e para na última", () => {
@@ -23,4 +23,23 @@ test("sem opção ativa, seta para baixo começa na primeira e seta para cima na
 
 test("outras teclas não mudam a opção ativa", () => {
   expect(nextOptionIndex("a", 1, 3)).toBe(1);
+});
+
+// Seleção múltipla (Categoria e Tipo em Demandas): a lista vazia significa "Todas".
+test("marcar uma opção a acrescenta à seleção", () => {
+  expect(toggleSelection([], "urgent", "all")).toEqual(["urgent"]);
+  expect(toggleSelection(["urgent"], "high", "all")).toEqual(["urgent", "high"]);
+});
+
+test("marcar de novo uma opção já escolhida a tira da seleção", () => {
+  expect(toggleSelection(["urgent", "high"], "urgent", "all")).toEqual(["high"]);
+});
+
+test('"Todas" limpa a seleção', () => {
+  expect(toggleSelection(["urgent", "high"], "all", "all")).toEqual([]);
+});
+
+test("a seleção segue a ordem das opções, não a ordem dos cliques", () => {
+  const order = ["all", "urgent", "high", "moderate", "routine"];
+  expect(toggleSelection(["moderate"], "urgent", "all", order)).toEqual(["urgent", "moderate"]);
 });

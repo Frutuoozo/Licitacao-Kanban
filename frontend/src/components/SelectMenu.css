@@ -11,6 +11,11 @@
 }
 .sm-value { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .sm-placeholder { color: var(--lk-muted); font-weight: 400; }
+/* Seleção múltipla: nomes escolhidos separados por vírgula (cortados com "…") e a quantidade numa bolinha azul. */
+.sm-value-list { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sm-badge { display: inline-grid; place-items: center; flex-shrink: 0; min-width: 18px; height: 18px; margin-left: auto; padding: 0 5px;
+  border-radius: 999px; background: var(--lk-blue); color: #fff; font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.lk-dark .sm-badge { color: #0f172a; }
 .lk-dashboard .sm-trigger:disabled { cursor: not-allowed; opacity: .6; }
 .lk-dashboard .sm-trigger:disabled:hover { border-color: var(--lk-border); }
 /* Nos formulários (gaveta de cadastro), o campo segue a altura dos outros campos (40px). */
@@ -36,7 +41,8 @@
   border-radius: 8px; color: var(--lk-text); font: 500 12px 'Inter', sans-serif; text-align: left; white-space: nowrap;
 }
 .lk-dashboard .sm-option:hover, .lk-dashboard .sm-option:focus-visible { outline: none; background: var(--lk-soft); }
-.lk-dashboard .sm-option.selected { color: var(--lk-blue); font-weight: 600; }
+/* Opção escolhida com fundo azul-claro, como nos filtros de Relatórios. */
+.lk-dashboard .sm-option.selected, .lk-dashboard .sm-option.selected:hover { background: var(--lk-tint); color: var(--lk-blue); font-weight: 600; }
 .sm-option-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sm-count {
   min-width: 24px; padding: 1px 7px; border-radius: 999px; text-align: center;

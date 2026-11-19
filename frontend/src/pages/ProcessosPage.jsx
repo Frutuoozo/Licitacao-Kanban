@@ -3,13 +3,15 @@ import "./ProcessReports.css";
 import { formatDate, usePreferences } from "../preferences";
 import { downloadCsv } from "../exportTable";
 import { Fragment, useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { Toast, useToast } from "../components/Toast";
 import { clearedStartedField } from "../processRules";
 import { monthlyEvolution } from "../processEvolution";
+import { toggleSelection } from "../components/selectMenuKeys";
 import {
   IconPlus, IconTrash, IconEdit, IconClose, IconCheck,
   IconUnarchive, IconChevron, IconCalendar, IconFlag,
-  IconMaximize, IconMinimize,
+  IconMaximize, IconMinimize, IconPrinter, IconFileText,
 } from "../icons";
 import {
   PHASE_COLORS, orderedTemplateTypeNames,
@@ -455,7 +457,9 @@ const IconCheckMark = ({ size = 13 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
 );
 
-function Select({ label, value, onChange, options }) {
+// multiple: várias opções ao mesmo tempo; `value` é uma lista (vazia = a primeira opção, "Todos…"). Clicar marca ou
+// desmarca e a lista continua aberta; o campo mostra os nomes escolhidos e a quantidade.
+function Select({ label, value, onChange, options, multiple = false }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -474,21 +478,30 @@ function Select({ label, value, onChange, options }) {
     };
   }, []);
 
-  const current = options.find((o) => o.value === value);
+  const allValue = options[0]?.value;
+  const isSelected = (o) => (multiple ? (o.value === allValue ? value.length === 0 : value.includes(o.value)) : o.value === value);
+  const current = options.find(isSelected);
+  const chosen = multiple ? options.filter((o) => o.value !== allValue && value.includes(o.value)) : [];
+  const choose = (o) => {
+    if (!multiple) { onChange(o.value); setOpen(false); return; }
+    onChange(toggleSelection(value, o.value, allValue, options.map((item) => item.value)));
+    if (o.value === allValue) setOpen(false);
+  };
 
   return (
     <div className="rp-field" ref={ref}>
       <span className="rp-field-label">{label}</span>
       <button type="button" className={`rp-select ${open ? "open" : ""}`} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        <span>{current ? current.label : options[0]?.label}</span>
+        <span>{chosen.length > 1 ? chosen.map((o) => o.label).join(", ") : current ? current.label : options[0]?.label}</span>
+        {chosen.length > 1 && <b className="rp-select-badge" aria-hidden="true">{chosen.length}</b>}
         <IconChevronDown className="rp-select-chevron" />
       </button>
       {open && (
-        <div className="rp-menu" role="listbox" aria-label={label}>
+        <div className="rp-menu" role="listbox" aria-label={label} aria-multiselectable={multiple || undefined}>
           {options.map((o) => {
-            const selected = o.value === value;
+            const selected = isSelected(o);
             return (
-              <button type="button" role="option" aria-selected={selected} key={o.value} className={selected ? "selected" : ""} onClick={() => { onChange(o.value); setOpen(false); }}>
+              <button type="button" role="option" aria-selected={selected} key={o.value} className={selected ? "selected" : ""} onClick={() => choose(o)}>
                 <span>{o.label}</span>
                 {selected && <IconCheckMark />}
               </button>
@@ -531,7 +544,8 @@ const toDate = value => {
 };
 const formatPercent = (part, total) => `${(total ? (part / total) * 100 : 0).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 
-function ProcessReports({ columns, archived }) {
+// actionsSlot: espaço no topo da página (ao lado das abas) onde fica o botão de exportar.
+function ProcessReports({ columns, archived, actionsSlot }) {
   const exportFormat = usePreferences().preferences.exportFormat === "pdf" ? "pdf" : "csv";
   const allProcesses = useMemo(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -560,10 +574,12 @@ function ProcessReports({ columns, archived }) {
   }, [columns, archived]);
 
   const [periodFilter, setPeriodFilter] = useState("all");
-  const [setorFilter, setSetorFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [dueFilter, setDueFilter] = useState("all");
-  const [situationFilter, setSituationFilter] = useState("all");
+  // Gestor, tipo, vencimento e situação aceitam várias opções (lista vazia = todos). O período é uma opção só:
+  // as opções dele se contêm (30 dias está dentro de 90), então escolher várias daria o mesmo que a maior.
+  const [setorFilter, setSetorFilter] = useState([]);
+  const [typeFilter, setTypeFilter] = useState([]);
+  const [dueFilter, setDueFilter] = useState([]);
+  const [situationFilter, setSituationFilter] = useState([]);
   const [hoveredMonth, setHoveredMonth] = useState(null);
 
 
@@ -572,10 +588,10 @@ function ProcessReports({ columns, archived }) {
 
   // Gestor principal, tipo, vencimento e situação valem para tudo; o período recorta pela data de criação.
   const scoped = useMemo(() => allProcesses.filter(p =>
-    (setorFilter === "all" || p.setor === setorFilter) &&
-    (typeFilter === "all" || p.type === typeFilter) &&
-    (dueFilter === "all" || p.dueStatus === dueFilter) &&
-    (situationFilter === "all" || p.situation === situationFilter)
+    (setorFilter.length === 0 || setorFilter.includes(p.setor)) &&
+    (typeFilter.length === 0 || typeFilter.includes(p.type)) &&
+    (dueFilter.length === 0 || dueFilter.includes(p.dueStatus)) &&
+    (situationFilter.length === 0 || situationFilter.includes(p.situation))
   ), [allProcesses, setorFilter, typeFilter, dueFilter, situationFilter]);
 
   const filteredProcesses = useMemo(() => {
@@ -606,10 +622,10 @@ function ProcessReports({ columns, archived }) {
 
   const printFilterSummary = [
     periodFilter !== "all" && `Período: ${PERIODS.find(p => p.value === periodFilter)?.label}`,
-    setorFilter !== "all" && `Gestor Principal: ${setorFilter}`,
-    typeFilter !== "all" && `Tipo: ${typeFilter}`,
-    dueFilter !== "all" && `Vencimento: ${DUE_FILTERS.find(d => d.value === dueFilter)?.label}`,
-    situationFilter !== "all" && `Situação: ${SITUATIONS[situationFilter].label}`,
+    setorFilter.length > 0 && `Gestor Principal: ${setorFilter.join(", ")}`,
+    typeFilter.length > 0 && `Tipo: ${typeFilter.join(", ")}`,
+    dueFilter.length > 0 && `Vencimento: ${dueFilter.map(v => DUE_FILTERS.find(d => d.value === v)?.label).join(", ")}`,
+    situationFilter.length > 0 && `Situação: ${situationFilter.map(v => SITUATIONS[v].label).join(", ")}`,
   ].filter(Boolean).join("  •  ");
 
   const kpis = [
@@ -621,6 +637,11 @@ function ProcessReports({ columns, archived }) {
 
   return (
     <div className="report-view">
+      {actionsSlot && createPortal(
+        <button type="button" className="ct-new-button" onClick={exportReport} disabled={total === 0}
+          title={`Exporta o relatório com os filtros atuais em ${exportFormat.toUpperCase()}. O formato muda em Meu perfil › Preferências.`}>
+          {exportFormat === "pdf" ? <IconPrinter /> : <IconFileText />} Exportar {exportFormat.toUpperCase()}
+        </button>, actionsSlot)}
       <div className="report-print-header" aria-hidden="true">
         <div className="report-print-brand">
           <div className="report-print-name"><span className="report-print-accent">Licit</span>Kanban</div>
@@ -639,11 +660,10 @@ function ProcessReports({ columns, archived }) {
 
       <section className="rp-card rp-filters" aria-label="Filtros do relatório">
         <Select label="Período" value={periodFilter} onChange={setPeriodFilter} options={PERIODS} />
-        <Select label="Gestor Principal" value={setorFilter} onChange={setSetorFilter} options={[{ value: "all", label: "Todos os gestores" }, ...uniqueSectors.map(s => ({ value: s, label: s }))]} />
-        <Select label="Tipo" value={typeFilter} onChange={setTypeFilter} options={[{ value: "all", label: "Todos os tipos" }, ...uniqueTypes.map(t => ({ value: t, label: t }))]} />
-        <Select label="Vencimento" value={dueFilter} onChange={setDueFilter} options={DUE_FILTERS} />
-        <Select label="Situação" value={situationFilter} onChange={setSituationFilter} options={[{ value: "all", label: "Todas as situações" }, ...Object.entries(SITUATIONS).map(([value, s]) => ({ value, label: s.label }))]} />
-        <button type="button" className="rp-export" onClick={exportReport} title={`Formato ${exportFormat.toUpperCase()}. Muda em Meu perfil › Preferências.`}>Exportar {exportFormat.toUpperCase()}</button>
+        <Select multiple label="Gestor Principal" value={setorFilter} onChange={setSetorFilter} options={[{ value: "all", label: "Todos os gestores" }, ...uniqueSectors.map(s => ({ value: s, label: s }))]} />
+        <Select multiple label="Tipo" value={typeFilter} onChange={setTypeFilter} options={[{ value: "all", label: "Todos os tipos" }, ...uniqueTypes.map(t => ({ value: t, label: t }))]} />
+        <Select multiple label="Vencimento" value={dueFilter} onChange={setDueFilter} options={DUE_FILTERS} />
+        <Select multiple label="Situação" value={situationFilter} onChange={setSituationFilter} options={[{ value: "all", label: "Todas as situações" }, ...Object.entries(SITUATIONS).map(([value, s]) => ({ value, label: s.label }))]} />
       </section>
 
       <section className="lk-kpis rp-kpis" aria-label="Resumo">
@@ -848,6 +868,8 @@ export default function ProcessosPage({
 }) {
   const boardRef = useRef(null);
   const { toast, notify, closeToast } = useToast();
+  // Espaço no topo para os botões da aba atual (Relatórios desenha o "Exportar" aqui).
+  const [headerActions, setHeaderActions] = useState(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   useEffect(() => {
@@ -910,6 +932,8 @@ export default function ProcessosPage({
           {TABS.map(t => <button key={t.id} className={activeTab === t.id ? "active" : ""} aria-current={activeTab === t.id ? "page" : undefined} onClick={() => setActiveTab(t.id)}>{t.label}</button>)}
           {canFullscreen && activeTab === "board" && columns.length > 0 && <button className="process-fullscreen-button" aria-label="Ver processos em tela cheia" title="Tela cheia" onClick={toggleFullscreen}><IconMaximize /></button>}
         </nav>
+        {/* Botões da aba atual (ex.: Exportar em Relatórios), à direita, como "Nova demanda" em Demandas. */}
+        <div className="process-page-actions" ref={setHeaderActions} />
       </header>
       {error && <p className="lk-error" role="alert">{error}</p>}
 
@@ -938,7 +962,7 @@ export default function ProcessosPage({
         )
       )}
 
-      {activeTab === "reports" && <ProcessReports columns={columns} archived={archived} />}
+      {activeTab === "reports" && <ProcessReports columns={columns} archived={archived} actionsSlot={headerActions} />}
 
       {activeTab === "archive" && (
         archived.length === 0 ? (

@@ -8,3 +8,11 @@ export function nextOptionIndex(key, current, count) {
   if (key === "ArrowUp") return current < 0 ? count - 1 : Math.max(current - 1, 0);
   return current;
 }
+
+// Seleção múltipla: marca ou desmarca `value`; `allValue` ("Todas") limpa tudo (lista vazia = todas).
+// Com `order` (os valores das opções), a seleção fica na ordem da lista, não na ordem dos cliques.
+export function toggleSelection(selected, value, allValue, order) {
+  if (value === allValue) return [];
+  const next = selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value];
+  return order ? order.filter((item) => next.includes(item)) : next;
+}

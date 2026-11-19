@@ -1237,7 +1237,7 @@ export default function App() {
           {sidebarOpen && <button className="lk-backdrop" aria-label="Fechar navegação" onClick={() => setSidebarOpen(false)} />}
           <AppSidebar user={sessionUser} darkMode={darkMode} onToggleDarkMode={toggleDarkMode} activeSection="admin" menuOpen={sidebarOpen} onLogout={handleLogout} processTab={activeTab} onNavigate={navigateFromSidebar} />
           <main className="lk-process-main"><Suspense fallback={pageLoading}>
-            <AdminPage currentUserId={sessionUser?.id} onUnauthorized={handleSessionExpired} onSelfDemoted={handleSelfDemotedFromAdmin} sectors={sectors} onSectorsChange={setSectors} templates={templates} saveTemplates={saveTemplates} onOpenMenu={() => setSidebarOpen(true)} />
+            <AdminPage currentUserId={sessionUser?.id} onUnauthorized={handleSessionExpired} onSelfDemoted={handleSelfDemotedFromAdmin} sectors={sectors} onSectorsChange={setSectors} templates={templates} saveTemplates={saveTemplates} onOpenMenu={() => setSidebarOpen(true)} onNavigate={navigateFromSidebar} />
           </Suspense></main>
         </div>
       ) : activeSection === "perfil" ? (

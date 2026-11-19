@@ -5,6 +5,7 @@
 .ct-header { display: flex; align-items: center; gap: 12px; min-height: 60px; }
 .ct-header-text { flex: 1; min-width: 0; }
 /* Colunas iguais: Exportar e Novo contrato ficam com a mesma largura (a do maior) e a mesma altura. */
+.ct-header-slot { display: contents; }
 .ct-header-actions { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; align-items: stretch; gap: 10px; flex-shrink: 0; }
 /* Exportar: mesma altura/forma do "Novo contrato", em versão contornada. */
 .lk-dashboard .ct-header-export { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 9px 12px; border: 1px solid var(--lk-border); border-radius: 10px; background: var(--lk-surface); color: var(--lk-text); font-size: 12px; font-weight: 600; white-space: nowrap; }
@@ -12,7 +13,8 @@
 .lk-dashboard .ct-header-export:disabled { opacity: .5; cursor: not-allowed; }
 /* Igual ao "+ Novo processo" da página de Processos. */
 .lk-dashboard .ct-new-button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; flex-shrink: 0; min-height: 38px; padding: 9px 12px; border: 1px solid #2563eb; border-radius: 10px; background: #2563eb; color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.lk-dashboard .ct-new-button:hover { background: #1d4ed8; border-color: #1d4ed8; }
+.lk-dashboard .ct-new-button:hover:not(:disabled) { background: #1d4ed8; border-color: #1d4ed8; }
+.lk-dashboard .ct-new-button:disabled { opacity: .55; cursor: not-allowed; }
 .ct-header h1 { font: 700 28px/38px 'Manrope', sans-serif; }
 .ct-header p { font-size: 12px; line-height: 18px; color: var(--lk-muted); }
 .ct-message { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; border: 1px solid #fca5a5; border-radius: 12px; background: #fef2f2; color: #b91c1c; font-size: 12px; }
@@ -47,9 +49,6 @@
 .lk-dashboard .ct-view-toggle button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 7px; color: var(--lk-muted); font-size: 11px; font-weight: 600; transition: background .15s, color .15s; }
 .lk-dashboard .ct-view-toggle button:hover { color: var(--lk-text); }
 .lk-dashboard .ct-view-toggle button.active { background: var(--lk-surface); color: var(--lk-blue); box-shadow: 0 1px 2px #1118271a; }
-.lk-dashboard .ct-export { height: 38px; padding: 0 24px; border: 1px solid var(--lk-border); border-radius: 10px; background: var(--lk-surface); color: var(--lk-text); font-size: 11px; font-weight: 600; }
-.lk-dashboard .ct-export:hover:not(:disabled) { border-color: var(--lk-blue); color: var(--lk-blue); }
-.lk-dashboard .ct-export:disabled { opacity: .5; cursor: not-allowed; }
 
 /* Lista */
 .ct-list { background: var(--lk-surface); border: 1px solid var(--lk-border); border-radius: 14px; overflow: visible; }
@@ -102,7 +101,7 @@
 .lk-contracts .contract-card { display: flex; flex-direction: column; min-height: 400px; background: var(--lk-surface); border-color: var(--lk-border); border-radius: 14px; box-shadow: none; }
 .lk-contracts .contract-card:hover { box-shadow: 0 10px 24px #1118270f; }
 .lk-contracts .contract-card-regular { --contract-state: #16a34a; }
-.lk-contracts .contract-card-soon, .lk-contracts .contract-card-urgent { --contract-state: #d97805; }
+.lk-contracts .contract-card-soon { --contract-state: #d97805; }
 .lk-contracts .contract-card-expired { --contract-state: #94a3b8; }
 .lk-kpi.gray { --tone: #94a3b8; }
 .lk-contracts .contract-card-no-date { --contract-state: var(--lk-muted); }
@@ -174,7 +173,6 @@
   .ct-toolbar-actions { justify-self: stretch; }
   .ct-field input, .ct-field select { height: 42px; font-size: 13px; }
   .ct-view-toggle { flex: 1; } .lk-dashboard .ct-view-toggle button { flex: 1; justify-content: center; height: 36px; }
-  .lk-dashboard .ct-export { height: 44px; }
   .ct-list { background: transparent; border: 0; }
   .ct-table-wrap { overflow: visible; }
   .ct-table, .ct-table tbody, .ct-table tr, .ct-table td { display: block; width: 100%; }
@@ -508,18 +506,6 @@
 .ct-managers-empty { padding: 28px 0; text-align: center; font-size: 12px; color: var(--lk-muted); }
 .ct-managers-empty.small { padding: 10px 0; text-align: left; }
 
-.ct-managers-chart { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.ct-managers-chart li { position: relative; }
-.lk-dashboard .ct-managers-row { display: grid; grid-template-columns: minmax(140px, 240px) minmax(0, 1fr); align-items: center; gap: 16px; width: 100%; padding: 8px 10px; border-radius: 10px; text-align: left; }
-.ct-managers-chart li.hovered .ct-managers-row { background: var(--lk-soft); }
-.ct-managers-chart li.selected .ct-managers-row { background: var(--lk-tint); box-shadow: inset 0 0 0 1px #bfdbfe; }
-.lk-dashboard .ct-managers-row:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
-.ct-managers-name { overflow: hidden; font-size: 12px; font-weight: 600; color: var(--lk-text); text-overflow: ellipsis; white-space: nowrap; }
-.ct-managers-bars { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.ct-managers-bar-line { display: flex; align-items: center; gap: 8px; min-width: 0; height: 12px; }
-/* Barras finas, cantos arredondados só na ponta do valor (ancoradas na base à esquerda). */
-.ct-managers-bar { display: block; height: 10px; max-width: calc(100% - 28px); border-radius: 0 4px 4px 0; transition: width .5s cubic-bezier(.4, 0, .2, 1); }
-.ct-managers-value { flex-shrink: 0; min-width: 16px; font-size: 11px; font-weight: 600; color: var(--lk-text); font-variant-numeric: tabular-nums; }
 .ct-managers-tip { position: absolute; z-index: 20; top: 50%; right: 12px; transform: translateY(-50%); display: flex; flex-direction: column; gap: 5px; min-width: 190px; padding: 10px 12px; background: var(--lk-surface); border: 1px solid var(--lk-border); border-radius: 10px; box-shadow: 0 10px 24px #11182724; font-size: 11px; color: var(--lk-muted); pointer-events: none; }
 .ct-managers-tip strong { color: var(--lk-text); font: 600 12px 'Manrope', sans-serif; }
 .ct-managers-tip span { display: flex; align-items: center; gap: 8px; }
@@ -538,7 +524,6 @@
 @media (max-width: 700px) {
   .ct-managers-toolbar { grid-template-columns: minmax(0, 1fr); }
   .ct-managers-head { flex-direction: column; }
-  .lk-dashboard .ct-managers-row { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .ct-managers-tip { display: none; }
   .ct-managers-lists { grid-template-columns: minmax(0, 1fr); }
 }

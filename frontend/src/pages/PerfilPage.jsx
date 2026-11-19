@@ -77,6 +77,8 @@ const LOGIN_EVENTS = {
   locked: { label: "Conta bloqueada", tone: "bad" },
   password_changed: { label: "Senha alterada", tone: "info" },
   sessions_revoked: { label: "Outras sessões encerradas", tone: "info" },
+  unlocked: { label: "Conta desbloqueada pelo administrador", tone: "info" },
+  admin_sessions_revoked: { label: "Sessões encerradas pelo administrador", tone: "info" },
 };
 // "Chrome no Windows" a partir do navegador informado no acesso.
 function describeDevice(userAgent = "") {

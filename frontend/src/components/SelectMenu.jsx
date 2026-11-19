@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { nextOptionIndex } from "./selectMenuKeys";
+import { nextOptionIndex, toggleSelection } from "./selectMenuKeys";
 import "./SelectMenu.css";
 
 // Seletor com lista própria (no lugar do <select> nativo, cuja lista é desenhada pelo navegador).
@@ -7,21 +7,31 @@ import "./SelectMenu.css";
 // etiqueta à direita. Teclado como num seletor nativo: setas, Home/End, Enter/Espaço, Esc e Tab.
 // placeholder: texto (em cinza) quando o valor não é nenhuma opção; fieldClassName: classe do campo
 // (ct-field nos filtros, contract-field nos formulários); disabled: campo travado.
-export default function SelectMenu({ label, value, onChange, options, placeholder, fieldClassName = "ct-field", disabled = false }) {
+// multiple: várias opções ao mesmo tempo. `value` vira uma lista (vazia = a opção `allValue`, "Todas"); clicar marca ou
+// desmarca e a lista continua aberta; o campo mostra os nomes escolhidos.
+export default function SelectMenu({ label, value, onChange, options, placeholder, fieldClassName = "ct-field", disabled = false, multiple = false, allValue = "all" }) {
   const id = useId();
   const wrapRef = useRef(null);
   const triggerRef = useRef(null);
   const optionRefs = useRef([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
-  const selectedIndex = options.findIndex((option) => option.value === value);
+  const isSelected = (option) => (multiple
+    ? (option.value === allValue ? value.length === 0 : value.includes(option.value))
+    : option.value === value);
+  const selectedIndex = options.findIndex(isSelected);
   const current = selectedIndex >= 0 ? options[selectedIndex] : placeholder === undefined ? options[0] : null;
+  const chosen = multiple ? options.filter((option) => option.value !== allValue && value.includes(option.value)) : [];
   // Se alguma opção tem bolinha de cor, as sem cor ganham um espaço do mesmo tamanho, para os textos alinharem.
   const hasColors = options.some((option) => option.color);
 
   const openMenu = (index = selectedIndex) => { setActive(index < 0 ? 0 : index); setOpen(true); };
   const close = (returnFocus = true) => { setOpen(false); if (returnFocus) triggerRef.current?.focus(); };
-  const choose = (option) => { onChange(option.value); close(); };
+  const choose = (option) => {
+    if (!multiple) { onChange(option.value); close(); return; }
+    onChange(toggleSelection(value, option.value, allValue, options.map((item) => item.value)));
+    if (option.value === allValue) close();
+  };
 
   // Fecha ao clicar fora.
   useEffect(() => {
@@ -54,15 +64,22 @@ export default function SelectMenu({ label, value, onChange, options, placeholde
         aria-haspopup="listbox" aria-expanded={open} aria-labelledby={`${id}-label ${id}-value`}
         onClick={() => (open ? close() : openMenu())} onKeyDown={onTriggerKey}>
         <span id={`${id}-value`} className="sm-value">
-          {current?.color && <i className="sm-dot" style={{ background: current.color }} aria-hidden="true" />}
-          {current ? current.label : <span className="sm-placeholder">{placeholder}</span>}
+          {chosen.length > 1 ? (
+            <span className="sm-value-list">{chosen.map((option) => option.label).join(", ")}</span>
+          ) : (
+            <>
+              {current?.color && <i className="sm-dot" style={{ background: current.color }} aria-hidden="true" />}
+              {current ? current.label : <span className="sm-placeholder">{placeholder}</span>}
+            </>
+          )}
         </span>
+        {chosen.length > 1 && <span className="sm-badge" aria-hidden="true">{chosen.length}</span>}
         <svg className="sm-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
       </button>
       {open && (
-        <div className="sm-menu" role="listbox" aria-labelledby={`${id}-label`} onKeyDown={onMenuKey}>
+        <div className="sm-menu" role="listbox" aria-labelledby={`${id}-label`} aria-multiselectable={multiple || undefined} onKeyDown={onMenuKey}>
           {options.map((option, index) => {
-            const selected = option.value === value;
+            const selected = isSelected(option);
             return (
               <button type="button" role="option" aria-selected={selected} key={option.value} tabIndex={index === active ? 0 : -1}
                 ref={(element) => { optionRefs.current[index] = element; }}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconCheck, IconClipboard, IconClose, IconEdit, IconViewCards, IconViewList, IconPlus, IconTrash } from "../icons";
+import { IconCheck, IconClipboard, IconClose, IconEdit, IconViewCards, IconViewList, IconPlus, IconPrinter, IconTrash } from "../icons";
 import { PHASE_COLORS, generateId, orderedTemplateTypeNames, tmplColor, tmplItems } from "../utils";
 import { formatDate } from "../preferences";
 import { useAppSettings } from "../appSettings";
@@ -492,8 +492,9 @@ export default function DemandasPage({ demands, templates, collaborators, loadin
   const { settings } = useAppSettings();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [priorityFilter, setPriorityFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
+  // Categoria e tipo aceitam várias opções; lista vazia = todas.
+  const [priorityFilter, setPriorityFilter] = useState([]);
+  const [typeFilter, setTypeFilter] = useState([]);
   const [formOpen, setFormOpen] = useState(false);
   const [formClosing, setFormClosing] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -574,8 +575,8 @@ export default function DemandasPage({ demands, templates, collaborators, loadin
     const q = search.trim().toLocaleLowerCase("pt-BR");
     return demands
       .filter((d) => statusFilter === "all" || d.status === statusFilter)
-      .filter((d) => priorityFilter === "all" || (d.priority || "routine") === priorityFilter)
-      .filter((d) => typeFilter === "all" || (d.type || "") === typeFilter)
+      .filter((d) => priorityFilter.length === 0 || priorityFilter.includes(d.priority || "routine"))
+      .filter((d) => typeFilter.length === 0 || typeFilter.includes(d.type || ""))
       .filter((d) => !q || [d.title, d.processNumber, d.type, d.setor, d.notes].some((value) => (value || "").toLocaleLowerCase("pt-BR").includes(q)))
       // Urgente em cima, Rotina embaixo; na mesma prioridade, pendentes e o vencimento mais próximo primeiro.
       .sort(compareDemands);
@@ -597,21 +598,22 @@ export default function DemandasPage({ demands, templates, collaborators, loadin
   const printFilterSummary = [
     search.trim() && `Busca: "${search.trim()}"`,
     statusFilter !== "all" && `Situação: ${statusFilter === "pending" ? "Pendentes" : "Iniciadas"}`,
-    priorityFilter !== "all" && `Categoria: ${priorityLabel(priorityFilter)}`,
-    typeFilter !== "all" && `Tipo: ${typeFilter}`,
+    priorityFilter.length > 0 && `Categoria: ${priorityFilter.map(priorityLabel).join(", ")}`,
+    typeFilter.length > 0 && `Tipo: ${typeFilter.join(", ")}`,
   ].filter(Boolean).join("  •  ");
 
   return (
     <div className="lk-contracts dm-page">
       <h1 className="lk-sr">Demandas</h1>
       {!loading && <DemandsPrintReport demands={filtered} filterSummary={printFilterSummary} today={today} />}
-      <header className={`ct-header ${isViewer ? "lk-menu-bar" : ""}`}>
+      {/* Imprimir aparece para todos (inclusive quem só visualiza), por isso o cabeçalho fica sempre visível. */}
+      <header className="ct-header">
         <button className="lk-menu" aria-label="Abrir navegação" onClick={onOpenMenu}>☰</button>
-        {!isViewer && (
-          <div className="ct-header-actions">
-            <button type="button" className="ct-new-button dm-new" onClick={openNew} disabled={!hasTemplates} title={hasTemplates ? undefined : "Cadastre os modelos em Administração"}><IconPlus /> Nova demanda</button>
-          </div>
-        )}
+        <div className="ct-header-actions">
+          <button type="button" className="ct-new-button dm-new" onClick={() => window.print()} disabled={loading || filtered.length === 0}
+            title="Imprime ou salva em PDF as demandas exibidas, com os filtros atuais"><IconPrinter /> Imprimir</button>
+          {!isViewer && <button type="button" className="ct-new-button dm-new" onClick={openNew} disabled={!hasTemplates} title={hasTemplates ? undefined : "Cadastre os modelos em Administração"}><IconPlus /> Nova demanda</button>}
+        </div>
       </header>
 
       {error && <div className="ct-message" role="alert"><span>{error}</span></div>}
@@ -640,13 +642,11 @@ export default function DemandasPage({ demands, templates, collaborators, loadin
           { value: "pending", label: "Pendentes", count: loading ? undefined : pendingCount },
           { value: "active", label: "Iniciadas", count: loading ? undefined : demands.length - pendingCount },
         ]} />
-        <SelectMenu label="Categoria" value={priorityFilter} onChange={setPriorityFilter}
+        <SelectMenu label="Categoria" multiple value={priorityFilter} onChange={setPriorityFilter}
           options={[{ value: "all", label: "Todas" }, ...PRIORITIES.map(([value, label]) => ({ value, label, color: PRIORITY_COLORS[value] }))]} />
-        <SelectMenu label="Tipo de processo" value={typeFilter} onChange={setTypeFilter}
+        <SelectMenu label="Tipo de processo" multiple value={typeFilter} onChange={setTypeFilter}
           options={[{ value: "all", label: "Todos" }, ...typeOptions]} />
         <div className="ct-toolbar-actions">
-          <button type="button" className="ct-header-export dm-print-button" onClick={() => window.print()} disabled={loading || filtered.length === 0}
-            title="Imprime ou salva em PDF as demandas exibidas, com os filtros atuais">Imprimir</button>
           <div className="ct-view-toggle ct-icon-toggle" role="group" aria-label="Visualização">
             <button type="button" className={view === "list" ? "active" : ""} aria-pressed={view === "list"} aria-label="Lista" title="Lista" onClick={() => changeView("list")}><IconViewList /></button>
             <button type="button" className={view === "cards" ? "active" : ""} aria-pressed={view === "cards"} aria-label="Cards" title="Cards" onClick={() => changeView("cards")}><IconViewCards /></button>

@@ -2,6 +2,8 @@
 .lk-process-main { margin-left: 236px; padding: 24px 20px 36px 28px; min-width: 0; }
 .process-page-header { display: flex; align-items: center; gap: 24px; margin-bottom: 24px; }
 .process-page-heading { display: none; }
+.process-page-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.process-page-actions:empty { display: none; }
 .process-page-tabs { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; flex-shrink: 0; }
 .process-page-tabs button { min-height: 38px; padding: 9px 16px; border: 1px solid var(--lk-border); border-radius: 10px; background: var(--lk-surface); font-size: 12px; }
 .process-page-tabs button.active { color: var(--lk-blue); border-color: var(--lk-blue); background: var(--lk-tint); font-weight: 600; }

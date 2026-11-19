@@ -1,20 +1,81 @@
 /* Administração — segue o frame do Figma; base visual compartilhada com Contratos (.lk-contracts). */
-.adm-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
-.adm-card { display: flex; flex-direction: column; min-width: 0; padding: 18px; background: var(--lk-surface); border: 1px solid var(--lk-border); border-radius: 16px; }
-.adm-card-head { display: flex; align-items: center; gap: 12px; }
-.adm-card-head h2 { font: 600 15px/22px 'Manrope', sans-serif; color: var(--lk-text); }
-.adm-card-icon { display: grid; place-items: center; flex-shrink: 0; width: 34px; height: 34px; border-radius: 9px; }
-.adm-card-icon i { width: 10px; height: 10px; border-radius: 50%; background: currentColor; }
-.adm-card-icon.blue { background: #eff6ff; color: #2563eb; }
-.adm-card-icon.purple { background: #f3eefe; color: #7c3aed; }
-.adm-card-icon.green { background: #ecfdf2; color: #16a34a; }
-.adm-card-icon.lilac { background: #f3eefe; color: #8b5cf6; }
-.adm-card p { flex: 1; margin: 14px 0 16px; font-size: 11px; line-height: 1.5; color: var(--lk-muted); }
-.lk-dashboard .adm-card-action { width: 100%; height: 30px; padding: 0 10px; border: 1px solid var(--lk-border); border-radius: 8px; background: var(--lk-soft); color: #2563eb; font-size: 11px; font-weight: 600; text-align: left; transition: border-color .15s, background .15s; }
-.lk-dashboard .adm-card-action:hover { border-color: #bfdbfe; background: var(--lk-tint); }
+/* Tela principal: cabeçalho, cartões em dois grupos (Acesso e segurança · Cadastros) e os painéis de permissões e
+   configurações. Os cartões são botões inteiros, com ícone, descrição e um número que resume a área. */
+.adm-header .ct-header-text p { margin-top: 2px; }
+.adm-groups { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 20px; }
+.adm-group { min-width: 0; }
+.adm-group-title { margin: 0 0 10px; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--lk-muted); }
+.adm-tiles { display: grid; grid-template-columns: repeat(var(--adm-cols), minmax(0, 1fr)); gap: 14px; }
+.lk-dashboard .adm-tile {
+  --tone: #2563eb; --tone-soft: #eff6ff;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; height: 100%; padding: 16px 16px 14px;
+  border: 1px solid var(--lk-border); border-radius: 14px; background: var(--lk-surface); color: var(--lk-text); text-align: left;
+  cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s;
+}
+.lk-dashboard .adm-tile:hover { border-color: color-mix(in srgb, var(--tone) 45%, var(--lk-border)); box-shadow: 0 8px 22px #1118270f; transform: translateY(-1px); }
+.lk-dashboard .adm-tile:focus-visible { outline: 2px solid var(--tone); outline-offset: 2px; }
+.adm-tile.blue { --tone: #2563eb; --tone-soft: #eff6ff; }
+.adm-tile.green { --tone: #16a34a; --tone-soft: #ecfdf2; }
+.adm-tile.purple { --tone: #7c3aed; --tone-soft: #f3eefe; }
+.adm-tile.lilac { --tone: #8b5cf6; --tone-soft: #f3eefe; }
+.adm-tile.amber { --tone: #d97706; --tone-soft: #fff7e0; }
+.lk-dark .adm-tile { --tone-soft: color-mix(in srgb, var(--tone) 18%, transparent); }
+.lk-dark .adm-tile.blue { --tone: #7eb2ff; } .lk-dark .adm-tile.green { --tone: #4ade80; } .lk-dark .adm-tile.purple, .lk-dark .adm-tile.lilac { --tone: #c4b5fd; } .lk-dark .adm-tile.amber { --tone: #fbbf24; }
+.adm-tile-top { display: flex; align-items: center; justify-content: space-between; width: 100%; margin-bottom: 6px; }
+.adm-tile-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--tone-soft); color: var(--tone); }
+.adm-tile-arrow { color: var(--lk-muted); transition: transform .15s, color .15s; }
+.adm-tile:hover .adm-tile-arrow { color: var(--tone); transform: translateX(3px); }
+.adm-tile-title { font: 600 15px/21px 'Manrope', sans-serif; }
+.adm-tile-text { flex: 1; font-size: 11px; line-height: 1.5; color: var(--lk-muted); }
+.adm-tile-stat { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; width: 100%; margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--lk-border); }
+.adm-tile-stat b { font: 700 14px/20px 'Manrope', sans-serif; color: var(--tone); }
+.adm-tile-stat small { font-size: 11px; color: var(--lk-muted); }
+@media (prefers-reduced-motion: reduce) { .lk-dashboard .adm-tile, .adm-tile-arrow { transition: none; } .lk-dashboard .adm-tile:hover { transform: none; } }
 
-.adm-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr); gap: 20px; align-items: start; }
-.adm-panel { min-width: 0; padding: 20px 18px 18px; background: var(--lk-surface); border: 1px solid var(--lk-border); border-radius: 16px; }
+/* Ações rápidas no topo (Senha temporária · Encerrar sessões · Novo usuário). */
+.adm-quick { display: flex; flex-wrap: wrap; gap: 10px; flex-shrink: 0; }
+.lk-dashboard .adm-quick .ct-header-export, .lk-dashboard .adm-quick .ct-new-button { gap: 6px; }
+.adm-quick svg { width: 15px; height: 15px; }
+
+/* Precisa de atenção · Atividade de acesso (lado a lado, mesma altura). */
+.adm-grid.adm-grid-even { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.adm-attention-list, .adm-events, .adm-locked { list-style: none; margin: 0; padding: 0; }
+.adm-attention-list > li { padding: 10px 0; border-top: 1px solid var(--lk-border); }
+.adm-attention-list > li:first-child { border-top: 0; padding-top: 0; }
+.adm-attention-row { display: flex; align-items: center; gap: 12px; }
+.adm-attention-row b { display: grid; place-items: center; flex-shrink: 0; min-width: 34px; height: 30px; padding: 0 8px; border-radius: 8px;
+  background: #fff7e0; color: #b45309; font: 700 14px 'Manrope', sans-serif; font-variant-numeric: tabular-nums; }
+.adm-attention-list > li.is-alert .adm-attention-row b { background: #fdeaea; color: #dc2626; }
+.lk-dark .adm-attention-row b { background: #d9770626; color: #fbbf24; }
+.lk-dark .adm-attention-list > li.is-alert .adm-attention-row b { background: #dc262626; color: #f87171; }
+.adm-attention-row span { flex: 1; min-width: 0; font-size: 12px; font-weight: 500; color: var(--lk-text); }
+.lk-dashboard .adm-link { flex-shrink: 0; padding: 5px 12px; border: 1px solid var(--lk-border); border-radius: 8px; background: var(--lk-surface);
+  color: var(--lk-blue); font-size: 11px; font-weight: 600; transition: border-color .15s, background .15s; }
+.lk-dashboard .adm-link:hover { border-color: var(--lk-blue); background: var(--lk-tint); }
+.adm-locked { margin: 8px 0 0 46px; display: flex; flex-direction: column; gap: 6px; }
+.adm-locked li { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 11px; color: var(--lk-muted); }
+.adm-locked strong { color: var(--lk-text); font-weight: 600; }
+.adm-all-good { display: flex; align-items: center; gap: 8px; margin: 0; padding: 14px; border-radius: 10px; background: #ecfdf2; color: #15803d; font-size: 12px; font-weight: 600; }
+.lk-dark .adm-all-good { background: #16a34a26; color: #4ade80; }
+.adm-muted-line { margin: 0; font-size: 12px; color: var(--lk-muted); }
+
+.adm-events li { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--lk-border); font-size: 12px; }
+.adm-events li:first-child { border-top: 0; padding-top: 0; }
+.adm-events strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--lk-text); }
+.adm-event-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--lk-muted); }
+.adm-event-dot.ok { background: #16a34a; } .adm-event-dot.warn { background: #d97706; } .adm-event-dot.bad { background: #dc2626; } .adm-event-dot.info { background: #2563eb; }
+.adm-event-label { font-size: 11px; font-weight: 500; color: var(--lk-muted); white-space: nowrap; }
+.adm-event-label.warn { color: #b45309; } .adm-event-label.bad { color: #dc2626; font-weight: 600; }
+.lk-dark .adm-event-label.warn { color: #fbbf24; } .lk-dark .adm-event-label.bad { color: #f87171; }
+.adm-events time { font-size: 11px; color: var(--lk-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.adm-dormant { margin: auto 0 0; padding-top: 12px; border-top: 1px solid var(--lk-border); font-size: 11px; line-height: 1.6; color: var(--lk-muted); }
+.adm-events + .adm-dormant { margin-top: 12px; }
+.adm-dormant b { color: var(--lk-text); font-weight: 600; }
+.lk-contracts .adm-action-modal .contract-delete-icon { color: #2563eb; background: #eff6ff; }
+.lk-contracts .adm-action-modal .contract-delete-icon:not(.reopen) { color: #dc2626; background: #fdeaea; }
+
+.adm-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr); gap: 20px; align-items: stretch; }
+.adm-panel { display: flex; flex-direction: column; min-width: 0; padding: 20px 18px 18px; background: var(--lk-surface); border: 1px solid var(--lk-border); border-radius: 16px; }
 .adm-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
 .adm-panel-head h2 { font: 600 16px/22px 'Manrope', sans-serif; color: var(--lk-text); }
 .adm-panel-head p { margin-top: 3px; font-size: 11px; color: var(--lk-muted); }
@@ -28,13 +89,20 @@
 .adm-table tbody tr:last-child td { border-bottom: 0; }
 .adm-role strong { display: block; font-weight: 600; color: var(--lk-text); }
 .adm-role small { display: block; margin-top: 3px; font-size: 10px; color: var(--lk-muted); }
-.adm-access { font-size: 11px; font-weight: 600; }
-.adm-access.total { color: #16a34a; }
-.adm-access.edit { color: #2563eb; }
-.adm-access.read { color: #7c3aed; }
-.adm-access.none { color: #b6bcc6; }
-.adm-legend { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--lk-border); font-size: 10px; color: var(--lk-muted); line-height: 1.8; }
-.adm-legend .adm-access { margin: 0 4px 0 6px; font-size: 10px; }
+/* Nível de acesso em selo: ✓ Total (verde), 👁 Leitura (roxo), Sem acesso (cinza). */
+.adm-access { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.adm-access svg { width: 12px; height: 12px; }
+.adm-access.total { background: #ecfdf2; color: #16a34a; }
+.adm-access.edit { background: #eff6ff; color: #2563eb; }
+.adm-access.read { background: #f3eefe; color: #7c3aed; }
+.adm-access.none { background: var(--lk-soft); color: var(--lk-muted); font-weight: 500; }
+.lk-dark .adm-access.total { background: #16a34a26; color: #4ade80; }
+.lk-dark .adm-access.edit { background: #2563eb2e; color: #93c5fd; }
+.lk-dark .adm-access.read { background: #7c3aed2e; color: #c4b5fd; }
+.adm-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: auto 0 0; padding: 12px 0 0; border-top: 1px solid var(--lk-border); list-style: none; font-size: 11px; color: var(--lk-muted); }
+.adm-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.adm-legend .adm-access { height: 20px; padding: 0 8px; font-size: 10px; }
+.adm-table-wrap { margin-bottom: 14px; }
 
 .adm-settings { transition: box-shadow .3s, border-color .3s; }
 .adm-settings-list { list-style: none; margin: 0; padding: 0; }
@@ -49,12 +117,13 @@
 .lk-dashboard .adm-switch.on { background: #2563eb; }
 .lk-dashboard .adm-switch.on span { transform: translateX(18px); }
 .lk-dashboard .adm-switch:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
-.adm-settings-foot { margin-top: 16px; }
-.lk-dashboard .adm-save { width: 100%; justify-content: center; min-height: 38px; }
+.adm-settings-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto; padding-top: 14px; border-top: 1px solid var(--lk-border); }
+.lk-dashboard .adm-save { justify-content: center; min-width: 110px; min-height: 38px; }
 .lk-dashboard .adm-save:disabled { opacity: .55; cursor: not-allowed; }
-.adm-save-msg { margin-bottom: 10px; font-size: 11px; font-weight: 600; }
-.adm-save-msg.ok { color: #16a34a; }
-.adm-save-msg.error { color: #dc2626; }
+.adm-save-msg { margin: 0; font-size: 11px; font-weight: 500; color: var(--lk-muted); }
+.adm-save-msg.pending { color: #d97706; font-weight: 600; }
+.adm-save-msg.ok { color: #16a34a; font-weight: 600; }
+.adm-save-msg.error { color: #dc2626; font-weight: 600; }
 
 /* Painéis laterais com as gestões existentes (usuários, setores, modelos). */
 .lk-contracts .adm-drawer { width: min(860px, 100%); }
@@ -62,13 +131,14 @@
 .adm-drawer-body .admin-section { padding: 0; }
 .adm-drawer-body .admin-section-title { display: none; }
 
-@media (max-width: 1500px) { .adm-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 1200px) { .adm-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 1024px) { .adm-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1350px) { .adm-groups { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 800px) { .adm-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1024px) { .adm-grid, .adm-grid.adm-grid-even { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 600px) {
-  .adm-cards { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .adm-tiles { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .adm-panel-head { flex-wrap: wrap; }
-  .lk-dashboard .adm-panel-btn { width: 100%; justify-content: center; min-height: 44px; }
+  .adm-quick { width: 100%; }
+  .lk-dashboard .adm-quick > button { flex: 1 1 auto; justify-content: center; min-height: 44px; }
   .adm-table thead { display: none; }
   .adm-table, .adm-table tbody, .adm-table tr, .adm-table td { display: block; width: 100%; }
   .adm-table tbody tr { margin-bottom: 10px; border: 1px solid var(--lk-border); border-radius: 12px; overflow: hidden; }
@@ -85,6 +155,11 @@
 .adm-sec-kpi small { display: block; font-size: 10px; font-weight: 600; color: var(--lk-muted); }
 .adm-sec-kpi strong { display: block; margin: 4px 0 6px; font: 700 20px/26px 'Manrope', sans-serif; color: var(--lk-text); white-space: nowrap; }
 .adm-sec-kpi p { font-size: 10px; color: var(--lk-muted); }
+/* Ícones dos indicadores da tela de Segurança. */
+.adm-card-icon { display: grid; place-items: center; flex-shrink: 0; width: 34px; height: 34px; border-radius: 9px; }
+.adm-card-icon i { width: 10px; height: 10px; border-radius: 50%; background: currentColor; }
+.adm-card-icon.blue { background: #eff6ff; color: #2563eb; }
+.adm-card-icon.green { background: #ecfdf2; color: #16a34a; }
 .adm-card-icon.amber { background: #fff7e0; color: #d97706; }
 .adm-card-icon.red { background: #fdeaea; color: #dc2626; }
 .adm-policy { margin-top: 12px; padding: 9px 12px; border-radius: 8px; background: var(--lk-soft); font-size: 10px; color: var(--lk-muted); }
